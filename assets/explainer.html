@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{branch}}: {{one-line summary}}</title>
+<style>
+  :root { --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #dcd9d2; --accent: #2f5d8a; --card: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #161615; --fg: #e8e6e1; --muted: #9a978f; --line: #34332f; --accent: #7fb0e0; --card: #1e1e1c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 40px 16px 80px; }
+  header p { color: var(--muted); margin: 4px 0; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 1.15rem; margin: 40px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+  code, pre { font: 14px/1.5 ui-monospace, monospace; }
+  pre { background: var(--card); border: 1px solid var(--line); padding: 16px; overflow-x: auto; }
+  figure { margin: 16px 0; padding: 16px; background: var(--card); border: 1px solid var(--line); }
+  figure svg { width: 100%; height: auto; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
+  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <span class="tag">{{design | mechanism | trivial}} altitude</span>
+  <h1>{{One-sentence summary of what changes for the user or the next maintainer}}</h1>
+  <p>{{branch}} · {{base short sha}}..{{head short sha}} · {{n}} commits</p>
+</header>
+
+<h2>Why</h2>
+<p>{{The problem, who has it, and what was wrong or missing before. Two to four sentences.}}</p>
+
+<h2>The design</h2>
+<p>{{The shape you chose and the idea behind it. Name the new or changed abstraction, boundary, or data shape, and what it owns.}}</p>
+<figure>
+  {{Inline SVG or a pre box diagram of the real components. Mark what is new and which arrows changed.}}
+  <figcaption>{{What to notice in the diagram.}}</figcaption>
+</figure>
+
+<h2>How it works</h2>
+<p>{{Mechanism altitude: the mechanism end to end. Inputs, state, invariants, failure and invalidation paths, root cause, why the fix works. Design altitude: one walk through the main flow.}}</p>
+
+<h2>Alternatives and tradeoffs</h2>
+<table>
+  <tr><th>Option</th><th>Why it lost, or what it would cost</th></tr>
+  <tr><td>{{Chosen design}}</td><td>{{What it costs us: complexity, coupling, performance, lock-in.}}</td></tr>
+  <tr><td>{{Alternative}}</td><td>{{Why not.}}</td></tr>
+</table>
+
+<h2>What this makes easy or hard next</h2>
+<p>{{Where the next feature in this area goes, and what this design now constrains.}}</p>
+
+<h2>Also in this change</h2>
+<ul>
+  <li>{{One line per incidental change.}}</li>
+</ul>
+
+<h2>Blast radius and verification</h2>
+<p>{{Who or what this touches, why that is safe or risky, and how it was proven: the real run and its outcome.}}</p>
+</main>
+</body>
+</html>
