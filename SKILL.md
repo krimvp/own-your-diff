@@ -70,6 +70,8 @@ Grade each answer against its key points:
 - **Vague.** Ask one follow-up probe on the missing point.
 - **Wrong or still vague.** Explain the gap in two or three sentences. Then ask a new question that targets the same point from another angle.
 
+A probe or retry stays at the altitude of the question it follows. It tests the same key point in a new case, never a finer detail of how that point is implemented. At design altitude, "the gate keys on diff content, not commits" is the point. How a partial squash hashes is a mechanism detail, so it is out of bounds.
+
 Done when every question is passed, or a point fails three times. On three failures, stop and record nothing. Tell the author which part to reread or go through with you. If the walkthrough was the problem, say the change may be too large or unclear, and suggest splitting it.
 
 ### 5. Record
