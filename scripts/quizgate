@@ -1,0 +1,116 @@
+#!/usr/bin/env bash
+# Push gate for the own-your-diff skill. A commit may be pushed only after its
+# author passed a quiz on it. Passes are stored as `git patch-id --stable`
+# values, so rebases, rewords, and squashes of quizzed work stay quizzed.
+set -euo pipefail
+
+EMPTY_TREE=$(git hash-object -t tree /dev/null)
+ZERO=0000000000000000000000000000000000000000
+
+usage() {
+  cat <<'EOF'
+usage: quizgate <command>
+  pending    unquizzed commits a push of HEAD would send, oldest first
+  base       commit the explainer diffs from (parent of the oldest pending commit)
+  dir        directory holding explainers, quiz transcripts, and the ledger
+  record     mark every pending commit, and their combined diff, as quizzed
+  open FILE  open an explainer in the browser
+  check      pre-push hook entry point; reads pushed refs on stdin
+  install    point core.hooksPath at the repo's .githooks
+EOF
+}
+
+state_dir() {
+  local d
+  d="$(git rev-parse --path-format=absolute --git-common-dir)/own-your-diff"
+  mkdir -p "$d"
+  echo "$d"
+}
+
+ledger() { local f; f="$(state_dir)/ledger"; touch "$f"; echo "$f"; }
+
+commit_pid() { git show --no-color --format= "$1" | git patch-id --stable | cut -d' ' -f1; }
+
+range_pid() { git diff --no-color "$1" "$2" | git patch-id --stable | cut -d' ' -f1; }
+
+quizzed() { grep -q "^$1"$'\t' "$(ledger)"; }
+
+# Commits reachable from $1 that no remote has, oldest first. A commit with an
+# empty diff has no patch-id and needs no quiz.
+unpushed() { git rev-list --reverse --no-merges "$1" --not --remotes; }
+
+unquizzed() {
+  local c pid
+  for c in $(unpushed "$1"); do
+    pid=$(commit_pid "$c")
+    [[ -z "$pid" ]] && continue
+    quizzed "$pid" || echo "$c"
+  done
+}
+
+cmd_pending() { unquizzed HEAD | xargs -r git log --no-walk=unsorted --format='%h %s'; }
+
+cmd_base() {
+  local oldest
+  oldest=$(unquizzed HEAD | head -n1)
+  [[ -z "$oldest" ]] && { echo "nothing pending" >&2; exit 1; }
+  git rev-parse --verify -q "$oldest^" || echo "$EMPTY_TREE"
+}
+
+cmd_record() {
+  local commits c pid base now
+  commits=$(unquizzed HEAD)
+  [[ -z "$commits" ]] && { echo "nothing pending"; return; }
+  base=$(cmd_base)
+  now=$(date -u +%FT%TZ)
+  {
+    for c in $commits; do
+      printf '%s\t%s\t%s\tcommit\n' "$(commit_pid "$c")" "$(git rev-parse --short "$c")" "$now"
+    done
+    pid=$(range_pid "$base" HEAD)
+    [[ -n "$pid" ]] && printf '%s\t%s\t%s\trange\n' "$pid" "$(git rev-parse --short HEAD)" "$now"
+  } >>"$(ledger)"
+  echo "recorded $(wc -w <<<"$commits") commit(s) as quizzed"
+}
+
+cmd_open() {
+  local f=${1:?usage: quizgate open FILE}
+  if command -v wslview >/dev/null; then wslview "$f"
+  elif command -v explorer.exe >/dev/null; then explorer.exe "$(wslpath -w "$f")" || true
+  elif command -v xdg-open >/dev/null; then xdg-open "$f"
+  elif command -v open >/dev/null; then open "$f"
+  else echo "open $f in a browser"
+  fi
+}
+
+cmd_check() {
+  local local_ref local_sha remote_ref remote_sha missing=""
+  while read -r local_ref local_sha remote_ref remote_sha; do
+    [[ "$local_sha" == "$ZERO" ]] && continue
+    missing+=$(unquizzed "$local_sha")$'\n'
+  done
+  missing=$(sort -u <<<"$missing" | sed '/^$/d')
+  [[ -z "$missing" ]] && exit 0
+  {
+    echo "own-your-diff: push blocked. These commits have no passed quiz:"
+    xargs git log --no-walk --format='  %h %s' <<<"$missing"
+    echo "Ask your agent to run the own-your-diff skill, read the explainer, and pass the quiz."
+  } >&2
+  exit 1
+}
+
+cmd_install() {
+  git config core.hooksPath .githooks
+  echo "core.hooksPath=.githooks"
+}
+
+case "${1:-}" in
+  pending) cmd_pending ;;
+  base) cmd_base ;;
+  dir) state_dir ;;
+  record) cmd_record ;;
+  open) shift; cmd_open "$@" ;;
+  check) cmd_check ;;
+  install) cmd_install ;;
+  *) usage; exit 2 ;;
+esac

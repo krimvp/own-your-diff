@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+# Behavior tests for the push gate, through real `git push` into a bare remote.
+set -euo pipefail
+
+SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$SKILL_DIR/../../.." && pwd)"
+T="$(mktemp -d)"
+trap 'rm -rf "$T"' EXIT
+pass=0 fail=0
+
+check() { # description expected-exit command...
+  local want=$1 desc=$2; shift 2
+  local got=0
+  "$@" >"$T/out" 2>&1 || got=$?
+  if [[ ( $want == ok && $got == 0 ) || ( $want == blocked && $got != 0 ) ]]; then
+    pass=$((pass + 1)); echo "ok    $desc"
+  else
+    fail=$((fail + 1)); echo "FAIL  $desc (exit $got)"; sed 's/^/      /' "$T/out"
+  fi
+}
+
+git init -q --bare "$T/remote.git"
+git init -q -b main "$T/work"
+cd "$T/work"
+git config user.email t@example.com
+git config user.name t
+mkdir -p .agents/skills .githooks
+cp -r "$SKILL_DIR" .agents/skills/
+cp "$REPO_ROOT/.githooks/pre-push" .githooks/
+git remote add origin "$T/remote.git"
+gate=.agents/skills/own-your-diff/scripts/quizgate
+commit() { echo "$2" >"$1"; git add -A; git commit -qm "$3"; }
+
+commit a.txt one "root commit"
+check ok "push with no hook installed" git push -q -u origin main
+"$gate" install >/dev/null
+
+commit a.txt two "change a"
+check blocked "unquizzed commit is blocked" git push -q
+cp "$T/out" "$T/out.blocked"
+check ok "block message names the commit" grep -q "change a" "$T/out.blocked"
+
+check ok "pending lists the commit" bash -c "$gate pending | grep -q 'change a'"
+check ok "base is the last pushed commit" bash -c "[[ \$($gate base) == \$(git rev-parse origin/main) ]]"
+"$gate" record >/dev/null
+check ok "quizzed commit pushes" git push -q
+check ok "nothing pending after push" bash -c "[[ -z \$($gate pending) ]]"
+
+git switch -qc feature
+commit b.txt b1 "feature part 1"
+commit b.txt b2 "feature part 2"
+"$gate" record >/dev/null
+git commit -q --amend -m "feature part 2, reworded"
+check ok "reworded quizzed commit still pushes" git push -q --dry-run -u origin feature
+
+git reset -q --soft main
+git commit -qm "feature squashed"
+check ok "squash of quizzed commits still pushes" git push -q --dry-run -u origin feature
+
+commit b.txt b3 "sneaky edit"
+check blocked "commit added after the quiz is blocked" git push -q --dry-run -u origin feature
+check ok "pending holds only the new commit" bash -c "[[ \$($gate pending | wc -l) == 1 ]]"
+"$gate" record >/dev/null
+
+git switch -q main
+commit c.txt c1 "main moves on"
+"$gate" record >/dev/null
+git push -q
+git switch -q feature
+git rebase -q main
+check ok "rebased quizzed commits still push" git push -q -u origin feature
+
+git commit -q --allow-empty -m "empty commit"
+check ok "empty commit needs no quiz" git push -q
+
+git branch -q doomed && git push -q origin doomed 2>/dev/null || true
+check ok "deleting a remote branch is never blocked" git push -q origin --delete doomed
+
+echo "$pass passed, $fail failed"
+[[ $fail == 0 ]]
