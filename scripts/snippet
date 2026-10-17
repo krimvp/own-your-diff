@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# Render real git content as editor-style HTML blocks for an explainer.
+# Every block is one line of HTML, so `expand` can refresh it in place.
+set -euo pipefail
+
+HERE="$(cd "$(dirname "$0")" && pwd)"
+BASE=${BASE:-}
+HEAD_REV=${HEAD_REV:-HEAD}
+
+usage() {
+  cat <<'EOF'
+usage: snippet <command>
+  tree                         changed files with status and line counts
+  diff PATH [HUNK...]          diff of PATH, all hunks or the 1-based hunks named
+  file PATH START END [REV]    lines START..END of PATH at REV (default HEAD)
+  expand FILE                  refresh every <!-- snippet ... --> directive in FILE
+Ranges run from $BASE (default: quizgate base) to $HEAD_REV (default: HEAD).
+EOF
+}
+
+base() { [[ -n "$BASE" ]] && echo "$BASE" || "$HERE/quizgate" base; }
+
+esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g'; }
+
+chrome() { # path status-letter body
+  local dir name
+  dir=$(dirname "$1"); name=$(basename "$1")
+  [[ "$dir" == . ]] && dir=""
+  printf '<figure class="ed"><div class="ed-bar"><span class="ed-tab">%s</span>%s<span class="ed-path">%s</span></div><pre class="ed-code">%s</pre></figure>' \
+    "$(esc <<<"$name")" "${2:+<span class=\"st st-$2\">$2</span>}" "$(esc <<<"${dir//\// › }")" "$3"
+}
+
+cmd_tree() {
+  local b rows=""
+  b=$(base)
+  while IFS=$'\t' read -r st path; do
+    local nums add del letter=${st:0:1}
+    nums=$(git diff --numstat "$b" "$HEAD_REV" -- "$path" | cut -f1,2)
+    add=${nums%%$'\t'*}; del=${nums##*$'\t'}
+    rows+=$(printf '<li><span class="st st-%s">%s</span><span class="tree-dir">%s</span><span class="tree-name">%s</span><span class="tree-n"><b class="plus">+%s</b> <b class="minus">−%s</b></span></li>' \
+      "$letter" "$letter" "$(dirname "$path" | sed 's|^\.$||; s|$|/|; s|^/$||' | esc)" "$(basename "$path" | esc)" "$add" "$del")
+  done < <(git diff --name-status --no-renames "$b" "$HEAD_REV")
+  printf '<figure class="tree"><div class="ed-bar"><span class="ed-tab">Changes</span><span class="ed-path">%s..%s</span></div><ul>%s</ul></figure>' \
+    "$(git rev-parse --short "$b")" "$(git rev-parse --short "$HEAD_REV")" "$rows"
+}
+
+cmd_diff() {
+  local path=${1:?usage: snippet diff PATH [HUNK...]}; shift
+  local b status body
+  b=$(base)
+  status=$(git diff --name-status --no-renames "$b" "$HEAD_REV" -- "$path" | cut -c1)
+  body=$(git diff --no-color -U3 "$b" "$HEAD_REV" -- "$path" | awk -v want="$*" '
+    function esc(s) { gsub(/&/, "\\&amp;", s); gsub(/</, "\\&lt;", s); gsub(/>/, "\\&gt;", s); return s }
+    function line(cls, n, s) { printf "<span class=\"l%s\" data-n=\"%s\">%s</span>", cls, n, esc(s) }
+    BEGIN { k = split(want, w, " "); for (i = 1; i <= k; i++) sel[w[i]] = 1 }
+    /^@@/ {
+      h++; show = (k == 0 || (h in sel)); started = 1
+      if (!show) next
+      match($0, /-[0-9]+/); o = substr($0, RSTART + 1, RLENGTH - 1) + 0
+      match($0, /\+[0-9]+/); n = substr($0, RSTART + 1, RLENGTH - 1) + 0
+      line(" h", "", $0); next
+    }
+    !started || !show || /^\\/ { next }
+    /^\+/ { line(" a", n++, substr($0, 2)); next }
+    /^-/ { line(" d", o++, substr($0, 2)); next }
+    { line("", n, substr($0, 2)); o++; n++ }')
+  chrome "$path" "$status" "$body"
+}
+
+cmd_file() {
+  local path=${1:?usage: snippet file PATH START END [REV]} start=${2:?START} end=${3:?END} rev=${4:-HEAD}
+  local body
+  body=$(git show "$rev:$path" | awk -v s="$start" -v e="$end" '
+    function esc(x) { gsub(/&/, "\\&amp;", x); gsub(/</, "\\&lt;", x); gsub(/>/, "\\&gt;", x); return x }
+    NR >= s && NR <= e { printf "<span class=\"l\" data-n=\"%d\">%s</span>", NR, esc($0) }')
+  chrome "$path" "" "$body"
+}
+
+cmd_expand() {
+  local f=${1:?usage: snippet expand FILE} tmp line re='^([[:space:]]*)<!-- snippet ([^>]*) -->'
+  tmp=$(mktemp)
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" =~ $re ]]; then
+      local args
+      read -ra args <<<"${BASH_REMATCH[2]}"
+      printf '%s<!-- snippet %s -->%s<!-- /snippet -->\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "$("$0" "${args[@]}")"
+    else
+      printf '%s\n' "$line"
+    fi
+  done <"$f" >"$tmp"
+  mv "$tmp" "$f"
+}
+
+case "${1:-}" in
+  tree) cmd_tree ;;
+  diff) shift; cmd_diff "$@" ;;
+  file) shift; cmd_file "$@" ;;
+  expand) shift; cmd_expand "$@" ;;
+  *) usage; exit 2 ;;
+esac

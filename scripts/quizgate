@@ -13,7 +13,8 @@ usage: quizgate <command>
   pending    unquizzed commits a push of HEAD would send, oldest first
   base       commit the explainer diffs from (parent of the oldest pending commit)
   dir        directory holding explainers, quiz transcripts, and the ledger
-  record     mark every pending commit, and their combined diff, as quizzed
+  record --by human|agent
+             mark every pending commit, and their combined diff, as quizzed
   open FILE  open an explainer in the browser
   check      pre-push hook entry point; reads pushed refs on stdin
   install    point core.hooksPath at the repo's .githooks
@@ -59,19 +60,21 @@ cmd_base() {
 }
 
 cmd_record() {
-  local commits c pid base now
+  local by commits c pid base now
+  [[ "${1:-}" == --by && "${2:-}" =~ ^(human|agent)$ ]] || { echo "usage: quizgate record --by human|agent" >&2; exit 2; }
+  by=$2
   commits=$(unquizzed HEAD)
   [[ -z "$commits" ]] && { echo "nothing pending"; return; }
   base=$(cmd_base)
   now=$(date -u +%FT%TZ)
   {
     for c in $commits; do
-      printf '%s\t%s\t%s\tcommit\n' "$(commit_pid "$c")" "$(git rev-parse --short "$c")" "$now"
+      printf '%s\t%s\t%s\tcommit\t%s\n' "$(commit_pid "$c")" "$(git rev-parse --short "$c")" "$now" "$by"
     done
     pid=$(range_pid "$base" HEAD)
-    [[ -n "$pid" ]] && printf '%s\t%s\t%s\trange\n' "$pid" "$(git rev-parse --short HEAD)" "$now"
+    [[ -n "$pid" ]] && printf '%s\t%s\t%s\trange\t%s\n' "$pid" "$(git rev-parse --short HEAD)" "$now" "$by"
   } >>"$(ledger)"
-  echo "recorded $(wc -w <<<"$commits") commit(s) as quizzed"
+  echo "recorded $(wc -w <<<"$commits") commit(s) as quizzed by $by"
 }
 
 cmd_open() {
@@ -109,7 +112,7 @@ case "${1:-}" in
   pending) cmd_pending ;;
   base) cmd_base ;;
   dir) state_dir ;;
-  record) cmd_record ;;
+  record) shift; cmd_record "$@" ;;
   open) shift; cmd_open "$@" ;;
   check) cmd_check ;;
   install) cmd_install ;;

@@ -42,7 +42,7 @@ check ok "block message names the commit" grep -q "change a" "$T/out.blocked"
 
 check ok "pending lists the commit" bash -c "$gate pending | grep -q 'change a'"
 check ok "base is the last pushed commit" bash -c "[[ \$($gate base) == \$(git rev-parse origin/main) ]]"
-"$gate" record >/dev/null
+"$gate" record --by human >/dev/null
 check ok "quizzed commit pushes" git push -q
 check ok "nothing pending after push" bash -c "[[ -z \$($gate pending) ]]"
 
@@ -50,7 +50,7 @@ git switch -qc feature
 commit b.txt b1 "feature part 1"
 commit b.txt b2 "feature part 2"
 check ok "base with several pending commits is the branch point" bash -c "[[ \$($gate base) == \$(git rev-parse main) ]]"
-"$gate" record >/dev/null
+"$gate" record --by human >/dev/null
 git commit -q --amend -m "feature part 2, reworded"
 check ok "reworded quizzed commit still pushes" git push -q --dry-run -u origin feature
 
@@ -61,11 +61,11 @@ check ok "squash of quizzed commits still pushes" git push -q --dry-run -u origi
 commit b.txt b3 "sneaky edit"
 check blocked "commit added after the quiz is blocked" git push -q --dry-run -u origin feature
 check ok "pending holds only the new commit" bash -c "[[ \$($gate pending | wc -l) == 1 ]]"
-"$gate" record >/dev/null
+"$gate" record --by human >/dev/null
 
 git switch -q main
 commit c.txt c1 "main moves on"
-"$gate" record >/dev/null
+"$gate" record --by human >/dev/null
 git push -q
 git switch -q feature
 git rebase -q main
@@ -76,6 +76,21 @@ check ok "empty commit needs no quiz" git push -q
 
 git branch -q doomed && git push -q origin doomed 2>/dev/null || true
 check ok "deleting a remote branch is never blocked" git push -q origin --delete doomed
+
+check blocked "record names who passed" "$gate" record
+check ok "ledger keeps who passed" grep -q $'\thuman$' "$(git rev-parse --git-common-dir)/own-your-diff/ledger"
+
+snip=.agents/skills/own-your-diff/scripts/snippet
+seq 1 20 >s.txt
+git add s.txt && git commit -qm "twenty lines" && "$gate" record --by agent >/dev/null && git push -q
+awk 'NR == 1 { $0 = "<b>&" } NR == 20 { $0 = "last" } 1' s.txt >s.new && mv s.new s.txt
+git commit -qam "two hunks"
+check ok "diff escapes html" bash -c "$snip diff s.txt | grep -q '&lt;b&gt;&amp;'"
+check ok "diff shows only the hunks named" bash -c "[[ \$($snip diff s.txt 2 | grep -o 'class=\"l h\"' | wc -l) == 1 ]] && ! $snip diff s.txt 2 | grep -q 'lt;b'"
+printf '<p>\n  <!-- snippet diff s.txt -->\n</p>\n' >page.html
+"$snip" expand page.html && cp page.html page.first && "$snip" expand page.html
+check ok "expand fills the directive" grep -q '<!-- snippet diff s.txt --><figure class="ed">' page.html
+check ok "expand is idempotent" cmp -s page.html page.first
 
 echo "$pass passed, $fail failed"
 [[ $fail == 0 ]]

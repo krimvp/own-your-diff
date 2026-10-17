@@ -3,66 +3,184 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{branch}}: {{one-line summary}}</title>
+<title>{{branch}}: {{short title}}</title>
 <style>
-  :root { --bg: #fbfaf7; --fg: #1d1d1b; --muted: #6b6a66; --line: #dcd9d2; --accent: #2f5d8a; --card: #fff; }
+  :root {
+    --bg: #faf8f4; --fg: #22211f; --muted: #6f6c66; --line: #e3dfd7; --soft: #f1ede6;
+    --accent: #3b5bdb; --key: #2b8a3e; --trade: #c27c0e; --warn: #c92a2a;
+    --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+    --sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+    --ed-bg: #1f1f1f; --ed-bar: #181818; --ed-tab: #1f1f1f; --ed-fg: #cccccc; --ed-gutter: #6e7681;
+    --ed-border: #2b2b2b; --ed-accent: #0078d4; --ed-add: rgba(46, 160, 67, .22); --ed-del: rgba(248, 81, 73, .22);
+    --ed-hunk: #1b2b3c; --ed-hunk-fg: #8ab4f8;
+  }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #161615; --fg: #e8e6e1; --muted: #9a978f; --line: #34332f; --accent: #7fb0e0; --card: #1e1e1c; }
+    :root:not([data-theme="light"]) {
+      --bg: #151514; --fg: #e9e6df; --muted: #9b978e; --line: #2e2d2a; --soft: #1d1c1a;
+      --accent: #91a7ff; --key: #69db7c; --trade: #ffc078; --warn: #ff8787;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #151514; --fg: #e9e6df; --muted: #9b978e; --line: #2e2d2a; --soft: #1d1c1a;
+    --accent: #91a7ff; --key: #69db7c; --trade: #ffc078; --warn: #ff8787;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, sans-serif; }
-  main { max-width: 860px; margin: 0 auto; padding: 40px 16px 80px; }
-  header p { color: var(--muted); margin: 4px 0; }
-  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 8px; }
-  h2 { font-size: 1.15rem; margin: 40px 0 8px; padding-top: 16px; border-top: 1px solid var(--line); }
-  code, pre { font: 14px/1.5 ui-monospace, monospace; }
-  pre { background: var(--card); border: 1px solid var(--line); padding: 16px; overflow-x: auto; }
-  figure { margin: 16px 0; padding: 16px; background: var(--card); border: 1px solid var(--line); }
-  figure svg { width: 100%; height: auto; }
-  figcaption { color: var(--muted); font-size: 14px; margin-top: 8px; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--line); }
-  .tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.7 var(--sans); }
+  main { max-width: 760px; margin: 0 auto; padding: 56px 16px 96px; }
+  a { color: var(--accent); }
+  p, li { max-width: 68ch; }
+  code { font: .88em var(--mono); background: var(--soft); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+
+  .course { padding-bottom: 24px; border-bottom: 1px solid var(--line); }
+  .kicker { font: 600 12px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin: 0 0 16px; }
+  h1 { font: 600 2.1rem/1.2 var(--serif); margin: 0 0 16px; letter-spacing: -.01em; }
+  .lede { font: 1.15rem/1.6 var(--serif); color: var(--muted); margin: 0 0 24px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 0 0 28px; font-size: 14px; }
+  .meta dt { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+  .meta dd { margin: 0; font-family: var(--mono); font-size: 13px; }
+  .toc { background: var(--soft); border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px; }
+  .toc b { font: 600 12px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .toc ol { margin: 10px 0 0; padding-left: 22px; columns: 2 220px; column-gap: 32px; }
+  .toc li { margin: 2px 0; break-inside: avoid; }
+  .toc a { color: var(--fg); text-decoration: none; }
+  .toc a:hover { color: var(--accent); }
+
+  .lesson { margin-top: 56px; }
+  .lesson-n { font: 600 12px/1 var(--sans); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+  h2 { font: 600 1.55rem/1.25 var(--serif); margin: 0 0 16px; }
+  h3 { font: 600 1.05rem/1.3 var(--sans); margin: 28px 0 8px; }
+
+  .note { margin: 24px 0; padding: 14px 18px; border-left: 3px solid var(--key); background: var(--soft); border-radius: 0 8px 8px 0; }
+  .note > b { display: block; font: 600 12px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--key); margin-bottom: 8px; }
+  .note p { margin: 0; }
+  .note.trade { border-color: var(--trade); } .note.trade > b { color: var(--trade); }
+  .note.warn { border-color: var(--warn); } .note.warn > b { color: var(--warn); }
+
+  .ed, .tree { margin: 24px -8px; background: var(--ed-bg); color: var(--ed-fg); border: 1px solid var(--ed-border); border-radius: 8px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
+  .ed-bar { display: flex; align-items: center; gap: 10px; background: var(--ed-bar); border-bottom: 1px solid var(--ed-border); font: 13px/1 var(--sans); padding-right: 12px; }
+  .ed-tab { background: var(--ed-tab); color: #fff; padding: 10px 14px; border-top: 2px solid var(--ed-accent); border-right: 1px solid var(--ed-border); }
+  .ed-tab::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: #519aba; margin-right: 8px; }
+  .ed-path { color: var(--ed-gutter); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ed-code { margin: 0; padding: 10px 0; overflow-x: auto; font: 13px/1.6 var(--mono); tab-size: 4; }
+  .l { display: block; min-height: 1.6em; padding: 0 16px 0 0; white-space: pre; }
+  .l::before { content: attr(data-n); display: inline-block; width: 4.5em; padding-right: 1.4em; text-align: right; color: var(--ed-gutter); user-select: none; }
+  .l.a { background: var(--ed-add); } .l.a::before { content: attr(data-n) " +"; color: #7ee787; padding-right: .5em; }
+  .l.d { background: var(--ed-del); } .l.d::before { content: attr(data-n) " −"; color: #ffa198; padding-right: .5em; }
+  .l.a::before, .l.d::before { width: 5.4em; }
+  .l.h { background: var(--ed-hunk); color: var(--ed-hunk-fg); margin: 6px 0; }
+  .l.h:first-child { margin-top: 0; }
+  .st { font: 600 11px/1 var(--mono); padding: 3px 5px; border-radius: 3px; }
+  .st-A { color: #73c991; } .st-M { color: #e2c08d; } .st-D { color: #f88070; } .st-R { color: #75beff; }
+  .tree ul { list-style: none; margin: 0; padding: 8px 0; font: 13px/1.9 var(--sans); }
+  .tree li { display: flex; gap: 8px; align-items: baseline; padding: 0 14px; max-width: none; }
+  .tree li:hover { background: #2a2d2e; }
+  .tree-dir { color: var(--ed-gutter); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  .tree-name { color: #fff; white-space: nowrap; margin-right: auto; }
+  .tree-n { font: 12px var(--mono); white-space: nowrap; } .plus { color: #7ee787; font-weight: 400; } .minus { color: #ffa198; font-weight: 400; }
+
+  figure.diagram { margin: 24px 0; padding: 20px; background: var(--soft); border: 1px solid var(--line); border-radius: 10px; }
+  figure.diagram svg { width: 100%; height: auto; }
+  figcaption { color: var(--muted); font-size: 14px; margin-top: 10px; }
+  svg text { fill: var(--fg); font: 13px var(--sans); }
+  svg .box { fill: var(--bg); stroke: var(--line); stroke-width: 1.5; }
+  svg .new { fill: var(--bg); stroke: var(--key); stroke-width: 2; }
+  svg .arrow { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  svg .lbl { fill: var(--muted); font-size: 12px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  th { font: 600 12px/1.2 var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  tr.chosen td:first-child { box-shadow: inset 3px 0 0 var(--key); font-weight: 600; }
+
+  .done { margin-top: 64px; padding: 24px; border: 1px dashed var(--line); border-radius: 10px; text-align: center; color: var(--muted); font-family: var(--serif); font-size: 1.1rem; }
+  @media (max-width: 600px) { body { font-size: 16px; } h1 { font-size: 1.7rem; } .ed, .tree { margin: 20px 0; } }
 </style>
 </head>
 <body>
 <main>
-<header>
-  <span class="tag">{{design | mechanism | trivial}} altitude</span>
-  <h1>{{One-sentence summary of what changes for the user or the next maintainer}}</h1>
-  <p>{{branch}} · {{base short sha}}..{{head short sha}} · {{n}} commits</p>
+<header class="course">
+  <p class="kicker">Change walkthrough · {{design | mechanism | trivial}} altitude</p>
+  <h1>{{What changes, for whom, in one sentence}}</h1>
+  <p class="lede">{{Two sentences: the problem and the shape of the answer.}}</p>
+  <dl class="meta">
+    <div><dt>Branch</dt><dd>{{branch}}</dd></div>
+    <div><dt>Range</dt><dd>{{base}}..{{head}}</dd></div>
+    <div><dt>Commits</dt><dd>{{n}}</dd></div>
+    <div><dt>Reading time</dt><dd>~{{n}} min</dd></div>
+  </dl>
+  <nav class="toc"><b>In this walkthrough</b>
+    <ol>
+      <li><a href="#why">Why this change</a></li>
+      <li><a href="#map">The map</a></li>
+      <li><a href="#idea">The core idea</a></li>
+      <li><a href="#how">How it works</a></li>
+      <li><a href="#alternatives">Alternatives and tradeoffs</a></li>
+      <li><a href="#next">What comes next</a></li>
+      <li><a href="#proof">Blast radius and proof</a></li>
+    </ol>
+  </nav>
 </header>
 
-<h2>Why</h2>
-<p>{{The problem, who has it, and what was wrong or missing before. Two to four sentences.}}</p>
+<section class="lesson" id="why">
+  <p class="lesson-n">Lesson 1</p>
+  <h2>Why this change</h2>
+  <p>{{The problem, who has it, and what was wrong or missing before.}}</p>
+</section>
 
-<h2>The design</h2>
-<p>{{The shape you chose and the idea behind it. Name the new or changed abstraction, boundary, or data shape, and what it owns.}}</p>
-<figure>
-  {{Inline SVG or a pre box diagram of the real components. Mark what is new and which arrows changed.}}
-  <figcaption>{{What to notice in the diagram.}}</figcaption>
-</figure>
+<section class="lesson" id="map">
+  <p class="lesson-n">Lesson 2</p>
+  <h2>The map</h2>
+  <p>{{Which parts of the system this touches, and where the new piece sits.}}</p>
+  <!-- snippet tree -->
+  <figure class="diagram">
+    {{Inline SVG of the real components. Use class "new" for new boxes, "box" for existing ones, "arrow" and "lbl" for edges.}}
+    <figcaption>{{What to notice.}}</figcaption>
+  </figure>
+</section>
 
-<h2>How it works</h2>
-<p>{{Mechanism altitude: the mechanism end to end. Inputs, state, invariants, failure and invalidation paths, root cause, why the fix works. Design altitude: one walk through the main flow.}}</p>
+<section class="lesson" id="idea">
+  <p class="lesson-n">Lesson 3</p>
+  <h2>The core idea</h2>
+  <p>{{The abstraction, boundary, data shape, or mechanism at the heart of the change, and what it owns.}}</p>
+  <aside class="note"><b>Key idea</b><p>{{The one sentence to remember.}}</p></aside>
+  <!-- snippet diff PATH HUNK -->
+</section>
 
-<h2>Alternatives and tradeoffs</h2>
-<table>
-  <tr><th>Option</th><th>Why it lost, or what it would cost</th></tr>
-  <tr><td>{{Chosen design}}</td><td>{{What it costs us: complexity, coupling, performance, lock-in.}}</td></tr>
-  <tr><td>{{Alternative}}</td><td>{{Why not.}}</td></tr>
-</table>
+<section class="lesson" id="how">
+  <p class="lesson-n">Lesson 4</p>
+  <h2>How it works</h2>
+  <p>{{Walk the main flow, or the mechanism end to end. Show the code that carries each step.}}</p>
+  <!-- snippet file PATH START END -->
+</section>
 
-<h2>What this makes easy or hard next</h2>
-<p>{{Where the next feature in this area goes, and what this design now constrains.}}</p>
+<section class="lesson" id="alternatives">
+  <p class="lesson-n">Lesson 5</p>
+  <h2>Alternatives and tradeoffs</h2>
+  <table>
+    <tr><th>Option</th><th>Why it lost, or what it costs</th></tr>
+    <tr class="chosen"><td>{{Chosen}}</td><td>{{What it costs us.}}</td></tr>
+    <tr><td>{{Alternative}}</td><td>{{Why not.}}</td></tr>
+  </table>
+  <aside class="note trade"><b>Tradeoff</b><p>{{The cost we accepted, and why it is worth it.}}</p></aside>
+</section>
 
-<h2>Also in this change</h2>
-<ul>
-  <li>{{One line per incidental change.}}</li>
-</ul>
+<section class="lesson" id="next">
+  <p class="lesson-n">Lesson 6</p>
+  <h2>What comes next</h2>
+  <p>{{Where the next feature in this area goes, and what this design now constrains.}}</p>
+</section>
 
-<h2>Blast radius and verification</h2>
-<p>{{Who or what this touches, why that is safe or risky, and how it was proven: the real run and its outcome.}}</p>
+<section class="lesson" id="proof">
+  <p class="lesson-n">Lesson 7</p>
+  <h2>Blast radius and proof</h2>
+  <p>{{Who or what this touches, why that is safe or risky, and the real runs that prove it.}}</p>
+  <h3>Also in this change</h3>
+  <ul><li>{{One line per incidental change.}}</li></ul>
+</section>
+
+<p class="done">That is the whole change. Tell your agent you have read it, and the quiz begins.</p>
 </main>
 </body>
 </html>
