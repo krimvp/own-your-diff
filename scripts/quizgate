@@ -51,8 +51,9 @@ unquizzed() {
 cmd_pending() { unquizzed HEAD | xargs -r git log --no-walk=unsorted --format='%h %s'; }
 
 cmd_base() {
-  local oldest
-  oldest=$(unquizzed HEAD | head -n1)
+  local pending oldest
+  pending=$(unquizzed HEAD)
+  oldest=${pending%%$'\n'*}
   [[ -z "$oldest" ]] && { echo "nothing pending" >&2; exit 1; }
   git rev-parse --verify -q "$oldest^" || echo "$EMPTY_TREE"
 }

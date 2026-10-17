@@ -49,6 +49,7 @@ check ok "nothing pending after push" bash -c "[[ -z \$($gate pending) ]]"
 git switch -qc feature
 commit b.txt b1 "feature part 1"
 commit b.txt b2 "feature part 2"
+check ok "base with several pending commits is the branch point" bash -c "[[ \$($gate base) == \$(git rev-parse main) ]]"
 "$gate" record >/dev/null
 git commit -q --amend -m "feature part 2, reworded"
 check ok "reworded quizzed commit still pushes" git push -q --dry-run -u origin feature
