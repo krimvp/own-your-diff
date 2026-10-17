@@ -88,7 +88,7 @@ cmd_expand() {
       printf '%s\n' "$line"
     fi
   done <"$f" >"$tmp"
-  mv "$tmp" "$f"
+  cat "$tmp" >"$f" && rm "$tmp"
 }
 
 case "${1:-}" in
