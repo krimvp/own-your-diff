@@ -128,5 +128,8 @@ check ok "guard allows a plain push" bash -c "[[ -z \$(guard Bash 'git push -u o
 check ok "guard allows commit --no-verify" bash -c "[[ -z \$(guard Bash 'git commit --no-verify -m x') ]]"
 check ok "guard allows reading core.hooksPath" bash -c "[[ -z \$(guard Bash 'git config --get core.hooksPath') ]]"
 
+version() { grep -o '"version": *"[^"]*"' "$ROOT/$1"; }
+check ok "Claude and Codex manifests carry the same version" bash -c "[[ '$(version .claude-plugin/plugin.json)' == '$(version .codex-plugin/plugin.json)' ]]"
+
 echo "$pass passed, $fail failed"
 [[ $fail == 0 ]]

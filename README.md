@@ -2,7 +2,7 @@
 
 Push only what you can explain. Before a push, your agent writes an HTML walkthrough of the unpushed change and quizzes you on it. A git pre-push hook blocks commits that have no passed quiz.
 
-One plugin tree serves Claude Code, Factory Droid, and Codex. Each harness gets:
+One plugin tree serves Claude Code, Factory Droid, and Codex. Claude Code and Droid read `.claude-plugin/`. Codex reads its native `.codex-plugin/` and `.agents/plugins/marketplace.json`, which add its display name, category, and starter prompts. Each harness gets:
 
 - The `own-your-diff` skill: walkthrough, quiz, and record steps, plus the `quizgate` and `snippet` tools.
 - A session-start hook. It keeps `quizgate` current in `~/.local/bin` and installs the git hook in any clone of an opted-in repo.
@@ -60,4 +60,4 @@ The git hook does not depend on any harness. It runs `quizgate` from `PATH` or `
 
 ## Updating
 
-Claude Code and Codex cache the plugin by the `version` in `.claude-plugin/plugin.json`. Bump it with every change you want installs to pick up. Then run `claude plugin update own-your-diff@own-your-diff`, `droid plugin update own-your-diff@own-your-diff --scope user`, or `codex plugin marketplace upgrade own-your-diff && codex plugin add own-your-diff@own-your-diff`.
+Claude Code and Codex cache the plugin by its `version`. Bump it in both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` with every change you want installs to pick up. The selftest fails when they differ. Then run `claude plugin update own-your-diff@own-your-diff`, `droid plugin update own-your-diff@own-your-diff --scope user`, or `codex plugin marketplace upgrade own-your-diff && codex plugin add own-your-diff@own-your-diff`.

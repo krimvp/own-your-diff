@@ -1,0 +1,23 @@
+{
+  "name": "own-your-diff",
+  "version": "0.1.0",
+  "description": "Explain the unpushed change in an HTML walkthrough, quiz the author, and block pushes of unquizzed commits.",
+  "author": { "name": "krimvp" },
+  "repository": "https://github.com/krimvp/own-your-diff",
+  "keywords": ["git", "push", "code-review", "quiz"],
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Own Your Diff",
+    "shortDescription": "Walk through and quiz on a change before it is pushed",
+    "longDescription": "Before a push, the agent writes an HTML walkthrough of the unpushed commits and quizzes the author on the design. A git pre-push hook blocks commits without a passed quiz, and a shell guard stops the agent from pushing with --no-verify.",
+    "developerName": "krimvp",
+    "category": "Coding",
+    "capabilities": ["Interactive", "Write"],
+    "websiteURL": "https://github.com/krimvp/own-your-diff",
+    "defaultPrompt": [
+      "Run own-your-diff on my unpushed commits and quiz me",
+      "Opt this repo into own-your-diff"
+    ]
+  }
+}
