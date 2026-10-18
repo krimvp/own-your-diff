@@ -1,4 +1,7 @@
-"""Refuse a paid run whose subjects or judge have no key. multeval would start them anyway."""
+"""Refuse a paid run whose subjects or judge have no key. multeval would start them anyway.
+
+Delete this once https://github.com/krimvp/multeval/issues/21 lands.
+"""
 import json
 import os
 import sys

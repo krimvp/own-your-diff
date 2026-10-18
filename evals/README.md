@@ -22,9 +22,9 @@ evals/eval report evals/runs/<run>
 skills/own-your-diff/scripts/quizstats evals/runs/<run>   # questions by category and kind
 ```
 
-`prove` passes only when every good plan passes the `plan` check and every bad plan fails it. Run it after you change a check or a case. `run` and `compare` refuse to start until every subject and the judge have a key, because multeval itself would start them and record an unauthenticated session as completed.
+`prove` passes only when every good plan passes the `plan` check and every bad plan fails it. Run it after you change a check or a case. `run` and `compare` refuse to start until every subject and the judge have a key, because multeval itself would start them and record an unauthenticated session as completed ([multeval#21](https://github.com/krimvp/multeval/issues/21)).
 
-Droid is not a subject yet. multeval's Droid adapter runs on the host and takes no case environment, and each case here builds its git fixture in Docker.
+Droid is not a subject yet. multeval's Droid adapter runs on the host and takes no case environment, and each case here builds its git fixture in Docker ([multeval#22](https://github.com/krimvp/multeval/issues/22)).
 
 ## Keys
 
