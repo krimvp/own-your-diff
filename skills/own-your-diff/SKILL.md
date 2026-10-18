@@ -12,6 +12,7 @@ Tools are in `scripts/`. Run each with no arguments for its commands.
 - `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.
 - `snippet` renders real git content as editor-style HTML blocks.
 - `quizlint` checks a quiz file against [`references/quiz-file.md`](references/quiz-file.md).
+- `quizstats` counts questions and pass rates by category and kind across quiz files.
 
 ## Steps
 

@@ -194,6 +194,10 @@ check ok "quizlint refuses an unknown category" refuses plan-trivia "category is
 check ok "quizlint refuses select questions for an agent examinee" refuses plan-agent-single "free questions only" --plan
 check ok "quizlint refuses attempts in a plan" refuses plan-with-attempts "no attempts yet" --plan
 check ok "quizlint refuses a passed quiz whose last attempt is not a pass" refuses done-ends-vague "ends every question on a pass"
+mkdir -p "$T/stats/evidence" && cp "$T/quiz/done-ends-pass.json" "$T/stats/a.quiz.json" && cp "$T/quiz/done-ends-pass.json" "$T/stats/evidence/a.quiz.json"
+"$ROOT/skills/own-your-diff/scripts/quizstats" "$T/stats" >"$T/stats.out"
+check ok "quizstats counts each quiz once, skipping evidence copies" grep -q "^1 quizzes, 1 questions" "$T/stats.out"
+check ok "quizstats reports the first-try pass rate by category" grep -q "category extension *1 *1 *0%" "$T/stats.out"
 
 version() { grep -o '"version": *"[^"]*"' "$ROOT/$1"; }
 check ok "Claude and Codex manifests carry the same version" bash -c "[[ '$(version .claude-plugin/plugin.json)' == '$(version .codex-plugin/plugin.json)' ]]"
