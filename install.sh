@@ -18,8 +18,7 @@ claude_install() {
 droid_install() {
   droid plugin marketplace add "$SOURCE" >/dev/null 2>&1 || true
   droid plugin marketplace update own-your-diff
-  droid plugin install "$ID" --scope user
-  droid plugin update "$ID" --scope user
+  droid plugin install "$ID" --scope user 2>/dev/null || droid plugin update "$ID" --scope user
 }
 
 codex_install() {
