@@ -1,0 +1,63 @@
+# own-your-diff
+
+Push only what you can explain. Before a push, your agent writes an HTML walkthrough of the unpushed change and quizzes you on it. A git pre-push hook blocks commits that have no passed quiz.
+
+One plugin tree serves Claude Code, Factory Droid, and Codex. Each harness gets:
+
+- The `own-your-diff` skill: walkthrough, quiz, and record steps, plus the `quizgate` and `snippet` tools.
+- A session-start hook. It keeps `quizgate` current in `~/.local/bin` and installs the git hook in any clone of an opted-in repo.
+- A shell guard. It denies an agent's `git push --no-verify` and any `core.hooksPath` change. Skipping the gate is the human's call.
+
+## Install
+
+The repo is private, so git needs working GitHub credentials first (`gh auth login && gh auth setup-git`, or an SSH key in your agent).
+
+```bash
+git clone https://github.com/krimvp/own-your-diff && own-your-diff/install.sh            # every harness on PATH
+own-your-diff/install.sh codex                                                          # or name them
+```
+
+`install.sh` runs these. You can also run them by hand:
+
+| Harness | Commands |
+|---|---|
+| Claude Code | `claude plugin marketplace add krimvp/own-your-diff`<br>`claude plugin install own-your-diff@own-your-diff` |
+| Factory Droid | `droid plugin marketplace add krimvp/own-your-diff`<br>`droid plugin install own-your-diff@own-your-diff --scope user` |
+| Codex | `codex plugin marketplace add krimvp/own-your-diff`<br>`codex plugin add own-your-diff@own-your-diff`<br>`scripts/codex-trust-hooks` |
+
+Codex skips plugin hooks until you trust them. `scripts/codex-trust-hooks` writes the same trust entries the Codex TUI writes when you approve them. Rerun it after an update that changes `hooks/hooks.json`.
+
+## Opt a repo in
+
+```bash
+quizgate install    # writes .own-your-diff and .git/hooks/pre-push
+git add .own-your-diff && git commit -m "chore: require own-your-diff before push"
+```
+
+The committed `.own-your-diff` file is the opt-in. In a fresh clone, the plugin's session-start hook sees it and installs the git hook. `quizgate install` leaves an existing pre-push hook alone and prints the line to add to it.
+
+To have Claude Code and Droid offer the plugin to everyone who opens the repo, commit this as `.claude/settings.json` and `.factory/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "own-your-diff": { "source": { "source": "github", "repo": "krimvp/own-your-diff" } }
+  },
+  "enabledPlugins": { "own-your-diff@own-your-diff": true }
+}
+```
+
+## Without a plugin
+
+Any agent that reads skills from `~/.agents/skills` can use the skill directly:
+
+```bash
+ln -s "$PWD/own-your-diff/skills/own-your-diff" ~/.agents/skills/own-your-diff
+own-your-diff/skills/own-your-diff/scripts/quizgate sync
+```
+
+The git hook does not depend on any harness. It runs `quizgate` from `PATH` or `~/.local/bin`, and blocks with an install hint when it finds neither.
+
+## Updating
+
+Claude Code and Codex cache the plugin by the `version` in `.claude-plugin/plugin.json`. Bump it with every change you want installs to pick up. Then run `claude plugin update own-your-diff@own-your-diff`, `droid plugin update own-your-diff@own-your-diff --scope user`, or `codex plugin marketplace upgrade own-your-diff && codex plugin add own-your-diff@own-your-diff`.
