@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Trust the own-your-diff plugin hooks in Codex.
+
+Codex skips plugin hooks until their definition hash is trusted. This writes
+the same hooks.state entries the Codex TUI writes when you approve them.
+"""
+import json
+import os
+import subprocess
+import sys
+
+PLUGIN = "own-your-diff@own-your-diff"
+
+proc = subprocess.Popen(
+    ["codex", "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+)
+
+
+def call(msg_id, method, params=None):
+    msg = {"jsonrpc": "2.0", "method": method}
+    if params is not None:
+        msg["params"] = params
+    if msg_id is not None:
+        msg["id"] = msg_id
+    proc.stdin.write(json.dumps(msg) + "\n")
+    proc.stdin.flush()
+    if msg_id is None:
+        return None
+    for line in proc.stdout:
+        reply = json.loads(line)
+        if reply.get("id") == msg_id:
+            if "error" in reply:
+                sys.exit(f"codex app-server {method}: {reply['error']}")
+            return reply["result"]
+    sys.exit(f"codex app-server closed before answering {method}")
+
+
+try:
+    call(1, "initialize", {"clientInfo": {"name": "own-your-diff", "version": "0"}})
+    call(None, "initialized")
+    listed = call(2, "hooks/list", {"cwds": [os.getcwd()]})
+    hooks = [h for entry in listed["data"] for h in entry["hooks"] if h.get("pluginId") == PLUGIN]
+    if not hooks:
+        sys.exit(f"no hooks found for {PLUGIN}; is the plugin installed?")
+    pending = {h["key"]: {"trusted_hash": h["currentHash"]} for h in hooks if h["trustStatus"] != "trusted"}
+    if pending:
+        call(3, "config/batchWrite", {
+            "edits": [{"keyPath": "hooks.state", "value": pending, "mergeStrategy": "upsert"}],
+            "reloadUserConfig": True,
+        })
+    print(f"trusted {len(pending)} of {len(hooks)} {PLUGIN} hook(s) in Codex")
+finally:
+    proc.stdin.close()
+    proc.terminate()
