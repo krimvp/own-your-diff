@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "787a39c",
+  "head": "c07e0b6",
+  "target": "runScenario refuses a secret or model key shorter than 8 characters as a scenario problem before the first session opens, because the scrub replaces each raw value wherever it occurs in the log, JSON keys included, and a short one rewrites ordinary text.",
+  "altitude": "mechanism",
+  "incidental": [
+    "test/cli.test.ts: the existing directory-refusal test's OLLAMA_API_KEY value grows from 'unused' to 'sk-unused-key' so the test clears the new gate",
+    "docs/design/eval-scenarios.md: the Verification line now names short secrets alongside unset ones"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Take the fix away and set WEATHER_API_KEY to a single character. Walk the weather scenario through the runner. Where does the run first go wrong, and what has it cost when that happens?",
+      "options": [
+        { "label": "The provider rejects the one-character key on the first model call, so the run stops at its first step and is recorded as an error step.", "correct": false },
+        { "label": "The scrub rewrites string values only and leaves keys alone, so the raw value survives in the keys, and the secret-free invariant is what catches it in the report.", "correct": false },
+        { "label": "Nothing fails while the run is going. The scrub at the end replaces the character wherever it occurs in the log, JSON keys included, so a key such as \"scenario\" becomes \"s[LEAKED:WEATHER_API_KEY]enario\", and the corruption surfaces only when the CLI reads its own written files back, after the model calls were spent.", "correct": true },
+        { "label": "The scrub throws when it meets the value inside a JSON key, so the run ends with a thrown step, and the log records the failure at that step.", "correct": false }
+      ],
+      "key_points": [
+        "the scrub is an occurrence-based replacement over every string and every key of the log, so a one-character value lands inside ordinary keys and text",
+        "nothing fails during the run: the mangled log is still valid JSON, the steps run, and the model calls are spent",
+        "the failure surfaces at the CLI's read-back of the files it just wrote, the runner failing with exit 4, not at the provider, in the scrub, or as a graded invariant"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "measurement",
+      "prompt": "Before the fix, that one-character key ended `aigent run` with exit 4; with the fix, the same scenario ends with exit 2. Why did the exit code move, and what would move it back to 4?",
+      "options": [
+        { "label": "The scrub gained the length limit, so it now reports a short value instead of rewriting the log.", "correct": false },
+        { "label": "The discovery point moved from after the run to before it: a short value is now a scenario problem thrown before the first session opens, which is bad input, exit 2, where before the corrupted log surfaced only in the CLI's read-back of its own files, the runner failing, exit 4. A value of 8 or more characters that still collides with a key would move it back.", "correct": true },
+        { "label": "The CLI learned a new exit code for short secrets, and 2 was the nearest free number.", "correct": false },
+        { "label": "The provider now rejects short keys before the first call, which turns a runner failure into a usage failure.", "correct": false }
+      ],
+      "key_points": [
+        "exit 2 means a problem found before anything ran: no session opened, no model call, nothing written",
+        "exit 4 means the runner failed after doing its work: its own result directory failed to read back",
+        "the scrub and the CLI are unchanged; the check moved the failure upstream of the part of the run that pays",
+        "a long-enough value that still collides with a key, or any other post-run runner failure, restores exit 4",
+        "the test measures the move: the faux model's scripted reply is never consumed, so no model call was made, and each short name is reported as a problem at its place"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "invalidation",
+      "prompt": "The scrub's guarantee is that a raw secret value appears in the log only inside its [LEAKED:NAME] mark. With the new gate in place, which of these cases still put a mark on text that never held the secret? Pick all that apply.",
+      "options": [
+        { "label": "A secret set to \"password\" that never leaks, but whose value occurs as a field name in a tool call's arguments: the scrub marks the innocent key.", "correct": true },
+        { "label": "A secret set to \"passw\": the gate refuses it as a scenario problem before the first session opens.", "correct": false },
+        { "label": "A model key of 30 random characters that the provider echoes back in an error message: the scrub marks the echo.", "correct": false },
+        { "label": "A secret set to \"01234567\" whose digits occur inside a timestamp in the transcript: the scrub marks the timestamp.", "correct": true }
+      ],
+      "key_points": [
+        "the gate keys on length alone: any value of 8 or more characters reaches the scrub, however predictable it is",
+        "the scrub replaces occurrences wherever they sit, keys, text, timestamps, and cannot tell a leak from a coincidence, so a passing value can still mark innocent text",
+        "a value under 8 characters never reaches the log at all: it is refused before the first session opens",
+        "a mark on a genuine occurrence of the value, such as a provider echoing the key, is the scrub working as designed, not a false mark"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "failure",
+      "prompt": "A teammate's scenario declares one secret, FOUR_DIGIT_PIN, and the run now refuses it: \"FOUR_DIGIT_PIN: shorter than 8 characters\". They ask you to lower MIN_SECRET_LENGTH to 4 so their scenario can run. What would that change do to a run of their scenario, and what would you tell them instead?",
+      "options": [],
+      "key_points": [
+        "with the limit at 4 the gate passes the PIN, and its digits occur in ordinary text, dates, ids, numbers, so the scrub marks coincidences and rewrites innocent strings",
+        "the corruption is silent until the CLI reads its files back: a mark in a key breaks the directory's parse, exit 4, after the model calls were spent, and marks in values poison the report as counted leaks, so nothing points back to the PIN as the cause",
+        "the limit encodes a real assumption of the scrub: it can only protect values unlikely to occur in ordinary text, and a PIN is the opposite of that",
+        "the fix belongs on the input side, not the threshold: put a long secret-shaped value in the variable the scenario names, or keep low-entropy credentials out of the runner's secrets entirely, because no length makes a predictable value safe for an occurrence-based scrub"
+      ],
+      "attempts": []
+    }
+  ]
+}

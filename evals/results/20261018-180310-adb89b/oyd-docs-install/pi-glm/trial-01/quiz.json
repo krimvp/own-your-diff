@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "963db01",
+  "head": "875edea",
+  "target": "Document the plugin's distribution design: one shared tree installed into three harnesses, repo opt-in via a committed .own-your-diff marker instead of per-clone hook config, and how updates and Codex re-trust reach installs.",
+  "altitude": "design",
+  "incidental": [
+    "CLAUDE.md symlink to AGENTS.md",
+    "exact per-harness install and update command strings in the README",
+    "gh auth credential setup line",
+    "extraKnownMarketplaces/enabledPlugins settings snippet",
+    "contributor check commands (scripts/selftest, claude plugin validate)",
+    "hooks locating the plugin root with dirname \"$0\" instead of CLAUDE_PLUGIN_ROOT, which Droid replaces with a placeholder"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Why is a repo's opt-in a committed .own-your-diff marker rather than a per-clone core.hooksPath setting?",
+      "options": [
+        {
+          "label": "Git refuses to run pre-push hooks installed through core.hooksPath",
+          "correct": false
+        },
+        {
+          "label": "The marker is what the pre-push hook reads at push time to decide whether to block",
+          "correct": false
+        },
+        {
+          "label": "A tracked marker travels with every clone, so the session-start hook or quizgate sync installs the gate wherever the repo is cloned",
+          "correct": true
+        },
+        {
+          "label": "A committed file lets each clone pin its own quizgate version",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the marker makes opt-in a property of the repo: one commit and every clone of it is opted in, no per-machine setup",
+        "per-clone git config is machine-local state: it does not reach fresh clones, and an agent could flip it, which is why the guard treats core.hooksPath changes as bypassing the gate",
+        "the marker is read by the session-start hook and quizgate install/sync, never by the pre-push hook at push time"
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "boundary",
+      "prompt": "A repo is opted in and a clone has the pre-push hook installed. Which of these hold?",
+      "options": [
+        {
+          "label": "A git push from a plain shell, with no agent or harness running, is still blocked without a passed quiz",
+          "correct": true
+        },
+        {
+          "label": "Uninstalling the plugin from every harness removes the pre-push hook from that clone",
+          "correct": false
+        },
+        {
+          "label": "The pre-push hook itself stops git push --no-verify",
+          "correct": false
+        },
+        {
+          "label": "The session-start hook keeps quizgate current and reinstalls the pre-push hook when a clone is missing one",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "enforcement lives in git (.git/hooks/pre-push calling quizgate from PATH or ~/.local/bin), so it holds with no harness running and survives plugin uninstalls",
+        "--no-verify is handled one layer up: the harness guard denies it for agents, and skipping the gate is the human's call, never the git hook's",
+        "the session-start hook is the refresh and repair path: quizgate sync keeps the binary current and rewrites a missing hook"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A fourth harness arrives that reads the same .claude-plugin manifest and hooks shape. Where does its support go in this repo, and what stays untouched?",
+      "key_points": [
+        "support is a thin adapter on the one shared tree: an installer function and case in install.sh (marketplace add, plugin install), plus a README table row",
+        "no copy of the skills, hooks, or manifest: the new harness reads the same .claude-plugin/ and hooks/hooks.json the other three read",
+        "only a harness-specific quirk like Codex's hook trust needs its own script, called from the installer",
+        "the gate path is untouched: marker, quizgate, and the pre-push hook depend on no harness",
+        "contributors bump version in .claude-plugin/plugin.json so existing installs pick the change up"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "invalidation",
+      "prompt": "A contributor edits hooks/hooks.json and bumps the version, and existing installs pick up the update. What does a Codex install do with the plugin's hooks?",
+      "options": [
+        {
+          "label": "Blocks the session from starting until the hooks are re-approved",
+          "correct": false
+        },
+        {
+          "label": "Skips the plugin hooks until the new hooks.json hash is trusted: rerun scripts/codex-trust-hooks or approve them in the Codex TUI",
+          "correct": true
+        },
+        {
+          "label": "Re-trusts them automatically, because trust keys on the plugin version",
+          "correct": false
+        },
+        {
+          "label": "Keeps running the old hooks until the new ones are trusted",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "Codex trust keys on the hooks.json definition hash, which the edit changed, so the hooks are untrusted",
+        "untrusted plugin hooks are skipped, not blocked: session-start and the guard simply do not run in Codex until re-trust",
+        "the version bump is the install cache key for Claude Code and Codex, a separate mechanism from Codex's trust hash",
+        "the git pre-push hook is unaffected: it is keyed to the repo marker, not the plugin version"
+      ]
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "A new teammate clones an opted-in repo on a machine where no harness has the plugin installed, and never runs quizgate sync. They push unquizzed commits. Which of these hold?",
+      "options": [
+        {
+          "label": "The push is blocked, because the committed .own-your-diff file is enforced on the remote",
+          "correct": false
+        },
+        {
+          "label": "The push succeeds: nothing on that machine has read the marker, so no pre-push hook was ever installed there",
+          "correct": true
+        },
+        {
+          "label": "A single run of quizgate sync on that machine would have installed the pre-push hook and blocked the push",
+          "correct": true
+        },
+        {
+          "label": "Their next session in any harness that has the plugin installs the gate for that clone",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "the marker gates nothing by itself: it is only read by local software, the session-start hook or quizgate install/sync",
+        "the design puts enforcement on clone machines and accepts this gap: a clone that never sees the plugin is unguarded",
+        "there is no remote-side enforcement; the ledger and the hook are local to a clone",
+        "the gate self-heals: sync or the next session with the plugin writes the hook"
+      ]
+    }
+  ]
+}

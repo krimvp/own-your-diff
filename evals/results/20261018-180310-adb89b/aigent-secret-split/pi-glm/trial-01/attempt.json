@@ -1,0 +1,13 @@
+{
+  "status": "completed",
+  "duration_s": 402.0962062409999,
+  "exit_code": 0,
+  "tries": 1,
+  "cost": {
+    "usd": 0.0,
+    "prompt_tokens": 248186,
+    "completion_tokens": 22320,
+    "cached_tokens": 207808,
+    "source": "estimate"
+  }
+}

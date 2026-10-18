@@ -1,0 +1,43 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All five questions probe the named target: shared plugin tree (q1), guard layering (q2), Codex trust (q3), session-start sync (q4), and the whole shape extended (q5).",
+      "text": "Every question in quiz.json tests a point about the target of the change: The skill ships as one plugin tree that Claude Code, Factory Droid, and Codex all read: a session-start hook runs quizgate sync, a PreToolUse guard denies an agent's git push --no-verify and core.hooksPath changes, and an installer adds the plugin to every harness on PATH and trusts the Codex hooks."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Questions ask why one shape was chosen, where the gate's boundary sits, and what the design makes easy or hard next, staying above plumbing details.",
+      "text": "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question asks about plugin.json fields, selftest cases, hook timeouts, or the exact JSON-RPC calls; q3 covers the trust model, not the calls.",
+      "text": "No question asks about these incidental parts of the change: the JSON fields of plugin.json; the selftest cases; the timeout values in hooks.json; the exact JSON-RPC calls of codex-trust-hooks"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every distractor is a plausible overreach or misreading of the design (guard scope, marker power, trust granularity), not filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each key_points list states what a correct answer must cover at the question's own design level, e.g. shared-layout payoff plus per-harness install/trust dispatch.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "q5 applies the shared layout, the installer's per-harness dispatch, and Codex-style hash trust to one new case (a fourth harness) the change does not spell out.",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

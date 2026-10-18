@@ -1,0 +1,37 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "quiz.json has no questions, so the universal requirement is vacuously satisfied.",
+      "text": "Every question in quiz.json tests a point about the target of the change: Bump the plugin version to 0.2.0 in both manifests."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "With no questions present, the trivial-altitude requirement holds vacuously.",
+      "text": "Every question sits at trivial altitude: the intent and impact of the change, if anything"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No questions exist, so none can ask about the incidental version number.",
+      "text": "No question asks about these incidental parts of the change: the version number"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "There are no questions or wrong options, so the plausibility requirement holds vacuously.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "No questions exist, so the key_points requirement is vacuously satisfied.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    }
+  ]
+}

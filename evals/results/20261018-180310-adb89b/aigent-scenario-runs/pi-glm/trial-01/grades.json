@@ -1,0 +1,32 @@
+{
+  "plan": {
+    "scores": {
+      "pass": true
+    },
+    "evidence": {
+      "exit_code": 0,
+      "stdout": "check: quiz.json is a valid plan that fits the change\nok: 5 question(s), kinds single,single,multi,free,free\nfound: 5 questions at design altitude\n",
+      "stderr": ""
+    }
+  },
+  "trace": {
+    "scores": {
+      "steps": 17,
+      "tool_calls": 24,
+      "subagent_steps": 0,
+      "skill_activated": true
+    },
+    "evidence": {
+      "agent": "pi",
+      "steps": 17,
+      "tool_calls": 24,
+      "subagent_steps": 0,
+      "skill_activated": [
+        {
+          "tool_call_id": "call_sfxrzdb0",
+          "function_name": "read"
+        }
+      ]
+    }
+  }
+}

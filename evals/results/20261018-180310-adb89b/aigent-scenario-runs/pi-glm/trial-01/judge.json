@@ -1,0 +1,43 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All five questions test the target: the invariant/behavior separation and exit codes (q1), the result directory as grading contract (q2), the invariant and run log guarantees (q3), the scenario/check extension seams (q4), and directory writing plus exit codes under multeval (q5).",
+      "text": "Every question in quiz.json tests a point about the target of the change: Scenarios become data files run by one runner that writes each run as a result directory, a check(run) judge separates engine invariants from model behavior rates, and an aigent CLI runs or checks a directory with exit codes that say what kind of trouble a run had."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Each question probes rationale, shape, boundaries, or extension consequences (rationale, boundary, failure, extension, flow categories) rather than function names or flags.",
+      "text": "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question asks about fixture plugins, package.json scripts, or the boundary test edit; the weather plugin and weather.json appear only as scenario context, not as the tested point.",
+      "text": "No question asks about these incidental parts of the change: the test fixtures under test/scenarios/plugins; package.json script names; the boundary test edit"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "The wrong options in q1\u2013q3 (probabilistic distrust, red-noise pragmatism, secret leakage via memory, resume divergence, adapter redaction, transcript-only invariant) are all plausible misreadings, not filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Every question's key_points state what a correct answer must cover \u2014 including the third dimension (cost), the contract and its consumers, the scrub/invariant scope, per-file extension requirements, and disk/exit-code/report outcomes \u2014 at the question's own altitude.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "q5 applies several points (all-or-nothing directory write, exit codes 3 vs 1, invariant vs behavior judging on partial runs, re-derivation via aigent check) to one new case \u2014 overnight multeval runs with a provider death and an invariant failure \u2014 that the change does not spell out.",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

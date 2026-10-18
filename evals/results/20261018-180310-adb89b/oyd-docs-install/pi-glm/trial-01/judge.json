@@ -1,0 +1,37 @@
+{
+  "model": "glm-5.3",
+  "score": 0.8,
+  "pass": false,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All five questions test points about install, opt-in, and updates, the substance the README/AGENTS.md change documents.",
+      "text": "Every question in quiz.json tests a point about the target of the change: Add a README and AGENTS.md that explain install, opt-in, and updates."
+    },
+    {
+      "criterion": 2,
+      "met": false,
+      "reason": "The questions probe deep design mechanics (hook installation, Codex trust hashing, failure modes) rather than the change's intent and impact.",
+      "text": "Every question sits at trivial altitude: the intent and impact of the change, if anything"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question addresses README wording or the CLAUDE.md symlink.",
+      "text": "No question asks about these incidental parts of the change: the README wording; the CLAUDE.md symlink"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every wrong option encodes a plausible misconception about the design (remote enforcement, trust keyed to version, hook-managed hooks) rather than filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each question's key_points state what a correct answer must cover, at the same design altitude as the question itself.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    }
+  ]
+}

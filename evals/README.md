@@ -20,6 +20,7 @@ evals/eval run                # pi on GLM 5.3 over Ollama Cloud, every case, the
 evals/eval compare main       # the skill at main against the working tree, 2 trials each
 evals/eval judge evals/runs/<run>
 evals/eval report evals/runs/<run>
+evals/eval keep evals/runs/<run>    # the trimmed run in evals/results/<run>, to commit
 skills/own-your-diff/scripts/quizstats evals/runs/<run>   # questions by category and kind
 ```
 
@@ -31,6 +32,8 @@ skills/own-your-diff/scripts/quizstats evals/runs/<run>   # questions by categor
 - `run.json` is Claude Code on Sonnet 5.5. It needs `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) or `ANTHROPIC_API_KEY`. Claude Code cannot be pointed at Ollama Cloud yet ([multeval#25](https://github.com/krimvp/multeval/issues/25)).
 - `run-harnesses.json` is Claude Code and Codex. Codex needs `OPENAI_API_KEY`.
 - Droid is not a subject yet. multeval's Droid adapter runs on the host and takes no case environment, and each case here builds its git fixture in Docker ([multeval#22](https://github.com/krimvp/multeval/issues/22)).
+
+Runs land in `evals/runs/`, which git ignores. A run worth keeping goes through `keep`: per attempt, its quiz plan, judge verdicts, grades, trajectory, and status, plus a `README.md` table. Add a Findings section to that README by hand.
 
 ## Keys
 

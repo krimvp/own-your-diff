@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "40bb072",
+  "head": "8372fe0",
+  "target": "Session listeners must never be able to reassemble a secret the model streams across text-delta boundaries: the adapter holds back a redacted tail for the whole of each assistant message and releases it only as more text arrives or the message ends.",
+  "altitude": "mechanism",
+  "incidental": [
+    "Test scaffolding: the `RegisterFauxProviderOptions` passthrough in `fauxSession` (the type import and the third parameter) that lets the abort test pace the faux provider with `tokensPerSecond`.",
+    "Hoisting the merged `secrets` object into a `const` so the engine and the hold-size computation read the same map."
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Before this change, a listener saw a whole secret that the transcript and the RunResult never showed. Where exactly did the text stream lose it?",
+      "options": [
+        { "label": "Stream events reached listeners with no redaction at all; redaction only ran on the stored paths.", "correct": false },
+        { "label": "The stream redacted each delta on its own, so a secret split across two deltas matched in neither half, while the transcript and the RunResult were redacted after assembly, where the whole secret matched.", "correct": true },
+        { "label": "The engine's redactor cannot replace secrets longer than a provider chunk, whatever their position in the message.", "correct": false }
+      ],
+      "key_points": [
+        "the miss was scope, not redaction strength: every stream event was redacted, but per delta in isolation",
+        "a secret split across deltas contains no whole match in any single delta, so per-delta redaction leaves both halves intact",
+        "the transcript and the RunResult redact assembled text, so only the stream path leaked"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "The buffer redacts the joined held text and then holds back the last `longest secret - 1` characters. Why does that exact amount guarantee no half-secret escapes to a listener?",
+      "options": [
+        { "label": "The redactor replaces longer secrets first, so `longest - 1` characters are all a matching attempt ever needs to see.", "correct": false },
+        { "label": "Holding one character less than the secret keeps the `[REDACTED:...]` placeholder from being cut apart mid-delta.", "correct": false },
+        { "label": "A secret that has not fully arrived yet must start within the last `longest - 1` characters, so it stays in the buffer until the rest lands, at which point the next redaction of the joined buffer sees the whole secret and replaces it before the cut moves on.", "correct": true },
+        { "label": "`longest - 1` is the largest tail that still fits inside one faux-provider chunk, keeping the tests deterministic.", "correct": false }
+      ],
+      "key_points": [
+        "a secret that is still completing cannot start earlier than the last `longest - 1` characters, so that tail is a superset of every possible in-progress secret",
+        "each new delta re-redacts the whole held buffer joined with the delta, so a secret is replaced the moment it completes inside the buffer, before anything more is emitted",
+        "the cut happens after redaction, so the held tail can contain at most a prefix of a secret, never a complete one"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "The fix relies on pi ending every assistant message with `message_end`, whether it finished, errored or was aborted. Suppose a provider bug ends an assistant message without ever firing that event. What breaks for listeners?",
+      "options": [
+        { "label": "The held tail keeps accumulating across the rest of the session and turns every later message into an unbounded delay.", "correct": false },
+        { "label": "The held tail of that message is never emitted: the stream silently stops short of what the transcript kept. Nothing leaks, text is just lost to the listener.", "correct": true },
+        { "label": "The held tail finally reaches listeners with a complete secret still inside it.", "correct": false }
+      ],
+      "key_points": [
+        "the tail is post-redaction, so it holds at most a prefix of a secret and can never leak a whole one",
+        "without the message-end flush the stream diverges from the transcript: silent truncation, not a leak",
+        "the failure mode is bounded, not unbounded: the buffer is capped near `longest - 1` characters and drains into the next message's text if one ever streams"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "invalidation",
+      "prompt": "A turn runs two assistant messages: the model calls a tool in between. Walk what happens to the held tail around the tool call, and say why releasing it at every message end, rather than holding until the turn ends, is safe.",
+      "options": [],
+      "key_points": [
+        "each assistant message ends with `message_end`, which emits the held tail and clears the buffer, so the second message starts with an empty hold",
+        "the released tail is post-redaction: it can hold at most a prefix of a secret, never a complete one, so releasing it early leaks nothing",
+        "any secret completing inside the second message is covered by that message's own hold; nothing spans two assistant messages",
+        "per-message release also keeps the stream in step with the transcript when a run aborts mid-message, which is what the abort test's parity assertion pins"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "measurement",
+      "prompt": "The transcript and the RunResult were already clean and the existing unit tests passed, yet the eval scored every such run a leak. Why did the eval see what the unit tests could not, and what exactly do the two new tests pin down?",
+      "options": [],
+      "key_points": [
+        "the eval scrubs the text a listener would actually reconstruct: it joins the deltas first, so a secret split across deltas becomes a whole match when the scrub runs",
+        "the old tests asserted on assembled, redacted paths, which were already clean, so they could not see the stream leaking",
+        "the first new test pins the stream itself: the joined deltas equal the fully redacted text even though the provider's chunking splits the secret, no delta ends or starts inside a surrogate pair, and all the text arrives",
+        "the second pins abort parity: a mid-reply abort still delivers every character the transcript kept, because the message-end flush runs on aborted messages too",
+        "if the hold regressed, the eval's scrub would start hitting again on split-secret runs while transcript-based tests stayed green"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "flow",
+      "prompt": "New case: a session is created with no secrets at all — the host passes none, and the resolved model contributes none. Which of these hold for its text stream?",
+      "options": [
+        { "label": "The hold size is zero, so the buffer releases everything it can on each delta that arrives.", "correct": true },
+        { "label": "`message_end` emits a final empty delta so listeners can mark the message boundary.", "correct": false },
+        { "label": "A delta that ends on the high half of a surrogate pair still holds that one character back until the next delta or the message's end.", "correct": true },
+        { "label": "Held text still builds up across the session, because the cut never reaches the end of the buffer when there are no secrets.", "correct": false }
+      ],
+      "key_points": [
+        "with no secrets the longest secret is zero, so the tail held for redaction is zero characters and each delta is emitted as soon as it arrives",
+        "the surrogate guard is independent of secrets: a cut that would strand half of a surrogate pair moves back one character, so a host writing deltas to a terminal never prints a replacement character",
+        "the message-end release emits nothing when nothing is held; the stream carries no empty-delta boundary marker"
+      ],
+      "attempts": []
+    }
+  ]
+}

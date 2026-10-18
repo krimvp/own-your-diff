@@ -1,0 +1,96 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "9ed8a8c61b57789ab2842cbba64bba0ac39aa996",
+  "head": "6853a1cce978288e12ba95e9ecf5021d72d04b0b",
+  "target": "check(run): one report that judges a run — five engine invariants, where one failure is an engine bug; nine model behaviors, the design's bets on the model measured as rates over the trials that had the chance; and cost, reported and never judged — as a pure function over the run log so every caller gets the same verdict from the same files.",
+  "altitude": "design",
+  "incidental": [
+    "the cost table's arithmetic: token sums and the two-decimal cachedRatio rounding",
+    "the small helpers (pluginOf, matches, argsMatch, strings, sum, ratio) and recordOf's EngineRecord shape validation",
+    "the test scaffolding: the run/scenario wrappers, the log-editing helpers (withMessages, editUser, unredacted) and the reused faux fixtures"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The live test asserted three ad hoc properties and logged the rest, so an engine bug and a model mistake looked alike. Why does check() split what it judges into invariants and behaviors, rather than one table of checks with pass/fail verdicts?",
+      "options": [
+        { "label": "Scenarios declare behaviors with `expect` but cannot declare invariants, so the two cannot share a table.", "correct": false },
+        { "label": "An invariant is an engine promise every trial must keep, so one failure names an engine bug; a behavior is a bet on the model, expected to miss sometimes, so it is measured as a rate — one table could not tell a bug from a model miss.", "correct": true },
+        { "label": "Invariant failures are fatal to a run, while behavior failures are only warnings.", "correct": false },
+        { "label": "Invariants read the session events and behaviors read the transcript, so they need separate judges.", "correct": false }
+      ],
+      "key_points": [
+        "an invariant is an engine property every trial must keep, so a single failure is an engine bug, while a behavior is a bet on the model that is expected to miss sometimes and so is judged as a rate over trials",
+        "the split is what lets a report tell an engine bug from a model mistake — the exact confusion the live test's ad hoc assertions and loose diagnostics created",
+        "the distinction drives the rest of the shape: invariants need no scenario declaration and never skip, while each behavior owns a skip rule so its rate counts only trials that had the chance"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "check() takes a RunLog and nothing else: no live session, no listeners. What does this run-log-only boundary buy?",
+      "options": [
+        { "label": "The checks see the run as it happened, not just what the files kept.", "correct": false },
+        { "label": "A listener cannot see the records a session writes at creation, so the log is the only complete input.", "correct": false },
+        { "label": "Every caller — the live test, `aigent run`, `aigent check`, a future grader — derives the same verdict from the same files, so a grader can judge a result directory it never watched being made.", "correct": true },
+        { "label": "The CLI can grade a run before paying to write its result directory.", "correct": false }
+      ],
+      "key_points": [
+        "the run log — the result directory — is the whole input to judgment, so every caller (live test, `aigent run`, `aigent check`, the future multeval grader) derives the same verdict from the same files",
+        "a grader that never saw the live session can judge archived runs, and judgment cannot drift per caller the way the live test's hand-rolled assertions drifted from what grading needs",
+        "check is a pure function over public types, so judging needs no listener state and no live session"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "failure",
+      "prompt": "A refactor proposes to build the checks' view of a run from the step events alone, and to make entriesOf tolerate an unrecognized transcript message by skipping it. What silently goes wrong in each case, and why does the run log keep both sources with a parser that throws?",
+      "key_points": [
+        "the records a session writes at creation reach no listener — nobody can subscribe before the session is returned — so what was enabled at session start lives only in the transcript's opening records, and an events-only view would misjudge enabled-before-call and discover's already-enabled skip",
+        "a core__call_tool the schema rejects never starts: it leaves no tool event, only an error toolResult in the transcript under the same call id, so dispatch-recover would be blind to the very rejection it exists to judge",
+        "neither source alone is the whole story — the events carry emission order, turn boundaries and denial outcomes that the transcript lacks — so the run log deliberately joins both and the checks read them together",
+        "skipping an unrecognized message would let a check judge a misread transcript silently; entriesOf throws so a wrong read says so instead of producing a quietly wrong verdict"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "extension",
+      "prompt": "The engine team lands a new guarantee: every tool_end that reports a call ran has a tool_start with the same call id. A teammate adds it as a new check. Which of these hold?",
+      "options": [
+        { "label": "The Invariant type and the report's invariants keys derive from the invariants table, so the new verdict reaches every caller from the row alone.", "correct": true },
+        { "label": "Its failing case is a faux-model script that provokes the engine into breaking the guarantee.", "correct": false },
+        { "label": "It goes in the invariants table, judged on every run — no scenario declares it.", "correct": true },
+        { "label": "The test file stops compiling until its case table grows a passing and a failing case for it.", "correct": true }
+      ],
+      "key_points": [
+        "a guarantee the engine itself must keep is an invariant: it goes in the invariants table and every run is judged on it, with no scenario declaration",
+        "the table is the list — the Invariant type and the report's keys derive from it — so the new verdict appears in every report with no other wiring",
+        "the test's case table is typed by the check names, so the build fails until the new invariant carries both a passing case (with evidence the pass is not vacuous) and a failing case",
+        "the failing case cannot be a model script: no script can make a correct engine break an invariant, so it is a correct run with one fault injected, with evidence naming the engine bug it stands for"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "The grader team's first real batch arrives. A provider outage killed step 2 of a 3-step scenario before the step that carries the `use` expectation. They ask you to count that dead run as a behavior failure in the model's use-rate. What does check report for that run today, and what do you tell them about where their requirement goes?",
+      "key_points": [
+        "today the report says complete=false and use@3 skips — its step never ran and the model never had the chance — so the run is left out of the use rate's denominator, not scored against the model",
+        "counting the dead run as a behavior failure would blame the model for a provider outage, which is exactly the confusion of engine bug and model mistake that the invariants/behaviors split exists to end",
+        "the outage belongs with reported facts, not judgments: complete and the skip's why already say where the run stopped, and an outage measure would be reported like them (and like cost), never folded into a behavior rate — and it is not an invariant failure either, because the engine kept its promises in what did run"
+      ],
+      "attempts": []
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "plan": {
+    "scores": {
+      "pass": true
+    },
+    "evidence": {
+      "exit_code": 0,
+      "stdout": "check: quiz.json is a valid plan that fits the change\nok: 5 question(s), kinds single,single,multi,free,free\nfound: 5 questions at mechanism altitude\n",
+      "stderr": ""
+    }
+  },
+  "trace": {
+    "scores": {
+      "steps": 16,
+      "tool_calls": 20,
+      "subagent_steps": 0,
+      "skill_activated": true
+    },
+    "evidence": {
+      "agent": "pi",
+      "steps": 16,
+      "tool_calls": 20,
+      "subagent_steps": 0,
+      "skill_activated": [
+        {
+          "tool_call_id": "call_tdquw77b",
+          "function_name": "read"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All five questions test the marker-based opt-in, the tool-written .git/hooks/pre-push hook replacing core.hooksPath, and install/sync coverage and failure behavior of that design.",
+      "text": "Every question in quiz.json tests a point about the target of the change: A repo opts into the push gate with a tracked .own-your-diff marker. quizgate install writes the pre-push hook into the clone's own hooks directory instead of pointing core.hooksPath at a tracked .githooks dir, and quizgate sync keeps a copy of quizgate on PATH and installs the hook in opted-in clones that lack it."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Each prompt asks about rationale, boundaries, failure stance, coverage, or an extension tradeoff of the chosen shape, not function names or flags.",
+      "text": "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question touches the selftest move, quizgate usage text, or the SKILL.md/agent-mode.md wording edits.",
+      "text": "No question asks about these incidental parts of the change: the selftest file moving to the repo root; the usage text of quizgate; the wording edits in SKILL.md and agent-mode.md"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every incorrect option embodies a coherent misconception (git refusing tracked hooks, marker-as-config, fail-open, deferred ledger gating, self-reinstall, runtime marker checking) rather than filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each question's key_points specify the substance a correct answer must hit \u2014 mechanism, tradeoff, and boundary \u2014 matching the question's design-level altitude.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "q5 synthesizes several points (opt-in, write_hook refusal, human-owned merge, coverage loss, append counterfactual, idempotency) on one novel case \u2014 a teammate's pre-existing secret-scanner hook \u2014 that the change does not spell out.",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

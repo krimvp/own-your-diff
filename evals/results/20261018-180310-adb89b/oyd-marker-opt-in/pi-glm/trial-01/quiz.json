@@ -1,0 +1,150 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "f318b93",
+  "head": "8dcdfab",
+  "target": "Repos opt into the push gate with a tracked, inert .own-your-diff marker that every clone inherits through git, plus a per-clone .git/hooks/pre-push hook the tool writes (install once, sync in every session), replacing git config core.hooksPath=.githooks.",
+  "altitude": "design",
+  "incidental": [
+    "selftest moved verbatim from skills/own-your-diff/scripts/ to top-level scripts/",
+    "SKILL.md: tool list rewritten for install/sync, selftest line dropped",
+    "agent-mode.md: examiners spawn fresh with none of the session's context",
+    "quizgate usage text for install and sync"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The old install ran `git config core.hooksPath .githooks`. Why does the design replace that with a tracked .own-your-diff marker plus a hook the tool writes locally?",
+      "options": [
+        {
+          "label": "Git refuses to run hooks that live inside the tracked tree, so the gate needed a separate opt-in channel",
+          "correct": false
+        },
+        {
+          "label": "core.hooksPath is per-clone local config, so every clone needed a manual install and the repo had to ship a hooks directory; a tracked marker reaches every clone through git itself, and the tool adds the hook where it runs",
+          "correct": true
+        },
+        {
+          "label": "A tracked marker lets CI run the quiz on every commit, which a local config value could not express",
+          "correct": false
+        },
+        {
+          "label": "The marker's text tells quizgate how strictly to gate this repo, and core.hooksPath could not carry that setting",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the opt-in must reach every clone, and the tracked tree is the only channel git shares; core.hooksPath was per-clone config set by hand in each clone",
+        "the marker is an inert presence signal: nothing ever reads its content, so it carries no settings",
+        "the old way also put the burden on the repo to carry a .githooks directory"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "The marker is tracked; the hook is not. What does keeping hook code out of the tracked tree protect?",
+      "options": [
+        {
+          "label": "Hooks must differ from machine to machine, and tracked files are identical in every clone",
+          "correct": false
+        },
+        {
+          "label": "The hook embeds each clone's absolute paths, which would collide if the hook were tracked",
+          "correct": false
+        },
+        {
+          "label": "Selective gating: with the hook untracked, the repo can gate some clones and leave others free",
+          "correct": false
+        },
+        {
+          "label": "Git executes nothing from the tree without per-clone wiring, so a tracked hook would be inert text until each clone wired it up anyway; writing .git/hooks/pre-push adds one hook where git already looks, instead of redirecting the clone's whole hooks path",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "git runs hooks only from the clone's hooks dir or a per-clone hooksPath, so a tracked hook script would be dead text until every clone wired it up by hand, the manual step the marker exists to remove",
+        "writing .git/hooks/pre-push installs exactly one hook where git already looks, rather than hijacking the clone's entire hooks path",
+        "the tree can carry the marker safely precisely because it is inert; executable behavior is materialized only on machines where the tool runs"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "A clone has our hook installed, but quizgate is on neither PATH nor ~/.local/bin — the user removed it. What happens when they push, and why is that the right behavior for a gate?",
+      "options": [
+        {
+          "label": "The push is blocked with a message pointing at installing the tool: where the gate exists, it fails closed, because a gate that cannot run may not let pushes slip through silently",
+          "correct": true
+        },
+        {
+          "label": "The push goes through; a gate that cannot run cannot block anything",
+          "correct": false
+        },
+        {
+          "label": "The push goes through, but the hook records the unquizzed commits in the ledger for next time",
+          "correct": false
+        },
+        {
+          "label": "The hook reinstalls quizgate from the plugin directory and then runs the check",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "fail-closed: the hook exits nonzero when it cannot run the gate, so the push is blocked",
+        "the block is actionable: it tells the author what to install, not just that something is missing",
+        "fail-open belongs only to clones where the tool never wrote a hook; once the hook exists, losing the tool must not reopen the gate"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "Which of these leave a push from an opted-in repo completely ungated — no quiz, no block? Pick all that apply.",
+      "options": [
+        {
+          "label": "A fresh clone on a machine where the plugin has never run",
+          "correct": true
+        },
+        {
+          "label": "A clone whose own pre-push hook never gained the gate line, because write_hook refused to touch it",
+          "correct": true
+        },
+        {
+          "label": "A clone with our installed hook where quizgate is gone from PATH and from ~/.local/bin",
+          "correct": false
+        },
+        {
+          "label": "A clone that already has our hook when the marker is later deleted from the repo",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "no hook, no gate: in clones where sync never ran, the marker is inert and pushes go through",
+        "a foreign hook left without the gate line leaves that clone ungated rather than blocked; the refusal costs coverage, never correctness",
+        "an installed hook gates with no regard for the marker: deleting the marker stops future installs only",
+        "losing quizgate under an installed hook blocks the push: fail-closed, not ungated"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "The repo opts in with `quizgate install`. A teammate's clone already has a pre-push hook they wrote themselves — a secret scanner. Walk their clone through the design: what does the tool do there, what must the teammate do, and what would be lost if write_hook instead appended the gate line to any hook it found?",
+      "key_points": [
+        "write_hook sees a hook it did not write, refuses to touch it, and prints the one line to add (quizgate check || exit 1): the human owns the merge, because the tool cannot safely edit hook code it does not understand",
+        "once the teammate adds the line, scanner and gate run in the same hook; until then their pushes stay ungated — the refusal trades coverage for ownership",
+        "silently appending would blur who owns the hook and could break it (ordering, exit status, an exec line); the tag grep keeps only the tool's own installs idempotent"
+      ],
+      "attempts": []
+    }
+  ]
+}

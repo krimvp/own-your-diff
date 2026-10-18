@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "b85fedd",
+  "head": "e1a7462",
+  "target": "Session start repairs a stale local core.hooksPath — one left pointing at a directory that a pulled commit removed — so the gate's pre-push hook installs again, and hook installation refuses and prints the line to add instead of writing while any core.hooksPath manages the hooks.",
+  "altitude": "mechanism",
+  "incidental": [
+    "scripts/selftest: coverage for the stale-path repair and the live-manager refusal"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Before this change, an opted-in clone pulls the commit that removes the tracked .githooks directory, so its local core.hooksPath now names a directory that does not exist. What does that clone's next push actually do, and why did nobody notice?",
+      "options": [
+        {
+          "label": "Git errors: it refuses to push while core.hooksPath names a missing directory, so every push fails loudly and points at the config",
+          "correct": false
+        },
+        {
+          "label": "Git falls back to .git/hooks/pre-push, so the clone stays gated and the stale value changes nothing",
+          "correct": false
+        },
+        {
+          "label": "Git runs no hooks at all: the missing directory means the pre-push gate never runs, and nothing at push time errors or warns",
+          "correct": true
+        },
+        {
+          "label": "The remote runs its own pre-push hook, so the clone is still gated, just from the remote side instead of .githooks",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "git resolves the pre-push hook through core.hooksPath; when the named directory is missing, git finds no hook and runs nothing, silently",
+        "the clone looked opted in and gated but had no gate, and no push-time signal could reveal or repair it — which is why the repair happens at session start, the only entry point that still runs in that clone"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The repair unsets a local core.hooksPath only when the directory it names is missing. Why key the repair on directory existence instead of unsetting any local core.hooksPath in an opted-in repo?",
+      "options": [
+        {
+          "label": "The .own-your-diff marker is a promise to keep hooks in .git/hooks, so any core.hooksPath in an opted-in repo is a misconfiguration to clean up",
+          "correct": false
+        },
+        {
+          "label": "A live hook manager such as husky keeps a real directory at its core.hooksPath: existence is the line between a leftover value and a manager the repo must leave working",
+          "correct": true
+        },
+        {
+          "label": "Git makes a core.hooksPath read-only once its directory exists, so unsetting a live one would fail and leave the repo half-configured",
+          "correct": false
+        },
+        {
+          "label": "A missing directory is the only case where git errors on push, so only that error path needs repairing",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "existence is the heuristic that separates a stale leftover from a live manager such as husky or lefthook",
+        "unsetting a live manager's core.hooksPath would silently disarm that manager's hooks while re-arming only the gate, trading one silent breakage for another",
+        "the alternative rejected: treat every core.hooksPath in an opted-in repo as stale"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "boundary",
+      "prompt": "In an opted-in repo, core.hooksPath names husky's real .husky directory, and a session starts in that clone. Which of these hold afterwards?",
+      "options": [
+        {
+          "label": "core.hooksPath stays set to .husky",
+          "correct": true
+        },
+        {
+          "label": "The gate's pre-push hook is installed at .git/hooks/pre-push",
+          "correct": false
+        },
+        {
+          "label": "A push is blocked as unquizzed, because git falls back to .git/hooks when the manager's hook lacks the gate line",
+          "correct": false
+        },
+        {
+          "label": "Nothing is written into .husky",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "the gate treats core.hooksPath as foreign territory: the value is kept and the directory it names is never written to",
+        "no gate hook is installed at .git/hooks while any core.hooksPath manages the hooks — the installer refuses rather than installing a hook git would never run",
+        "the boundary's cost: pushes in that repo run ungated until a human adds 'quizgate check || exit 1' to the manager's pre-push; the session only prints that hint"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "invalidation",
+      "prompt": "The repair has just fixed the stale clone: the local core.hooksPath is unset and the default hooks directory runs the gate. What can make that clone silently lose its gate again, and how much of it does the next session start undo?",
+      "options": [],
+      "key_points": [
+        "anything that claims hooks again — adopting husky or lefthook, a teammate's setup script, or a global core.hooksPath — makes git resolve pre-push through that path and silently bypass the default hooks directory; git has no fallback",
+        "the repair only unsets a local value that names a missing directory: a value naming a live directory is kept, and a global or otherwise non-local value is never touched at all",
+        "so the gate goes inert with no error, and only the printed 'add this line' hint points the way back — the repaired state lasts exactly as long as nobody else claims the hooks"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "failure",
+      "prompt": "A repo adopts a hook manager that installs lazily: its local core.hooksPath already names .mhooks, but that directory is created only on the first push attempt, after sessions have started. The assumption 'a core.hooksPath naming a missing directory is stale' stops holding here. Walk what this change does in that repo and where the gate ends up.",
+      "options": [],
+      "key_points": [
+        "at session start the directory does not exist, so the existence heuristic misfires: session start unsets the local core.hooksPath as stale and installs the gate in the default hooks directory",
+        "when the manager later creates .mhooks and sets core.hooksPath again, git runs pre-push from .mhooks and silently bypasses the gate — the repo pushes ungated with no error",
+        "the next session keeps the live .mhooks alone, the installer refuses and prints the line to add, and recovery is a human adding 'quizgate check || exit 1' to .mhooks/pre-push: the manager boundary still holds, but at the cost of a silent ungated window that no push-time signal reveals"
+      ],
+      "attempts": []
+    }
+  ]
+}

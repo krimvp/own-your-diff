@@ -1,0 +1,142 @@
+{
+  "version": 1,
+  "branch": "feat/plugin",
+  "base": "9f2a853",
+  "head": "a2f7ba7",
+  "target": "Ship the gate as one plugin that Claude Code, Droid, and Codex all read, so every session propagates it (session-start sync in opted-in clones), the agent's bypass routes are denied in-session (PreToolUse guard), and one installer adopts every harness on PATH, including Codex's hook-hash trust.",
+  "altitude": "design",
+  "incidental": [
+    "selftest rewrite: moves to the repo root, isolates HOME/PATH/git config, and adds hook coverage",
+    "plugin metadata files (.claude-plugin/plugin.json and marketplace.json)",
+    "installer plumbing: OWN_YOUR_DIFF_SOURCE override and add-or-update fallbacks"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Why does one plugin definition (.claude-plugin/ plus hooks/hooks.json) serve all three harnesses, instead of shipping a package per harness?",
+      "options": [
+        {
+          "label": "All three harnesses read the same plugin layout and hooks.json contract, so one definition is the single source of truth for every install",
+          "correct": true
+        },
+        {
+          "label": "The three harnesses each define their own hook format, so a shared directory would break one of them",
+          "correct": false
+        },
+        {
+          "label": "The harnesses' plugin systems are identical end to end, so nothing distinguishes one harness's setup from another's",
+          "correct": false
+        },
+        {
+          "label": "A per-harness package cannot use ${CLAUDE_PLUGIN_ROOT} in its hook commands",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the three harnesses deliberately read the same .claude-plugin/ and hooks/hooks.json layout, so the plugin is written once against that shared contract",
+        "the install and trust paths still differ per harness, which is why install.sh dispatches per harness instead of the plugin existing as three copies"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "boundary",
+      "prompt": "The gate now has two layers: the git pre-push hook and the plugin's PreToolUse guard. Which of these hold?",
+      "options": [
+        {
+          "label": "The pre-push hook stays the real gate; the guard only denies the agent the known in-session routes around it (--no-verify pushes, core.hooksPath changes)",
+          "correct": true
+        },
+        {
+          "label": "The guard also denies a plain git push, because unquizzed commits must not leave the machine",
+          "correct": false
+        },
+        {
+          "label": "The human pushing with --no-verify from their own terminal is outside the guard's reach; the bypass is reserved as the human's call",
+          "correct": true
+        },
+        {
+          "label": "The guard denies git commit --no-verify as well, since --no-verify always means a bypass",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the git-side pre-push hook remains the source of truth for what may push; the guard is in-session defense around it",
+        "the guard polices only the agent's tool calls; the human's own terminal is not covered, and bypassing is the human's call by design",
+        "the guard's denials are scoped to the push gate's bypass routes, not to git in general"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "The plugin later ships a change to its hooks. What happens to the guard and session-start hook in an existing Codex install, and what restores them?",
+      "options": [
+        {
+          "label": "Codex silently skips them: trust keys on each hook definition's hash, which the update changed; re-running the installer's trust step (or approving in the TUI) trusts the new hashes",
+          "correct": true
+        },
+        {
+          "label": "Nothing to restore: Codex auto-trusts updated hooks the way it auto-updates marketplaces",
+          "correct": false
+        },
+        {
+          "label": "The hooks keep running, because trust was granted to the plugin as a whole, not to individual hook definitions",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "Codex runs plugin hooks only when their definition hash is trusted; an update changes the hash, so the hooks are silently skipped, not removed",
+        "re-trusting restores them: the installer writes the trust entries again, or the user approves the new hash in the TUI"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "extension",
+      "prompt": "A teammate who has the plugin installed in their harness clones this repo fresh. Which of these hold for the gate in that clone?",
+      "options": [
+        {
+          "label": "Session-start runs quizgate sync, which writes the pre-push hook into the clone because the tracked .own-your-diff marker marks it opted in",
+          "correct": true
+        },
+        {
+          "label": "They must run quizgate install by hand before any push is gated",
+          "correct": false
+        },
+        {
+          "label": "Their agent is told the repo is opted in, so it knows to run the own-your-diff skill before pushing",
+          "correct": true
+        },
+        {
+          "label": "If they had no plugin installed at all, the tracked marker would still install the hook on their next plain git push",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "session-start propagates the gate into a fresh clone: quizgate sync installs the pre-push hook there because the tracked .own-your-diff marker declares the repo opted in",
+        "the hook lands in that clone's .git/hooks, per-clone rather than through global config, and the session notice primes the agent to run the skill before pushing",
+        "without a harness running the plugin the marker is inert: nothing installs the hook, and closing that adoption gap is exactly what install.sh targets, one command for every harness found on PATH"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A fourth harness appears that reads the same plugin layout. What does it get for free the moment the plugin is installed, and what has to be added for full parity with the three current harnesses?",
+      "key_points": [
+        "it gets both hooks as defined in the one hooks.json — the session-start sync and opt-in notice, and the PreToolUse bypass denials — without new plugin code, which is the payoff of the shared layout",
+        "parity needs an install path: a branch in install.sh for that harness's marketplace and plugin verbs (or at least PATH detection), because the plugin CLIs differ per harness",
+        "if it, like Codex, gates plugin hooks on trusted hashes, it also needs a trust step like codex-trust-hooks, or its hooks will silently not run"
+      ],
+      "attempts": []
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All four questions test points of the target: the scrub's occurrence-based rewriting of keys (q1), the upstream refusal and exit-code semantics (q2), the length-only gate and scrub boundary (q3), and the rationale for the 8-character threshold (q4).",
+      "text": "Every question in quiz.json tests a point about the target of the change: runScenario refuses a secret or model key shorter than 8 characters as a scenario problem, because the scrub rewrites every occurrence of a raw secret, JSON keys included, and a 1-character key broke the result directory after model calls were spent."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Every question probes inputs, state, invariants, and failure modes of the scrub/gate mechanism or the design trade-off of the threshold, not function names, signatures, or flags.",
+      "text": "Every question sits at mechanism or design or trivial altitude: the inputs, state, invariants, and failure modes of the one mechanism the change targets, above function names and signatures; the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags; the intent and impact of the change, if anything"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question asks about the design doc Verification line or the OLLAMA_API_KEY test change; q2's key point cites test behavior only as evidence of the mechanism (no model call, problems reported), not the listed incidental edits.",
+      "text": "No question asks about these incidental parts of the change: the design doc wording; the test expectations"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Each wrong option is a coherent misreading of where the gate lives, what the scrub touches, or what the exit codes mean (e.g., provider-side rejection, value-only scrub, gate inside the scrub), not filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each question's key_points spell out the required coverage (occurrence-based replacement, exit semantics, length-only keying, threshold rationale) at the same mechanism/design altitude as the prompt.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "The last question applies several points of the change (length gate, occurrence-based scrub, silent corruption at read-back, report poisoning, input-side fix) to a new case the change does not spell out: a FOUR_DIGIT_PIN secret and a request to lower the threshold to 4.",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

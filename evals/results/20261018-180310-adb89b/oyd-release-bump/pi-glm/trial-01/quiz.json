@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "branch": "chore/release",
+  "base": "de2974a",
+  "head": "dcf0ec3",
+  "target": "Release own-your-diff 0.2.0: bump the plugin version from 0.1.0 to 0.2.0 in both plugin manifests.",
+  "altitude": "trivial",
+  "incidental": ["the version field in .claude-plugin/plugin.json and .codex-plugin/plugin.json — the whole change, no question warranted"],
+  "examinee": "human",
+  "questions": []
+}

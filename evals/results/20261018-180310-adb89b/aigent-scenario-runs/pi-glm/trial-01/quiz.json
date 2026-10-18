@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "639e1e1",
+  "head": "82697cc",
+  "target": "Turn the one-off live weather test into data multeval can drive headlessly: a scenario file runs into a self-contained result directory, and one judge — engine invariants apart from model behaviors apart from cost — grades any run from its files alone, exposed as `aigent run` and `aigent check`.",
+  "altitude": "design",
+  "incidental": [
+    "package.json bin and npm scripts, with the package-lock bump",
+    "test fixture plugins (clock, guard, the weather secret echo) and test/scenarios/weather.json",
+    "boundary.test.ts updated to keep guarding the new src/eval/ files",
+    "faux-provider test scaffolding around the runner, the checks and the CLI"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "A run fails the `enabled-before-call` invariant and also fails its `use` behavior on step 1. Both verdicts print in the report, but only one changes the exit code. Why does the design treat the two differently?",
+      "options": [
+        {
+          "label": "Behavior verdicts are probabilistic — the same model passes or fails by chance — so they cannot be trusted enough to gate anything.",
+          "correct": false
+        },
+        {
+          "label": "The invariant is a promise the engine makes that every run must keep whatever the model does, so one failure is an engine bug that invalidates the run; a behavior is a bet on the model, meaningful only as a rate over many runs, so one run's verdict is data for the grader and never a gate.",
+          "correct": true
+        },
+        {
+          "label": "No model passes every behavior every time, so gating on them would turn every honest run red; the exit code had to stay quiet about behaviors.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "An invariant is an engine property every run must keep regardless of the model; a single failure is an engine bug, and it is what makes the run exit 1",
+        "A behavior is a bet on the model judged as a rate over many runs; a single verdict is measurement data for the grader, not a gate, and failed behaviors never change the exit code",
+        "Cost is a third thing: reported per request and per run, and never judged at all"
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "`aigent run` finishes the run, writes the result directory, then reads those files back and grades them — not the run it still holds in memory. Why is the verdict computed from the files?",
+      "options": [
+        {
+          "label": "The in-memory run still holds raw secrets, and only the files are scrubbed, so grading from memory would put secrets into the report.",
+          "correct": false
+        },
+        {
+          "label": "Every run proves the result directory is a complete input to grading: `aigent check`, the live test and later the multeval grader read the same files and must reach the same verdict, so grading may not depend on anything only the runner held.",
+          "correct": true
+        },
+        {
+          "label": "After a resume the in-memory transcript and the files can differ, because the transcript is rebuilt from the saved copy, so only the files reflect what the model actually saw.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "The result directory is the contract: the run log as files is the whole input to `check`, and grading the files it just wrote makes every run prove the directory suffices",
+        "Every consumer — `aigent check` on an existing directory, the live test, the future multeval grader — reaches the same verdict from the same files, because the judge reads only the run log",
+        "The discipline is not about divergence: the log is JSON-shaped and scrubbed before it is written, so memory and files hold the same run"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "A scenario declares `secrets: [\"WEATHER_API_KEY\"]`, and its weather plugin echoes that value into a tool result. Which of these hold about what the run log and the `secret-free` invariant actually guarantee? Pick all that hold.",
+      "options": [
+        {
+          "label": "The model API key never needs scrubbing, because the adapter redacts it before the runner ever sees it.",
+          "correct": false
+        },
+        {
+          "label": "Any raw occurrence of the value anywhere in the run log — scenario texts, event payloads, object keys included — becomes a `[LEAKED:WEATHER_API_KEY]` mark before anything is written.",
+          "correct": true
+        },
+        {
+          "label": "`secret-free` reads the transcript only, so a mark hiding in the scenario or an event payload goes unnoticed.",
+          "correct": false
+        },
+        {
+          "label": "If a plugin echoed an env var the scenario never declared, its raw value could sit in the transcript in the clear while `secret-free` still passes.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "The scrub knows only the values the scenario declares plus the model key's env value, and it walks every string in the run log, keys included, before anything is written",
+        "`secret-free` hunts for scrub marks, not for raw values, so its guarantee is scoped to secrets that were declared",
+        "An undeclared secret can reach the files in the clear and the invariant still passes; the design assumes every value that can flow is declared in `secrets`"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A new behavior check arrives: `cite` — the model's final answer must quote a number from a named tool's result in the same prompt. Walk where it goes: what must be written in each file that changes, and what deliberately stays untouched?",
+      "key_points": [
+        "src/eval/scenario.ts: a parser entry for `cite` with its field list, so scenarios can declare it and unknown fields stay problems; because it names a tool, `referencedNames` must return it so the runner refuses a misspelled name against the loaded plugin set before any model call",
+        "src/eval/checks.ts: a judge for `cite` owning its own skip rule (for example, skip when the tool never ran in the prompt), because each behavior owns its precondition so its rate counts only trials that had the chance",
+        "test/checks.test.ts: the behavior-case table is typed by check name, so the build fails until `cite` has both a passing and a failing case, and the failing case must assert the evidence that names the mistake",
+        "Nothing else moves: the CLI, the live test, the run-log shape and the runner's loop stay untouched, because `check` is the one entry point and the CLI never enumerates checks"
+      ]
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "flow",
+      "prompt": "multeval drives `aigent run` on weather.json overnight, many times. One run's provider dies during the last prompt; another finishes every step but fails the `resume-keeps-plugins` invariant. For each run, walk out what is on disk when the process exits, what exit code it leaves, and what multeval can conclude from the files alone.",
+      "key_points": [
+        "Both runs leave a whole result directory: it is written all-or-nothing to a temp sibling and renamed into place, and a run that stops early is still written and checked — its steps that ran, with the dying prompt's error stop as the last step",
+        "Exit codes: the provider death is 3 (the run stopped before its last step); the invariant failure is 1, because an engine bug outranks an incomplete run; behaviors never change either code",
+        "The stopped run's report: complete is false; behaviors on steps that never ran are skipped and left out of the rates; the invariants are still judged on what ran, because an invariant never skips",
+        "The invariant run tells multeval the engine broke a promise, to fix before its rates are trusted; and from the files alone multeval needs no rerun or memory of the run — `aigent check` re-derives the same report"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All five questions test the target's points: the invariant/behavior split and rate-based judgment (q1, q4, q5), and the log-only pure-function boundary with same-verdict-for-every-caller (q2, q3).",
+      "text": "Every question in quiz.json tests a point about the target of the change: check(run) judges a run from its log alone: five engine invariants that every trial must keep, where one failure is a bug, and nine model behaviors measured as rates that skip when their precondition never happened. Cost is reported and never judged."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Each question asks about rationale, boundary choice, rejected alternatives, or extension consequences at design altitude, not function names or flags.",
+      "text": "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "Check names, case-table typing, and evidence appear only as concrete anchors for design claims; no question quizzes the names, type definitions, or evidence strings themselves.",
+      "text": "No question asks about these incidental parts of the change: the names of individual checks; the TypeScript types of the case tables; the evidence strings"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every distractor encodes a plausible misreading \u2014 severity-based or source-based splits, listener/log completeness confusion, pre-write grading, faux-model scripts for invariant cases \u2014 rather than filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each question's key_points enumerate exactly what a correct answer must cover \u2014 the split's rationale, the boundary's payoff, the two-source/parser design, the extension mechanics, the skip/rate/reported-not-judged verdict \u2014 at the question's design altitude.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "q5 applies several points (skip when the precondition never happened, rate denominators, reported-never-judged like cost, the bug/mistake split) to a novel provider-outage grading request the change does not spell out.",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

@@ -14,6 +14,7 @@ usage: evals/eval <command>
   prove          run fixed good and bad quiz plans through the checks, no model, no cost
   run [SPEC]     run a spec (default evals/run-ollama.json) into evals/runs, then judge it
   judge RUN      judge the quiz plans of a run against each case's rubric
+  keep RUN       copy what a reviewer needs from a run into evals/results, for git
   compare REF    run the skill at REF against the working tree's skill
   report RUN     print the report of a run
   build          regenerate evals/suite and evals/oracle from evals/cases.json
@@ -36,6 +37,7 @@ case "${1:-}" in
     multeval run "$spec" --out evals/runs
     python3 evals/judge.py "$(latest_run)" ;;
   judge) python3 evals/judge.py "${2:?usage: evals/eval judge RUN}" ;;
+  keep) python3 evals/keep.py "${2:?usage: evals/eval keep RUN}" ;;
   compare)
     ref=${2:?usage: evals/eval compare REF}
     rm -rf evals/.build/base && mkdir -p evals/.build/base
