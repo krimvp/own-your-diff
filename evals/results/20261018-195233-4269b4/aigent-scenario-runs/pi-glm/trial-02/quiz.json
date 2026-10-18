@@ -1,0 +1,179 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "639e1e1",
+  "head": "82697cc",
+  "target": "Aigent gains a headless evaluation layer for multeval: scenario files drive multi-step runs, every run lands as a result directory, and one check() judges any result directory from its files alone — the graded-files contract the multeval grader will read.",
+  "altitude": "design",
+  "incidental": [
+    "package.json and package-lock.json: the aigent bin entry and the npm script that loads .env (packaging)",
+    "test/boundary.test.ts: the import guard now also covers src/eval/ and fails if run.ts moves (guard upkeep)",
+    "the test fixtures, the weather.json example scenario and the new test files (scaffolding; the typed case-table guardrail is quizzed in q7)"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The old live test was a hard-coded weather script in TypeScript. Why is a scenario now a JSON file whose `expect` entries are named checks?",
+      "options": [
+        { "label": "The model has to read the scenario to know which plugins it may enable", "correct": false },
+        { "label": "A multeval case hands aigent only a directory of files, and the named checks give the scenario, the report ids and the grader one shared vocabulary", "correct": true },
+        { "label": "Assertions in code cannot tell an engine bug from a model mistake, so they had to become data", "correct": false }
+      ],
+      "key_points": [
+        "multeval hands aigent files, not code: a case carries only the scenario's own directory, so the script must be data",
+        "the check names are one vocabulary shared by the scenario, the report ids (check@step) and the grader",
+        "each behavior sits beside the prompt step that must show it, so the file reads as the design's bets on the model"
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "`aigent run` finishes a run, writes the result directory, then grades readRun(out) — the files it just wrote, not the run it still holds in memory. What does that ordering protect?",
+      "options": [
+        { "label": "Speed: grading the files skips re-parsing a transcript the runner already has", "correct": false },
+        { "label": "Safety: the in-memory run holds raw secrets the files do not", "correct": false },
+        { "label": "It proves the written files alone are enough to grade a run, so `aigent check`, the live test and the multeval grader all read the same files and get the same verdict", "correct": true }
+      ],
+      "key_points": [
+        "every run proves the directory alone is enough to grade it: a gap between what is written and what is graded cannot pass silently",
+        "every caller — the live test, `aigent check`, the future multeval grader — reads the same files and gets the same verdict",
+        "the result directory, not the in-memory run, is the contract multeval consumes"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "rationale",
+      "prompt": "check(run) judges three kinds of thing: invariants, behaviors and cost. Which of these are reasons for that split?",
+      "options": [
+        { "label": "One failing invariant is an engine bug and fails the run, while a behavior is a bet on the model that lands in a rate", "correct": true },
+        { "label": "Behaviors are held out of the report until enough trials give them a trustworthy rate", "correct": false },
+        { "label": "The old live test asserted three ad hoc properties and logged the rest, so an engine bug and a model mistake looked alike", "correct": true },
+        { "label": "Cost is reported and never judged, so a contrast can still measure cached-token ratios without tuning them away", "correct": true }
+      ],
+      "key_points": [
+        "invariants are engine properties every trial must keep: one failure is an engine bug and gates the run",
+        "behaviors are the design's bets on the model, measured as rates; they never gate a run",
+        "cost is reported and never judged",
+        "before the split, an engine bug and a model mistake looked alike"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "A run stops early — a step throws, say a resume whose plugin set rejects the saved records. What do the checks do with the behaviors on prompts that never ran, and what does that mean for the model's rates?",
+      "options": [
+        { "label": "They fail, so a host-side crash cannot quietly flatter a model's rate", "correct": false },
+        { "label": "They skip, and a skip drags the rate down like a failure does", "correct": false },
+        { "label": "They skip, and a skipped trial is left out of its rate, so a rate counts only the trials that had the chance", "correct": true },
+        { "label": "Nothing is judged on an incomplete run: no report, no verdicts", "correct": false }
+      ],
+      "key_points": [
+        "a behavior whose step never ran skips; it does not fail",
+        "skipped trials are left out of the rate: a rate counts only trials that had the chance",
+        "the steps that ran are still written and checked, the report says the run is incomplete, and the invariants still run and never skip"
+      ]
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "boundary",
+      "prompt": "Before the first session opens, the runner refuses a run its environment or plugin sets cannot satisfy, and `aigent run` refuses an existing result directory before it even reads the scenario. Which of these hold about that up-front refusal?",
+      "options": [
+        { "label": "A typo costs no model call: unset secrets, plugin sets that fail to load, and names the sets lack are all found before any session opens", "correct": true },
+        { "label": "The engine makes the same checks when the session is created, so the runner's pass is only a cache", "correct": false },
+        { "label": "Names are checked against the plugin set in effect at the step that relies on them, because a resume step can swap the set", "correct": true },
+        { "label": "Refusing the directory before reading the scenario means a repeated command never spends a model call", "correct": true }
+      ],
+      "key_points": [
+        "a misspelled name or unset secret must cost nothing: refusal happens before the first session opens",
+        "names are validated against the plugin set in effect at the step that uses them, since a resume can swap sets",
+        "the CLI refuses an existing out-dir before reading the scenario, so a repeat spends nothing",
+        "scenario problems are all reported at their JSON paths in one pass, so an author fixes a file in one round"
+      ]
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "The engine already redacts what enters the conversation. Now an engine bug lets a raw secret value reach an event that listeners see. What happens between that event and anyone grading the run?",
+      "options": [
+        { "label": "The engine's export redaction catches it on the way out, because events are redacted like the transcript", "correct": false },
+        { "label": "The runner scrubs every raw value out of the log into [LEAKED:NAME] marks before anything is written, the secret-free invariant fails as an engine bug, and a grader can see the leak without holding the key", "correct": true },
+        { "label": "The secret-free invariant skips: the leak is the engine's fault, not the model's, so the run had no chance to show it", "correct": false },
+        { "label": "The run passes and the cost section notes the leak", "correct": false }
+      ],
+      "key_points": [
+        "the runner scrubs every string of the run log before anything is written, so no raw value reaches the files",
+        "the [LEAKED:NAME] mark names the secret, so a grader can find a leak without the key",
+        "secret-free is an invariant: a leak is an engine bug that fails the run (exit 1), never a behavior or a note"
+      ]
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A new behavior arrives: after the model loads a skill, it should apply the skill's wording in its answer — check 'apply-skill', judged on the prompt step that asks for it. Where does it go, and what must land with it so the design holds?",
+      "key_points": [
+        "the scenario layer gains the expectation variant with its fields, and the names it relies on join the pre-flight check, so a misspelled skill still costs no model call",
+        "checks.ts gains one judge for it; an expectation without a judge fails the build, so the check cannot land half",
+        "the behavior owns its skip rule: what its precondition is, and what happens when the precondition never occurred",
+        "both case tables are keyed by check name, so a passing and a failing case must be added or the tests do not compile",
+        "a scenario file writes the same check name, and its report id is apply-skill@<step>"
+      ]
+    },
+    {
+      "id": "q8",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "A run stops early, and the result directory it wrote also fails an invariant. What does `aigent run` print, and what does it exit with?",
+      "options": [
+        { "label": "Exit 3: the run stopped early, and the invariant failure is only a detail inside the report", "correct": false },
+        { "label": "Exit 1 with nothing on stdout: an engine bug suppresses the report", "correct": false },
+        { "label": "The full report as JSON on stdout, exit 1: an invariant failure is an engine bug and wins over the incomplete run", "correct": true },
+        { "label": "Exit 2: a run that stops early is bad input, and nothing was written", "correct": false }
+      ],
+      "key_points": [
+        "the report is always printed as JSON on stdout",
+        "exit 1, an engine bug, wins over exit 3, an incomplete run",
+        "behaviors never move the exit code",
+        "2 means bad input found before anything ran, nothing written; 3 means the steps that ran were written and checked; 4 means the runner failed"
+      ]
+    },
+    {
+      "id": "q9",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "The run log keeps two views of one run: the transcript, and the events each step emitted. Which of these hold about why the checks read both?",
+      "options": [
+        { "label": "No listener can see a session's creation-time records, so what a session had enabled at its start is read from the transcript", "correct": true },
+        { "label": "A core__call_tool rejected before it runs leaves no tool event, only an error result in the transcript, so dispatch-recover reads the transcript", "correct": true },
+        { "label": "The transcript is only a cache of the events, so a directory that loses transcript.json can be rebuilt from events.jsonl", "correct": false },
+        { "label": "The events group what a step did and carry each call's outcome, ran or denied, which the transcript alone does not show", "correct": true }
+      ],
+      "key_points": [
+        "creation-time records reach no listener, so per-session enabled-at-start comes from the transcript",
+        "a schema-rejected core__call_tool leaves an error result in the transcript and no tool event",
+        "events carry each step's emission order and each call's outcome; the result directory keeps both views"
+      ]
+    },
+    {
+      "id": "q10",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "Next in the design doc, the multeval adapter runs `aigent run` once per trial in a container and grades what comes back. Which parts of this change does it get for free, and where is its own work?",
+      "key_points": [
+        "the result directory is the whole grading input: the adapter re-reads it and gets the same verdict `aigent run` printed, with no model and no secrets",
+        "exit codes sort trials for it: 1 an engine bug (fix aigent, not the model), 2 bad input, 3 incomplete but written, 4 runner failure; behavior rates come from the report, never the exit code",
+        "per-run verdicts are its to aggregate: rates over trials must leave skipped behaviors out, as check already does within a run",
+        "the directory is all-or-nothing and refuses to overwrite, so each trial needs a fresh out-dir and a crash leaves nothing to mistake for a run",
+        "a leak shows as a mark that names the secret, so the adapter needs no key to catch one"
+      ]
+    }
+  ]
+}

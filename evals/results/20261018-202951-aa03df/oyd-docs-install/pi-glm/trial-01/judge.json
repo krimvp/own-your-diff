@@ -1,0 +1,43 @@
+{
+  "model": "glm-5.3",
+  "score": 0.6666666666666666,
+  "pass": false,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": false,
+      "reason": "Both questions test the hook-script contracts that the added AGENTS.md documents \u2014 the plugin's pre-existing design \u2014 not points about the target of the change: adding a README and AGENTS.md that explain install, opt-in, and updates.",
+      "text": "Every question in quiz.json tests a point about the target of the change: Add a README and AGENTS.md that explain install, opt-in, and updates."
+    },
+    {
+      "criterion": 2,
+      "met": false,
+      "reason": "The questions probe design-level mechanisms (Droid's placeholder substitution, the Codex trust hash) rather than the trivial altitude of the change's intent and impact; quiz.json itself labels the altitude 'design'.",
+      "text": "Every question sits at trivial altitude: the intent and impact of the change, if anything"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "Neither question asks about the README wording or the CLAUDE.md symlink.",
+      "text": "No question asks about these incidental parts of the change: the README wording; the CLAUDE.md symlink"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every wrong option is a plausible misreading: blaming Claude Code instead of Droid, conflating the trust hash with the environment variable, reading the single-tree layout as per-harness, and assuming a version bump alone suffices.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each question's key_points state what a correct answer must cover \u2014 the placeholder mechanism and cross-harness payoff for q1, both contract obligations for q2 \u2014 at the question's own altitude.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "The order is outside-in: q1 covers why the central rule exists and its boundary, q2 narrows to applying the rules to a specific scenario, and no later question is more central than an earlier one (the last excepted).",
+      "text": "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last"
+    }
+  ]
+}

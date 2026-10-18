@@ -1,0 +1,32 @@
+{
+  "plan": {
+    "scores": {
+      "pass": false
+    },
+    "evidence": {
+      "exit_code": 1,
+      "stdout": "check: quiz.json is a valid plan that fits the change\nok: 4 question(s), kinds single,single,multi,free\nfound: 4 questions, expected 0 to 3\n",
+      "stderr": ""
+    }
+  },
+  "trace": {
+    "scores": {
+      "steps": 15,
+      "tool_calls": 17,
+      "subagent_steps": 0,
+      "skill_activated": true
+    },
+    "evidence": {
+      "agent": "pi",
+      "steps": 15,
+      "tool_calls": 17,
+      "subagent_steps": 0,
+      "skill_activated": [
+        {
+          "tool_call_id": "call_gs9x9flv",
+          "function_name": "read"
+        }
+      ]
+    }
+  }
+}

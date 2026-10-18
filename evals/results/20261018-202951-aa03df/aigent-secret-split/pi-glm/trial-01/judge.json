@@ -1,0 +1,49 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "q1 tests the split-secret leak the hold-back prevents, q2 the longest-1 bound, q3 the message_end flush, q4 the surrogate cut, and q5 their combined effect \u2014 all points of the target.",
+      "text": "Every question in quiz.json tests a point about the target of the change: The text stream holds back the last (longest secret - 1) characters across the whole assistant message, so a secret split across text deltas or text blocks never reaches a listener whole. It flushes at message_end and never cuts a surrogate pair."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Every question probes the mechanism's inputs, state, invariants, and failure modes (redaction granularity, buffer bound, flush conditions, UTF-16 cuts) without hinging on function names or signatures.",
+      "text": "Every question sits at mechanism altitude: the inputs, state, invariants, and failure modes of the one mechanism the change targets, above function names and signatures"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question asks about test helper names or pi.ts variable names; `longest` and the eval runner appear only as framing for the mechanism being tested, not as the subject.",
+      "text": "No question asks about these incidental parts of the change: the test helper names; the variable names in pi.ts"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every distractor is a coherent misconception \u2014 skipped redaction, timing, markers leaking, off-by-one bounds, whole-buffer redaction, flush-time leaks, abort-dropped tails, cross-message overgeneralization \u2014 not filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each key_points list spells out exactly what a correct answer must cover (whole-match requirement, bound tightness, last-push redaction, message-end-on-abort, lone-surrogate rendering) at the question's own altitude.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "The order runs purpose (q1's leak) through the main boundaries (q2's bound, q3's flush) down to the surrogate detail (q4), with no question more central than an earlier one except the synthesis last.",
+      "text": "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last"
+    },
+    {
+      "criterion": 7,
+      "met": true,
+      "reason": "q5 applies the whole-message hold, the abort-time flush, and the surrogate backup to one new case \u2014 a secret across two text blocks plus an emoji run aborted mid-stream \u2014 that the change does not spell out.",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

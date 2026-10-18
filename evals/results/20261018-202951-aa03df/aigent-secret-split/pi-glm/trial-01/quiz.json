@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "1de1b85",
+  "head": "9fc4ffa",
+  "target": "Keep a secret the model writes across text deltas out of what session listeners see: redact the joined stream by holding back the tail that could still be completing a secret, and flush that tail when the assistant message ends.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the `secrets` const extracted in startSession, so the hold-back size can be computed from the merged host and model secrets",
+    "test scaffolding: the faux provider's options and pacing plumbing, and the chunk and emoji-rain fixtures the two new tests use"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "Before this change, the eval runner scored a leak on every run where the model wrote a secret across two text deltas, while the transcript and the RunResult stayed clean. Walk the secret's pieces through the adapter: why did the joined listener stream hold the whole secret when the transcript and the RunResult held none?",
+      "options": [
+        { "label": "Text deltas were never redacted on the way to listeners; only the transcript and the RunResult pass through the redactor.", "correct": false },
+        { "label": "Each delta was redacted on its own, so neither piece matched the secret; the runner joins the deltas it received and scans the joined text, where the whole secret reappears. The transcript and the RunResult redact their text after joining it, so they stay clean.", "correct": true },
+        { "label": "The transcript is exported only after the run ends, so redaction sees the whole message there; the stream is sent live, before any redaction can run.", "correct": false },
+        { "label": "Both pieces were redacted, but the [REDACTED:NAME] markers the listener received spell the secret out once joined.", "correct": false }
+      ],
+      "key_points": [
+        "the redactor replaces a secret only when it sees it whole, so redacting each delta alone passed every piece through",
+        "the stream was the one place redacting at delta granularity; the transcript stores the joined text block and the RunResult the joined turn text, both redacted after joining — that is why they stayed clean",
+        "listeners receive the deltas and rejoin them — the eval runner joins before it scans — so the whole secret reappears in the joined stream"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "The stream holds back the last `longest - 1` characters, where `longest` is the length of the longest secret. What breaks if it holds back one character less?",
+      "options": [
+        { "label": "Nothing: a secret that is still completing always starts within the last `longest - 2` characters anyway.", "correct": false },
+        { "label": "It stays safe, because redaction still runs over the whole buffer on every push.", "correct": false },
+        { "label": "The longest secret's head can be emitted while it is still completing; the buffer then starts mid-secret, so redaction can never match the whole of it again, and the rest is emitted as more text arrives — rejoined, the listener sees the whole secret.", "correct": true },
+        { "label": "Short secrets would leak at flush time, because the flush emits the held tail without redacting it again.", "correct": false }
+      ],
+      "key_points": [
+        "any secret that could still be completing starts within the last `longest - 1` characters, so holding those keeps every incomplete secret whole in the buffer; the bound is tight, and it covers every secret the redactor knows, the model's own API key included",
+        "with one character less, the longest secret's start can fall one character before the cut, so its head is emitted before it completes",
+        "once the head is out, the buffer starts mid-secret and the whole secret never appears in it again, so the redactor can never match it; the rest is emitted later, and a listener that joins the deltas has the secret whole"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "invalidation",
+      "relevance": "core",
+      "prompt": "When pi ends an assistant message, the stream emits the held tail as it is, without redacting it again, and clears the buffer. Why does that leak nothing, and why is the tail never lost?",
+      "options": [
+        { "label": "pi ends a message this way only when it finished normally; on abort the tail is dropped along with the partial message.", "correct": false },
+        { "label": "The tail is shorter than every secret, so it cannot hold one whole.", "correct": false },
+        { "label": "No more text can arrive for that message, so no secret can complete after the flush; the tail was redacted over the whole buffer on the last push, so all it can still hold is the start of a secret that never completed — and pi ends every assistant message this way, finished, errored or aborted, so the tail always gets emitted.", "correct": true },
+        { "label": "The engine redacts the finished turn at message end, so the tail is clean by the time the stream emits it.", "correct": false }
+      ],
+      "key_points": [
+        "message end is the first point where no more text can arrive for that message, so no secret can complete after the flush",
+        "the tail was redacted over the whole buffer on the last push, so any whole secret in it was already replaced; what remains can only be the start of a secret that never completed within the message, which is harmless on its own",
+        "pi ends every assistant message with message end, whether it finished, errored or was aborted, so the tail always reaches listeners and nothing is lost"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "When the cut would separate the two halves of a surrogate pair, the stream backs it up by one code unit. Why is that needed — what would a host that writes each delta straight to a terminal show without it, and what does backing up cost?",
+      "options": [],
+      "key_points": [
+        "a JavaScript string is a sequence of UTF-16 code units, so a cut can land between the two halves of a surrogate pair",
+        "without the backup, one delta would end with a lone high surrogate and the next would start with its low half; a terminal renders each lone half as a replacement character, so the reader sees two wrong glyphs across two deltas",
+        "backing the cut up keeps the pair together in the held tail, at the cost of at most one extra held code unit: the pair waits for the next push or the flush"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "flow",
+      "relevance": "important",
+      "prompt": "A new case: the model writes the station key across two text blocks of one assistant message, then a run of emoji, and the run is aborted in the middle of the emoji run. A listener joins every text delta it receives. Which of these hold?",
+      "options": [
+        { "label": "The listener's joined stream shows the redaction marker, not the secret, even though the secret spanned two text blocks.", "correct": true },
+        { "label": "A secret split across two assistant messages would likewise never reach this listener's joined stream.", "correct": false },
+        { "label": "Every character the transcript kept reaches the listener, because the aborted message still ends with message end.", "correct": true },
+        { "label": "No delta the listener receives ends or starts inside a surrogate pair.", "correct": true }
+      ],
+      "key_points": [
+        "the hold spans the whole message, not one text block: pi emits nothing between two text blocks of one message, so a listener cannot tell blocks apart and rejoins them — the secret is redacted when it completes within the message",
+        "message end fires on abort too, so the held tail, and everything the transcript kept, still reaches the listener",
+        "the cut backs off surrogate pairs, so no delta leaves half a character with a listener",
+        "the message is the redaction atom: a secret split across two assistant messages can still rejoin in a stream joined across messages, exactly as it survives in the per-message redacted transcript"
+      ],
+      "attempts": []
+    }
+  ]
+}

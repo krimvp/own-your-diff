@@ -1,0 +1,43 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "quiz.json has no questions, so the requirement holds vacuously.",
+      "text": "Every question in quiz.json tests a point about the target of the change: Bump the plugin version to 0.2.0 in both manifests."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "quiz.json has no questions, so the altitude requirement holds vacuously.",
+      "text": "Every question sits at trivial altitude: the intent and impact of the change, if anything"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "With no questions at all, none asks about the version number.",
+      "text": "No question asks about these incidental parts of the change: the version number"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "quiz.json has no questions or options, so the distractor requirement holds vacuously.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "quiz.json has no questions, so there are no key_points to check.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "An empty question list has no ordering to violate, so the outside-in constraint holds vacuously.",
+      "text": "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last"
+    }
+  ]
+}

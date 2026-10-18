@@ -1,0 +1,74 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "456b1e8",
+  "head": "53d6f31",
+  "target": "AGENTS.md sets two new contributor contracts for the shared plugin tree: hook scripts locate the plugin root from their own path (dirname \"$0\"), never CLAUDE_PLUGIN_ROOT from the environment because Droid replaces it with a placeholder in hook processes; and editing hooks/hooks.json changes its Codex trust hash, so a change that edits it must tell Codex users to rerun scripts/codex-trust-hooks.",
+  "altitude": "design",
+  "incidental": [
+    "README.md: explanations of existing behavior (the three plugin components, install.sh and per-harness install commands, quizgate install opt-in, the session-start hook in fresh clones, org-wide settings.json, the ~/.agents/skills symlink, plugin update commands) - docs of a design the author already owned",
+    "AGENTS.md step rules: run scripts/selftest after skills/ or hooks/ changes, run claude plugin validate after manifest changes, bump version in .claude-plugin/plugin.json so installs pick up the change - steps, incidental even though stated as rules",
+    "AGENTS.md and README rerun-steps for scripts/codex-trust-hooks after an update that touches hooks/hooks.json - steps, incidental even though stated as rules",
+    "AGENTS.md's one-plugin-tree statement: documents the existing layout, context for the target rules",
+    "CLAUDE.md: symlink to AGENTS.md so Claude Code reads the same rules - plumbing"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Why must the hook scripts locate the plugin root with dirname \"$0\" instead of reading CLAUDE_PLUGIN_ROOT from the environment?",
+      "options": [
+        {
+          "label": "Inside hook processes Droid replaces CLAUDE_PLUGIN_ROOT with a placeholder, so the invoked script's own path is the one route to the plugin root that works in all three harnesses",
+          "correct": true
+        },
+        {
+          "label": "Claude Code never sets CLAUDE_PLUGIN_ROOT in hook processes, so even there the scripts need their own path",
+          "correct": false
+        },
+        {
+          "label": "Codex refuses to run a hook that reads CLAUDE_PLUGIN_ROOT, because its trust hash covers the hook's environment",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes, so reading it from the environment would resolve a bogus plugin root in Droid",
+        "The invoked script's own path (dirname \"$0\") works in every harness, which keeps one copy of each hook script serving Claude Code, Droid, and Codex"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "core",
+      "prompt": "A new PreToolUse hook script is added under hooks/ and wired into hooks/hooks.json. Which of these must the change that adds it account for? Pick all that hold.",
+      "options": [
+        {
+          "label": "The new script must find the plugin root from its own path, never from CLAUDE_PLUGIN_ROOT in the environment",
+          "correct": true
+        },
+        {
+          "label": "The single-tree layout means the hook must be added once per harness, since each reads its own hooks file",
+          "correct": false
+        },
+        {
+          "label": "Editing hooks/hooks.json changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks",
+          "correct": true
+        },
+        {
+          "label": "Once the version in .claude-plugin/plugin.json is bumped, Codex runs the new hook with no further steps",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "The new script must locate the plugin root via dirname \"$0\" and not CLAUDE_PLUGIN_ROOT from the environment, or it breaks in Droid where that variable is a placeholder",
+        "Wiring the hook into hooks/hooks.json edits that file, which changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks or Codex skips the untrusted hook"
+      ],
+      "attempts": []
+    }
+  ]
+}

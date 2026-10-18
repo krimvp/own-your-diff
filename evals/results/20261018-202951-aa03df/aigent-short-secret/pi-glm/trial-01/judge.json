@@ -1,0 +1,49 @@
+{
+  "model": "glm-5.3",
+  "score": 1.0,
+  "pass": true,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All four questions probe the refusal rule, the scrub's replace-everywhere behavior including JSON keys, or the exit-4-after-paying failure the change targets.",
+      "text": "Every question in quiz.json tests a point about the target of the change: runScenario refuses a secret or model key shorter than 8 characters as a scenario problem, because the scrub rewrites every occurrence of a raw secret, JSON keys included, and a 1-character key broke the result directory after model calls were spent."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Questions sit at mechanism or design altitude: failure modes, the check's inputs and invariants, and the shape chosen versus alternatives, not function names or signatures.",
+      "text": "Every question sits at mechanism or design or trivial altitude: the inputs, state, invariants, and failure modes of the one mechanism the change targets, above function names and signatures; the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags; the intent and impact of the change, if anything"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question asks about the design doc wording or the test expectations; all engage the mechanism itself.",
+      "text": "No question asks about these incidental parts of the change: the design doc wording; the test expectations"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every distractor is a plausible misreading: pre/post-fix confusion, off-by-one boundary, wrong rationale, pipeline-order and occurrence-vs-length mistakes.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": true,
+      "reason": "Each key_points list states what a correct answer must cover, at the same mechanism or design altitude as its question.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "Order moves outside in: the motivating failure, then the design choice, then the rule's detailed scope, with the synthesis case last.",
+      "text": "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last"
+    },
+    {
+      "criterion": 7,
+      "met": true,
+      "reason": "The last question applies the length floor, the scrub's replace-everywhere rule, and the exit-4-after-paying failure to one unstated case: an eight-character value colliding with an ordinary JSON key.",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

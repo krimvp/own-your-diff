@@ -1,0 +1,137 @@
+{
+  "version": 1,
+  "branch": "feat/plugin",
+  "base": "46dec40",
+  "head": "9a4c4ab",
+  "target": "Ship own-your-diff as one marketplace plugin that installs into Claude Code, Droid, and Codex: harness hooks that re-install the git gate in every opted-in clone, a PreToolUse guard that keeps gate bypass in human hands, and an installer that reaches every harness on PATH and makes Codex trust the hooks.",
+  "altitude": "design",
+  "incidental": [
+    "marketplace.json and plugin.json metadata fields",
+    "hooks.json hook timeout values",
+    "install.sh progress messages",
+    "selftest restructure: repo-root paths and isolated HOME/git-config test scaffolding"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Before this branch, own-your-diff was plain scripts in a repo. Why does it now ship as one marketplace plugin whose .claude-plugin/ manifest and hooks/hooks.json all three harnesses read, instead of keeping loose scripts or maintaining one package per harness?",
+      "options": [
+        { "label": "A per-harness package would drift; one tree that every harness reads means the gate, the guard, and the skill ship and update together everywhere", "correct": true },
+        { "label": "Only a marketplace plugin may run a hook at session start in any harness", "correct": false },
+        { "label": "Installing as a plugin makes the git pre-push hook unnecessary", "correct": false },
+        { "label": "Only a marketplace package may write files under the user's home directory", "correct": false }
+      ],
+      "key_points": [
+        "all three harnesses read the same .claude-plugin/ and hooks/hooks.json layout, so one source tree installs into all three",
+        "one source of truth: the gate, the guard, and the skill update together; per-harness forks would drift apart"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "A teammate makes a fresh clone of an opted-in repo and starts a session in Droid. What does the SessionStart hook do in that clone, and why is that hook needed at all?",
+      "options": [
+        { "label": "It runs quizgate sync, which puts the gate on the shared bin dir and writes the missing pre-push hook; the committed .own-your-diff marker travels with clones but the git hook never does", "correct": true },
+        { "label": "It writes .own-your-diff into the clone, since the marker is per-machine", "correct": false },
+        { "label": "It holds the session start until the author passes a quiz", "correct": false },
+        { "label": "Nothing: sync only runs inside the plugin's own repository", "correct": false }
+      ],
+      "key_points": [
+        "the opt-in marker is committed and travels with clones, while .git/hooks/pre-push does not",
+        "SessionStart runs quizgate sync in every session, so the gate self-heals in every clone of an opted-in repo",
+        "it is best-effort and must never fail the session; enforcement stays with the git hook"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The SessionStart hook could exec the gate straight out of the plugin directory through ${CLAUDE_PLUGIN_ROOT}. Instead it runs quizgate sync, which copies the gate to a stable bin dir (default ~/.local/bin). Why is the stable copy the right shape?",
+      "options": [
+        { "label": "The pre-push hook runs inside git, outside any harness, where CLAUDE_PLUGIN_ROOT is unset and the plugin's install path moves on update; the git hook needs a stable path it can find on its own", "correct": true },
+        { "label": "The plugin directory is read-only once the plugin is installed", "correct": false },
+        { "label": "Running the in-plugin copy would retrigger the PreToolUse guard on every session", "correct": false },
+        { "label": "Git refuses to exec any hook script that lives inside a plugin directory", "correct": false }
+      ],
+      "key_points": [
+        "git hooks run outside the harness, where no plugin path or CLAUDE_PLUGIN_ROOT is available",
+        "plugin install paths are versioned and move on update, while the bin dir is stable",
+        "the pre-push hook locates the gate on PATH with a fixed fallback, and sync keeps that copy current"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "extension",
+      "prompt": "A fourth harness, amp, appears next month and reads the same plugin layout. Where does support for it go, and what changes?",
+      "options": [
+        { "label": "An amp_install function in install.sh plus amp in the PATH-detection loop; the plugin tree and hooks stay as they are", "correct": true },
+        { "label": "A fork of .claude-plugin/ and hooks/ into an amp-specific layout", "correct": false },
+        { "label": "Nothing: install.sh already installs into any harness binary it finds on PATH", "correct": false },
+        { "label": "A second plugins entry in marketplace.json, one per harness", "correct": false }
+      ],
+      "key_points": [
+        "the shared manifest and hooks need no change; only install.sh learns the new harness",
+        "add a per-harness install function and a name in the PATH-detection loop",
+        "if the new harness gates hooks behind a trust model like Codex, its install step must also write the trust entries"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "boundary",
+      "prompt": "Which of these agent commands does the PreToolUse guard deny? Pick every option that holds; the exact set passes.",
+      "options": [
+        { "label": "git push --no-verify origin main", "correct": true },
+        { "label": "git config core.hooksPath /dev/null", "correct": true },
+        { "label": "git config --get core.hooksPath", "correct": false },
+        { "label": "git commit --no-verify -m fix", "correct": false }
+      ],
+      "key_points": [
+        "the guard denies push --no-verify: bypassing the quiz gate is the human's call, never the agent's",
+        "it denies core.hooksPath changes, which would silently disable the pre-push hook, but allows reads of the setting",
+        "commit --no-verify is allowed: it bypasses no part of this gate"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "failure",
+      "prompt": "Suppose install.sh installs the plugin into Codex but the trust step never runs. What does the gate look like on that machine, and why does the design write Codex's hook-trust entries at install time instead of leaving them to the TUI's approval prompt?",
+      "options": [],
+      "key_points": [
+        "Codex skips plugin hooks until their definition hash is trusted, so session-start and the guard never run there",
+        "fresh clones of opted-in repos never get the pre-push hook, the agent never hears the opt-in reminder, and nothing warns the user: the gate is silently off",
+        "the installer writes the same hooks.state entries the Codex TUI writes when the user approves, so running install.sh is the consent moment; trust is automated exactly once, at install time"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "In an opted-in repo with the pre-push hook installed and quizgate on PATH, an agent runs git push --no-verify with unquizzed commits pending. Which of these hold? Pick every option that holds; the exact set passes.",
+      "options": [
+        { "label": "The PreToolUse guard denies the command before git ever runs it", "correct": true },
+        { "label": "If the guard misses the command, the unquizzed commits reach the remote, because --no-verify tells git to skip the pre-push hook", "correct": true },
+        { "label": "If the guard misses the command, the pre-push hook still blocks the push, so the commits stay local", "correct": false },
+        { "label": "A human running the same push --no-verify in their own terminal is breaking the design", "correct": false }
+      ],
+      "key_points": [
+        "the guard is the first line: it denies the agent's --no-verify push before git runs",
+        "--no-verify makes git skip the pre-push hook, so if the guard misses the command the unquizzed push succeeds; the git hook cannot backstop a bypass",
+        "a human pushing --no-verify from their own terminal is allowed by design: the guard only sees the agent's tool calls, and bypass is the human's call"
+      ],
+      "attempts": []
+    }
+  ]
+}

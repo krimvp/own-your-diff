@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "456b1e8",
+  "head": "53d6f31",
+  "target": "AGENTS.md sets the repo's contributor contract for the one plugin tree shared by Claude Code, Factory Droid, and Codex: selftest is the bar for changes under skills/ or hooks/, a version bump is the release signal for the Claude Code and Codex caches, hook scripts locate the plugin tree themselves instead of reading CLAUDE_PLUGIN_ROOT, and a hooks.json edit obliges the change to tell Codex users to re-trust.",
+  "altitude": "design",
+  "incidental": [
+    "README.md: user documentation of the install, opt-in, and update behavior the code already has; the design was owned when it was built",
+    "CLAUDE.md: a symlink so Claude Code reads the same AGENTS.md",
+    "the `claude plugin validate .` line: mechanical verification plumbing for the shared manifest, no design decision in it"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "AGENTS.md opens with: one plugin tree for Claude Code, Factory Droid, and Codex, because all three read the same `.claude-plugin/` manifest and the same `hooks/hooks.json`, so there is one copy of each. What is that single shared tree there to protect against?",
+      "options": [
+        {
+          "label": "Codex rejecting a hooks.json that Claude Code already ran, because each harness expects hooks in its own format.",
+          "correct": false
+        },
+        {
+          "label": "Divergence: with one manifest and one hooks file per harness, a fix or new hook could reach one harness while the other two silently keep the old behavior.",
+          "correct": true
+        },
+        {
+          "label": "The skill's instructions drifting out of sync with the hooks' behavior inside one harness.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "single-source: because all three harnesses read the same files, there is exactly one copy of the manifest and the hooks to change",
+        "the protection is against divergence between per-harness copies: a change landing for some harnesses while the others keep shipping the old behavior",
+        "the rejected alternative, one copy per harness, loses because every change would be made three times and one of the three would be missed"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "AGENTS.md says hook scripts find the plugin root with `dirname \"$0\"` and never read `CLAUDE_PLUGIN_ROOT` from the environment — even though `hooks/hooks.json` itself invokes the hooks through that variable. Why does the rule forbid the scripts from trusting it?",
+      "options": [
+        {
+          "label": "`CLAUDE_PLUGIN_ROOT` points into the marketplace cache, which moves on every plugin update, so hooks reading it would break after an update.",
+          "correct": false
+        },
+        {
+          "label": "Hook processes run with a scrubbed environment, so the variable is empty by the time the script starts.",
+          "correct": false
+        },
+        {
+          "label": "The variable is a per-harness promise that Droid breaks — it holds a placeholder inside Droid's hook processes — while `$0` sits inside the plugin tree and locates the root the same way in every harness.",
+          "correct": true
+        },
+        {
+          "label": "Only Claude Code sets `CLAUDE_PLUGIN_ROOT`; Droid and Codex leave it unset, so hooks would run from the wrong directory.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "hooks must be self-locating: `$0` is a path inside the plugin tree, so `dirname \"$0\"` finds the root without depending on any harness promise",
+        "the environment variable is a per-harness promise and Droid breaks it by setting it to a placeholder inside hook processes, so code that reads it works under Claude Code and fails under Droid",
+        "the failure only shows under Droid, not under the harness the author tests in, which is why the rule is written down instead of left to review"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "A contributor fixes a bug in `hooks/guard`, passes the quiz, and pushes — but leaves `version` in `.claude-plugin/plugin.json` untouched. Per the contract, what happens on machines that already have the plugin installed?",
+      "options": [
+        {
+          "label": "All three harnesses pick the fix up at the next session start, because the session hook re-syncs the installed plugin from its marketplace.",
+          "correct": false
+        },
+        {
+          "label": "Claude Code and Codex keep serving their cached copy of the guard — the buggy one — because their caches key on the manifest version, which never moved; the fix reaches only fresh installs.",
+          "correct": true
+        },
+        {
+          "label": "Nothing breaks: the hook runs from the repo's git tree, so pushing this repo updates every installed copy directly.",
+          "correct": false
+        },
+        {
+          "label": "Claude Code and Codex users get the fix, but Droid users keep the old code, because only Droid caches by version.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "installed plugins are caches keyed on the manifest's declared version: Claude Code and Codex keep the old copy until the version moves",
+        "the version bump is the contract's release signal — the rule exists because installs do not pick changes up on their own",
+        "nothing catches the omission: no gate checks the version, so the cost lands silently on every existing install"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A new requirement arrives: the plugin must also run a second session hook, and its entry is added to `hooks/hooks.json`. Beyond making the hook work, what does the repo's contract say this change must do, and why does that obligation exist?",
+      "options": [],
+      "key_points": [
+        "the change must say that Codex users must rerun the trust script (`scripts/codex-trust-hooks`): editing hooks.json changes its Codex trust hash, so the entries users already approved no longer cover the hooks",
+        "Codex runs plugin hooks only after the user has trusted their definition hash and silently skips untrusted ones, so without the callout existing Codex installs never run the new hook and never learn why",
+        "trust is the user's state and lives outside the repo: the change cannot ship it, it can only tell users to refresh it, which is why the obligation lands on the change message"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "A contributor lands a change that rewrites `hooks/guard`, adds a new matcher line to `hooks/hooks.json`, and passes the quiz — but never runs `scripts/selftest` and never bumps the manifest version. Which of these hold, per the repo's contract? Pick all that apply.",
+      "options": [
+        {
+          "label": "The change crossed the contract's bar for anything under `hooks/`: selftest is what drives the gate through a real `git push` and feeds the guard each harness's tool name, and none of that was exercised.",
+          "correct": true
+        },
+        {
+          "label": "Existing Claude Code and Codex installs keep running the old guard, because their caches key on the manifest version, which never moved.",
+          "correct": true
+        },
+        {
+          "label": "Existing Codex users' trust no longer covers the plugin's hooks — the hooks.json edit changed its trust hash — so Codex skips the hooks for them, and nobody told them to re-trust.",
+          "correct": true
+        },
+        {
+          "label": "The pre-push gate blocks the push until selftest has run and the version is bumped, so the omission is caught before anything ships.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "selftest is the contract's bar for changes under skills/ and hooks/ — it drives the gate through a real git push and feeds the guard each harness's tool name, so skipping it leaves the change's integration unexercised",
+        "the caches: Claude Code and Codex installs key on the manifest version, which never moved, so they keep the old guard",
+        "the trust: the hooks.json edit changes its Codex trust hash, and Codex silently skips untrusted hooks, so users who are never told to re-trust lose the plugin's hooks",
+        "the pre-push gate only enforces quiz passes: it never checks selftest or the version, so those rules rest on the author and nothing blocks the push"
+      ],
+      "attempts": []
+    }
+  ]
+}

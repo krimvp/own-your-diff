@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "456b1e8",
+  "head": "53d6f31",
+  "target": "AGENTS.md sets the maintenance contract for the one plugin tree shared by Claude Code, Factory Droid, and Codex: selftest after skills/ or hooks/ changes, manifest validation, a version bump so cached installs see changes, dirname-$0 hook root-finding instead of CLAUDE_PLUGIN_ROOT, and the Codex trust rerun after hooks.json edits.",
+  "altitude": "design",
+  "incidental": [
+    "README.md — documents install, opt-in, and update behavior the code already has",
+    "CLAUDE.md — symlink to AGENTS.md"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "AGENTS.md keeps one plugin tree serving Claude Code, Factory Droid, and Codex. Why one tree instead of a copy per harness?",
+      "options": [
+        { "label": "The git pre-push hook only works when a repository has a single plugin tree", "correct": false },
+        { "label": "All three harnesses read the same .claude-plugin/ and hooks/hooks.json layout, so one shared copy cannot drift the way per-harness copies can", "correct": true },
+        { "label": "The marketplace registration allows only one plugin.json per repository", "correct": false }
+      ],
+      "key_points": [
+        "all three harnesses consume the same manifest and hooks.json layout, so there is nothing per-harness to duplicate",
+        "one copy is identical for every harness by construction; per-harness copies drift apart",
+        "harness differences live in the harnesses, not in copies of the tree"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "You fix a bug in the skill's scripts, push it, and never touch version in .claude-plugin/plugin.json. What do existing installs see?",
+      "options": [
+        { "label": "The pre-push hook blocks the push itself until the version is bumped", "correct": false },
+        { "label": "The session-start hook pushes the new scripts into every install at the next session", "correct": false },
+        { "label": "Nothing changes: Claude Code and Codex serve installs from their version-keyed cache, so the fix never reaches users until the version is bumped", "correct": true }
+      ],
+      "key_points": [
+        "Claude Code and Codex cache the plugin keyed on the version field",
+        "a change without a version bump stays invisible to existing installs",
+        "the fix reaches users only after a bump and a plugin update"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "AGENTS.md forbids hook scripts from reading CLAUDE_PLUGIN_ROOT from the environment and has them find the plugin root with dirname \"$0\" instead. What does that boundary protect, and from what?",
+      "options": [
+        { "label": "It keeps root resolution independent of the harness environment: in Droid, CLAUDE_PLUGIN_ROOT is a placeholder inside hook processes, so the script's own location is the only reliable path to the real install", "correct": true },
+        { "label": "It stops a malicious repository from pointing the hooks at substitute scripts through an environment variable", "correct": false },
+        { "label": "It keeps hooks from resolving against Claude Code's plugin cache directory, which moves on every update", "correct": false }
+      ],
+      "key_points": [
+        "in Droid hook processes CLAUDE_PLUGIN_ROOT holds a placeholder, not the install path",
+        "the script's own location ($0) resolves to the true plugin root in every harness",
+        "an environment lookup would silently run hooks from a wrong or missing path on Droid"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "You add a new hook event by editing hooks/hooks.json. Which of these hold? Pick all that apply.",
+      "options": [
+        { "label": "Codex skips the plugin's hooks until the new hooks.json is trusted, so an edit that does not announce the rerun leaves Codex users running without the plugin's hooks", "correct": true },
+        { "label": "Editing hooks/guard or hooks/session-start also invalidates trust, because the hash covers the hook scripts' contents", "correct": false },
+        { "label": "scripts/codex-trust-hooks writes the same trust entries the Codex TUI writes when a user approves the hooks", "correct": true },
+        { "label": "Droid and Claude Code users must rerun a trust step too, since all three harnesses share hooks.json", "correct": false }
+      ],
+      "key_points": [
+        "trust keys on the hooks.json definition hash; editing a hook script's body does not change it",
+        "untrusted hooks are skipped, so an unannounced hooks.json edit silently disables the plugin's hooks for Codex users",
+        "codex-trust-hooks and TUI approval write the same trust entries",
+        "the trust rerun is Codex-only; the other harnesses pick the edit up without a trust step"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "boundary",
+      "prompt": "AGENTS.md requires running scripts/selftest after any change under skills/ or hooks/. What does that rule protect against, and what does selftest exercise that a quick manual check in one harness would miss?",
+      "options": [],
+      "key_points": [
+        "one shared tree means an edit lands in all three harnesses at once, so a check in one harness proves nothing about the other two",
+        "selftest drives the push gate through a real git push into a bare remote, not a simulation",
+        "it feeds the guard each harness's tool name, so per-harness matching regressions are caught before install"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "extension",
+      "prompt": "A fourth harness, Amp, adopts own-your-diff and reads the same .claude-plugin/ and hooks/hooks.json layout as the existing three. Which of these follow from the AGENTS.md contract? Pick all that apply.",
+      "options": [
+        { "label": "Support goes into the existing tree; no Amp-specific copy of skills/ or hooks/ is added", "correct": true },
+        { "label": "Hooks need an Amp-specific branch for finding the plugin root, since dirname \"$0\" only works in the three known harnesses", "correct": false },
+        { "label": "Selftest should feed the guard Amp's tool name so its push attempts are covered", "correct": true },
+        { "label": "The version in .claude-plugin/plugin.json must be bumped for the change to reach installs", "correct": true }
+      ],
+      "key_points": [
+        "the tree is harness-agnostic, so the same single copy serves Amp",
+        "per-harness guard coverage comes from feeding selftest each harness's tool name, so Amp's name joins that list",
+        "$0-based root finding works wherever the hook file itself runs, so no new branch is needed",
+        "any change installs must pick up ships with a version bump"
+      ],
+      "attempts": []
+    }
+  ]
+}

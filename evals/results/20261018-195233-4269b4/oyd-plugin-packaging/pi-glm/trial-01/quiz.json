@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "branch": "feat/plugin",
+  "base": "46dec40",
+  "head": "9a4c4ab",
+  "target": "Ship own-your-diff as one plugin that installs into Claude Code, Droid, and Codex, so any session self-arms the push gate and an agent cannot bypass it.",
+  "altitude": "design",
+  "incidental": [
+    "scripts/selftest: moved to the repo-root layout, isolated HOME, PATH, and git config, and extended to cover install, sync, session-start, the guard, and the Codex trust script"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Before this change, wiring a repo up meant copying the skill and the pre-push hook into it by hand - the old selftest did exactly that. Why is one plugin, shared by Claude Code, Droid, and Codex, the better shape?",
+      "options": [
+        { "label": "Git only runs a pre-push hook that an installed plugin has declared", "correct": false },
+        { "label": "All three harnesses read the same .claude-plugin and hooks layout, and the plugin's SessionStart hook arms the gate in every opted-in clone without anyone invoking the skill", "correct": true },
+        { "label": "A skill cannot carry executable scripts, so the gate needs a plugin to run at all", "correct": false },
+        { "label": "The marketplace copies the pre-push hook into every clone of an opted-in repo by itself", "correct": false }
+      ],
+      "key_points": [
+        "All three harnesses already read the same .claude-plugin/ and hooks/hooks.json layout, so one payload serves all three instead of three packages drifting apart.",
+        "Plugin hooks act without anyone invoking the skill: SessionStart syncs quizgate and writes the pre-push hook into each clone of an opted-in repo, which a copied skill can never do on its own.",
+        "The rejected alternative - per-harness skill copies plus a manual hook step - must be repeated per harness and per clone, and leaves fresh clones unarmed."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "The PreToolUse guard denies a handful of agent commands, lets every other git command through, and never sees the human's terminal at all. What is this boundary there to protect?",
+      "options": [
+        { "label": "The remote: no commit reaches it until its author has passed a quiz", "correct": false },
+        { "label": "The agent itself: with the guard up, only the human may push", "correct": false },
+        { "label": "The quiz gate: an agent cannot skip the pre-push check with --no-verify or switch it off through core.hooksPath; bypassing it stays the human's call", "correct": true },
+        { "label": "The repo's git config: the agent may not change any of it", "correct": false }
+      ],
+      "key_points": [
+        "The enforcement point is the git pre-push hook; the guard keeps the agent from routing around it (push --no-verify) or switching it off (a core.hooksPath override).",
+        "Bypass is deliberately the human's monopoly: the guard sits only on agent tool calls, so a human's --no-verify push from a terminal is out of its reach by design.",
+        "The boundary is deliberately narrow - plain pushes and unrelated git commands pass - because the pre-push hook, not the guard, is what judges what may be pushed."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "install.sh runs scripts/codex-trust-hooks after codex plugin add; nothing like it runs for Claude Code or Droid. What breaks in Codex if the installer skips that step?",
+      "options": [
+        { "label": "Codex refuses to add the plugin until its hooks are trusted", "correct": false },
+        { "label": "The plugin installs cleanly, but Codex silently never runs its hooks: opted-in clones are never armed and agent bypass commands are never denied, while everything looks installed", "correct": true },
+        { "label": "Only the guard is held back; session-start hooks always run", "correct": false },
+        { "label": "The hooks run, but each session stalls until the human approves them in the Codex TUI", "correct": false }
+      ],
+      "key_points": [
+        "Codex skips every plugin hook until its definition hash is trusted, so an install without the trust write looks successful while neither hook ever fires.",
+        "The gate is silently absent in Codex: session-start never syncs quizgate or writes the pre-push hook into fresh clones, and the guard never denies a bypass.",
+        "The script writes the same hooks.state entries the Codex TUI writes on approval, trusting each hook's current hash through codex app-server."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A fourth harness arrives: it reads the same plugin layout, but has its own plugin CLI, and like Codex it holds plugin hooks back behind an approval step until you trust them. Where does support for it go, and what changes?",
+      "key_points": [
+        "The shared payload - .claude-plugin/, hooks/, skills/ - stays untouched; every harness reads the same layout.",
+        "Per-harness differences live in install.sh: a new install function, a case branch, and a name in the PATH-discovery loop.",
+        "An approval-gated harness needs a trust step in its install branch, like codex-trust-hooks writing the trust entries its own UI would write.",
+        "The PreToolUse matcher must learn the harness's shell tool names (today Bash|Execute), or the guard never sees its commands."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "flow",
+      "prompt": "A teammate fresh-clones an opted-in repo on a machine with the plugin installed and pushes new commits from a plain terminal with --no-verify, before ever opening a harness. Later they open the clone in Codex and ask the agent to push more new commits with a plain git push. Which of these hold?",
+      "options": [
+        { "label": "The teammate's --no-verify push proves the guard denies nothing; it is dead weight", "correct": false },
+        { "label": "The first push goes through: the clone has no pre-push hook yet, and the gate reaches a clone only when a session - or quizgate - runs inside it", "correct": true },
+        { "label": "The agent's plain push is denied by the guard, because the commits are unquizzed", "correct": false },
+        { "label": "Once the Codex session has started, the pre-push hook is in place and stops the agent's plain push; the guard itself passes the command through", "correct": true }
+      ],
+      "key_points": [
+        "The gate is per-clone and arrives only at session start (or a quizgate sync/install): between clone and first session, a push meets no gate at all.",
+        "The human's bypass is by design: --no-verify in a terminal skips the pre-push hook, and no harness guard ever sees a terminal command.",
+        "Once a session has armed the clone, the pre-push hook is the enforcement point: the guard lets a plain push through and the hook blocks the unquizzed commits, while the guard's own job is only bypass commands."
+      ],
+      "attempts": []
+    }
+  ]
+}

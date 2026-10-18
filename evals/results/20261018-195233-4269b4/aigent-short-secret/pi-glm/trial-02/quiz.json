@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "0864896",
+  "head": "902bb89",
+  "target": "The runner refuses a secret or model key shorter than 8 characters as a scenario problem, before the first session opens, because the scrub is a blind replace-all that rewrites the raw value wherever it occurs in the run log — JSON keys included — so a short value rewrote ordinary words and key names, the result directory no longer read back, and the run failed late at exit 4 after spending its model calls.",
+  "altitude": "mechanism",
+  "incidental": [
+    "docs/design/eval-scenarios.md: the fail-before-paying decision and the verification list now state the short-value refusal, restating the target"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Before this change, a run with a 1-character WEATHER_API_KEY spent its model calls, wrote a result directory, and still exited 4. Walk that failure: what corrupted the log, and why did it surface as exit 4 rather than exit 2?",
+      "options": [
+        { "label": "The model provider rejected the run because the key was too short to authenticate, and a provider rejection is exit 4", "correct": false },
+        { "label": "The scrub replaced every occurrence of the raw value in the log, JSON keys included, so run.json's fields no longer matched the shape the CLI reads back; that read-back failure comes after the run, and exit 2 only covers problems found before anything runs", "correct": true },
+        { "label": "writeRun validates the run log before renaming it into place and refused the corrupted copy, which counts as the runner failing", "correct": false },
+        { "label": "The scrub noticed the value was too short to scrub safely and threw, which the CLI reports as exit 4", "correct": false }
+      ],
+      "key_points": [
+        "the scrub is a blind replace-all: every occurrence of the raw value, in every string and in JSON keys, becomes the [LEAKED:name] mark, with no judgment about whether the occurrence was a leak",
+        "a 1-character value occurs inside ordinary words and key names, so the scrub rewrote non-secret content and run.json no longer matched the aigent-run/1 shape",
+        "the corruption surfaced only after the run, when the CLI read its own result directory back to grade it, and every refusal that exits 2 fires before anything runs — so this failure fell to exit 4, with the model calls already spent"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "The fix refuses any secret or model key shorter than 8 characters at the pre-flight check, before the first session opens. Which of these are true about what that gate does and does not guarantee? Pick every true one.",
+      "options": [
+        { "label": "A scenario's declared secrets and the model key pass through the same length check, so one rule covers every raw value the scrub will replace", "correct": true },
+        { "label": "A value long enough to pass the gate can still, in principle, occur inside a JSON key and leave a result directory that fails to read back — the gate makes that vanishingly rare, not impossible", "correct": true },
+        { "label": "The gate exists because providers reject keys shorter than 8 characters, so a run with one could never succeed anyway", "correct": false },
+        { "label": "Once past the gate, a run's log can no longer contain a [LEAKED:name] mark, because the values that caused those marks are now refused", "correct": false }
+      ],
+      "key_points": [
+        "one pre-flight rule covers both kinds of raw value — the scenario's secrets and the model key — because both are read through the same environment check",
+        "the gate keys on length, not on whether the value occurs in the log: an in-range value that genuinely reaches the log is still scrubbed and marked wherever it occurs",
+        "the gate reduces the late corruption to a vanishing rarity rather than zero: an in-range value inside a key can still break the read-back, and no provider's opinion of key length has anything to do with the rule"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "measurement",
+      "prompt": "The fix moved two fixture values: the refusal test now sets a 1-character scenario secret and switches the model to a 7-character key, and the existing-directory CLI test grew its OLLAMA_API_KEY from 'unused' to 'sk-unused-key'. What does each change pin down?",
+      "options": [
+        { "label": "The refusal test shows short values of both kinds are reported as scenario problems before any model call, and the CLI fixture grew because its old 6-character value now violates the new rule, which would have falsified that test's stated premise that everything else is in order", "correct": true },
+        { "label": "The refusal test shows a short key fails the run mid-flight, and the CLI fixture change shows a long key reaches the provider", "correct": false },
+        { "label": "The CLI test would have failed with the old fixture, because the short-key refusal fires before the existing-directory refusal", "correct": false },
+        { "label": "Together the tests pin the threshold exactly: 6- and 7-character values are refused while an 8-character value is shown passing", "correct": false }
+      ],
+      "key_points": [
+        "the refusal test now covers a short scenario secret and a short model key, both reported in the same one-pass problem list, with the faux model never opened — the failure happens before any model call",
+        "the CLI fixture's old 6-character key became invalid input under the new rule, so that test's stated premise, that everything else is in order and only the directory can stop the run, would have stopped being true",
+        "the CLI's existing-directory refusal fires before the gate, so the old fixture would still have passed its assertions — what changed is the premise the test stands on, not its pass or fail"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "invalidation",
+      "prompt": "A teammate wants to keep using a 4-character test key and calls this fix the wrong one: instead of refusing short values, the scrub should replace the raw value only where it was genuinely leaked, and leave ordinary text and JSON keys alone. In your own words: what would that change invalidate, and why is refusing short values at the pre-flight check the sound move instead?",
+      "key_points": [
+        "the scrub has no way to tell a genuine leak from an accidental occurrence, and that blindness is what makes it a sound safety net: every raw value becomes a mark, so no raw value survives anywhere in the log",
+        "the marks are exactly what the secret-free invariant reads — a judgment-calling scrub leaves holes, because a raw value skipped as ordinary text or as a key survives unmarked in the result directory, where secret-free cannot see it",
+        "a 4-character value necessarily occurs inside ordinary text, so it cannot be scrubbed soundly at all: it is invalid input, and the pre-flight problem list is where the system already refuses invalid input, before the first session opens",
+        "the session's own redaction into [REDACTED:name] is the layer that normally keeps raw values out of the log, and the scrub is the net beneath it — weakening that net trades a hard guarantee for a fixture convenience, when lengthening the test key costs nothing"
+      ],
+      "attempts": []
+    }
+  ]
+}

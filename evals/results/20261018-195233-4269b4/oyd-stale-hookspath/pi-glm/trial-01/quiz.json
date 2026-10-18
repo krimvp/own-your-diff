@@ -1,0 +1,113 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "2873dad",
+  "head": "87757fc",
+  "target": "Session start repairs a clone whose local core.hooksPath names a directory the repo no longer tracks, and no code path writes hooks while any effective core.hooksPath is in effect.",
+  "altitude": "mechanism",
+  "incidental": [],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Before this fix, a clone pulled the commit that removed the repo's once-tracked .githooks directory, and its local core.hooksPath still named .githooks. Every push from it sailed through ungated, and nothing anywhere reported a problem. Walk through why that state was silent.",
+      "options": [
+        {
+          "label": "Git falls back to .git/hooks when core.hooksPath names a missing directory, but the hook there lacked the executable bit, so git skipped it without an error.",
+          "correct": false
+        },
+        {
+          "label": "Git executes hooks from the directory core.hooksPath names; when that directory is missing it silently runs no hooks at all — no error, no fallback — and the old install path never read the config, so a hook that was written and a hook that runs were indistinguishable.",
+          "correct": true
+        },
+        {
+          "label": "Push fails outright while core.hooksPath names a missing directory, but session start's || true swallowed the failure, so nobody saw it.",
+          "correct": false
+        },
+        {
+          "label": "The removal commit deleted the gate's pre-push hook along with the directory, and session start installs only into fresh clones.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "git resolves hook execution through core.hooksPath, and when it names a missing directory git silently runs no hooks — no error and no fallback to .git/hooks",
+        "the old install path never read core.hooksPath, so it could not tell a hook that runs from one that sits inert"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "measurement",
+      "prompt": "The selftest additions give the suite its first scenarios where git's hook execution is redirected by core.hooksPath. What blind spot does that close?",
+      "options": [
+        {
+          "label": "Nothing verified that install leaves a foreign pre-push hook in .git/hooks alone.",
+          "correct": false
+        },
+        {
+          "label": "Every earlier scenario assumed git runs hooks from .git/hooks, so a clone whose config redirected hooks elsewhere could keep a hook file that exists yet never executes, and no check could tell the two apart.",
+          "correct": true
+        },
+        {
+          "label": "Nothing verified that session start installs the hook in a fresh clone of an opted-in repo.",
+          "correct": false
+        },
+        {
+          "label": "Nothing verified that the shell guard denies a git -c core.hooksPath=... push.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "before the fix the suite never exercised a hooksPath redirect during installation, so 'the hook file exists' and 'the hook runs' were never distinguished",
+        "the new checks pin behavior through real session start and real git config: the stale config is unset with a notice, the manager's directory stays empty, and install refuses"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "Counterfactual: write_hook drops the refusal and installs anyway whenever an effective core.hooksPath exists — into .git/hooks, or into the directory the config names. Which failures does the refusal as written prevent? Pick all that hold.",
+      "options": [
+        {
+          "label": "A push erroring out because two pre-push hooks run in conflict.",
+          "correct": false
+        },
+        {
+          "label": "A hook written into .git/hooks that silently never runs, because git executes hooks from the configured directory — the gate sits inert while pushes pass.",
+          "correct": true
+        },
+        {
+          "label": "Overwriting a hook manager's own generated pre-push in a directory the plugin does not own.",
+          "correct": true
+        },
+        {
+          "label": "A later manager reinstall regenerating its pre-push and silently deleting the gate.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "writing into .git/hooks under an effective hooksPath is a silent no-op: the file exists but never executes",
+        "writing into the configured directory clobbers the manager's hook, and a manager reinstall can regenerate it and silently delete the gate",
+        "refusing with the one line to add keeps the manager sole owner of its directory while still telling the agent how to get a gate"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "invalidation",
+      "prompt": "New case: a teammate's clone carries a GLOBAL core.hooksPath pointing at a directory they deleted last week. They start a session in this opted-in repo. By design, what happens, what must they do to get a gate, and why is this treated differently from the stale local hooksPath that session start repairs?",
+      "key_points": [
+        "sync leaves the global config alone: the repair unsets only a local hooksPath, because global config is the user's deliberate machine-wide setup — not damage this repo's history caused — and an unattended session-start hook must not rewrite config that affects other repos",
+        "write_hook still refuses, since git reads the merged config: with any effective hooksPath an install into .git/hooks would sit inert, so no gate is written while the config stands",
+        "the refusal text still reaches the agent — it goes to stderr, which sync's stdout discard does not touch — and session start exits 0: the clone is ungated but nobody is left uninformed",
+        "a gate returns only when the user repairs their own config or adds 'quizgate check || exit 1' to the hook their manager runs"
+      ],
+      "attempts": []
+    }
+  ]
+}

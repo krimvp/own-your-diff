@@ -1,0 +1,912 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "01a150b5-367a-7197-a1b6-7982777c89a1",
+  "agent": {
+    "name": "pi",
+    "version": "1.3.0",
+    "model_name": "glm-5.3",
+    "extra": {
+      "skills": [
+        "own-your-diff"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-10-18T20:30:15.705Z",
+      "source": "user",
+      "message": "The commits on this branch are not pushed yet. Use the own-your-diff skill to plan the quiz for them, plan only: write the plan to quiz.json in this directory and stop. Nobody will answer questions in this run."
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-10-18T20:30:15.722Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "The user wants me to use the own-your-diff skill to plan a quiz for unpushed commits on this branch. They want plan only: write the plan to quiz.json in this directory and stop. Let me first read the skill file to understand what's required.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_w482gt56",
+          "function_name": "read",
+          "arguments": {
+            "path": "/opt/multeval/skills/own-your-diff/SKILL.md"
+          },
+          "extra": {
+            "skill": "own-your-diff",
+            "category": "file_read"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_w482gt56",
+            "content": "---\nname: own-your-diff\ndescription: \"Before any push or PR: explain the unpushed change in an HTML walkthrough, then quiz the author until they show they own the design. The pre-push hook blocks commits without a passed quiz. Use when pushing, opening a PR, or when a push was blocked by own-your-diff.\"\n---\n\n# Own your diff\n\nThe author pushes only work they can explain. You write a walkthrough, the author reads it, an examiner quizzes them, and a pass unlocks the push. The quiz checks that the author can reason about the change at the right **altitude**. It is not a memory test of the walkthrough.\n\nTools are in `scripts/`. Run each with no arguments for its commands.\n\n- `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.\n- `snippet` renders real git content as editor-style HTML blocks.\n- `quizlint` checks a quiz file against [`references/quiz-file.md`](references/quiz-file.md).\n- `quizstats` counts questions and pass rates by category and kind across quiz files.\n\n## Steps\n\nAsked for the quiz plan only, as an eval does? Do steps 1 and 2, skip the walkthrough, and write the plan of step 4 for a human examinee to the path you were given. Stop when `quizlint --plan` passes on it. Ask nothing.\n\n### 1. Scope\n\nRun `quizgate pending`. That is the scope: the commits a push would send that have no passed quiz. Diff them with `git diff $(quizgate base) HEAD`. Read the commit messages, and the task that produced the change if this session or its transcript has it.\n\nDone when you can name the **target** of the task: the one thing the work set out to change.\n\n### 2. Pick the altitude\n\nThe target sets the altitude. A change can carry both kinds.\n\n- **Design altitude.** The default. The change introduces or reshapes an abstraction, a module boundary, a data shape, a protocol, a dependency, or how components talk. Cover the problem it solves, the shape chosen, how it fits the existing architecture, the alternatives and why they lost, the costs it adds, and what it makes easy or hard next.\n- **Mechanism altitude.** The target is one mechanism, for example LLM prompt-cache hits, retry and backoff, stream backpressure, or a bug's root cause. Go through that mechanism's ins and outs: inputs, state, invariants, what invalidates or breaks it, the root cause, why the fix works, and how it was measured. Stay above function names and signatures.\n- **Incidental.** Helpers, renames, plumbing, version bumps, and test scaffolding that serve the target. Give each one line and no question.\n- **Trivial.** The whole change is a typo, formatting, a version bump, or a one-line config change. Write a short walkthrough. The quiz usually has no questions.\n- **Docs.** The change only documents or explains behavior the code already has. Treat it as trivial: the author owned that design when it was built. A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\n\nDone when every hunk in the diff belongs to the target or to the incidental list.\n\n### 3. Write the walkthrough\n\nCopy `assets/explainer.html` to `$(quizgate dir)/<branch>-<short-sha>.html`. Write it as a short course: each lesson builds on the one before, and each one teaches a single idea. Fill in the template's lessons in order. Delete a lesson that has nothing to say, and renumber the rest.\n\n- Put code on the page only through `snippet` directives, each on its own line. Then run `snippet expand <file>`. Expanding again refreshes every block from git.\n  - `<!-- snippet tree -->` shows the changed files.\n  - `<!-- snippet diff PATH [HUNK...] -->` shows a diff, all hunks or the 1-based hunks named.\n  - `<!-- snippet file PATH START END [REV] -->` shows file lines in an editor block.\n- Show diffs where the target lives, and only the hunks that carry it. Use `file` blocks for code the reader needs whole, such as a new type or the core function. Incidental files appear only in the tree and in the \"Also in this change\" list.\n- Draw the design as an inline SVG with the template's `new`, `box`, `arrow`, and `lbl` classes. A diagram shows the real components and marks what is new.\n- Keep the quiz off the page.\n\nOpen the file with `quizgate open <file>` and give the author its path.\n\nDone when the page renders with every directive expanded, and the author confirms they read it.\n\n### 4. Quiz\n\nPick the examinee:\n\n- **Human** whenever a human is in the session to answer. This is the default.\n- **Agent** only on an unattended run: a headless session, an autonomous or autopilot playbook, or the human said they are away. Follow [`references/agent-mode.md`](references/agent-mode.md) instead of the rest of this step. A slow human, or a human who declines the quiz, is not an unattended run.\n\nList every point at the target's altitude that the author must own to stand behind the push, from the whole diff, before you write a question. A point you meet late in the diff can still be the most important one. Rate each point's relevance:\n\n- **`core`.** What the change is for, and the boundary or contract it sets. An author who misses it cannot defend the push.\n- **`important`.** How the parts hold together: a failure mode, an invariant, where the next requirement goes.\n- **`useful`.** A detail worth knowing that the push does not stand on.\n\nWrite one question per `core` and `important` point, 10 at most. Ask about a `useful` point only when the quiz would otherwise have no question. Stop when the points run out. A small fix usually carries one or two, a trivial change none, and incidental items none.\n\nAsk outside in. Open with the `core` points, starting from what the change is for and its main boundary, then move inward to the mechanisms and details. Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.\n\nFor each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric. Keep the rubric to yourself until the quiz ends.\n\nAsk **transfer** questions. A transfer question makes the author apply the design to a case the walkthrough did not spell out:\n\n- Design. `rationale`: \"Why this abstraction over <the rejected alternative>?\" `failure`: \"What breaks if <assumption> stops holding?\" `extension`: \"A new <requirement> arrives. Where does it go, and what changes?\" `boundary`: \"What does this boundary protect the rest of the system from?\"\n- Mechanism. `flow`: \"Walk a request through <mechanism>. Where can it miss or fail?\" `invalidation`: \"What invalidates <cache or state>?\" `measurement`: \"Why did <the number> move, and what would move it back?\" `failure` fits here too.\n\nGive each question the one category it tests. Spread a quiz across categories rather than asking the same kind of question twice.\n\nMix three kinds:\n\n- **Single-select.** One correct option among 2 to 4. Lead the quiz with these. They frame a point quickly.\n- **Multi-select.** 3 or 4 options, any subset of them correct, for \"which of these hold or break\" cases. It passes only on the exact set.\n- **Free-form.** The author answers in their own words. Use it where the reasoning is the point.\n\nEnd the quiz with a multi-select or a free-form question that applies several points to one new case. That is where the pieces come together. Every wrong option is a plausible misreading of the change, never filler. Put options in random order and mark none of them.\n\nWrite the questions as a plan to `$(quizgate dir)/<branch>-<short-sha>.quiz.json`, in the shape of [`references/quiz-file.md`](references/quiz-file.md). Run `quizlint --plan` on it and fix what it reports before the first question.\n\nAsk one question at a time and wait for the answer. Use the harness's structured-question tool when it has one: `AskUserQuestion` in Claude Code, `AskUser` in Droid, `request_user_input` in Codex where it is enabled. Where the tool has no multi-select, or there is no tool, ask in chat with lettered options and say whether to pick one or several. Never answer for the author.\n\nAfter each select question, say which options were right and why in one or two sentences, so a wrong pick turns into a gotcha the author remembers. Grade each answer against its key points:\n\n- **Pass.** It covers the core point with sound reasoning, or picks the right options. Wording and depth beyond the point do not matter.\n- **Vague.** Ask one follow-up probe on the missing point.\n- **Wrong or still vague.** Explain the gap in two or three sentences. Then ask a new question that targets the same point from another angle.\n\nA probe or retry stays at the altitude of the question it follows. It tests the same key point in a new case, never a finer detail of how that point is implemented. At design altitude, \"the gate keys on diff content, not commits\" is the point. How a partial squash hashes is a mechanism detail, so it is out of bounds.\n\nDone when every question is passed, or a point fails three times. With no questions, done when the author confirms they read the walkthrough. On three failures, stop and record nothing. Tell the author which part to reread or go through with you. If the walkthrough was the problem, say the change may be too large or unclear, and suggest splitting it.\n\n### 5. Record\n\nAs the quiz runs, add each answer to its question in the quiz file as an attempt: the author's words or picks verbatim, your verdict, and what you told them. On a full pass, set `outcome` to `passed` and run `quizlint` on the file until it passes. Then run `quizgate record --by human`, or `--by agent` after agent mode.\n\nDone when `quizgate pending` prints nothing. Push only if you were asked to push.\n\n## Rules\n\n- A pass belongs to the examinee who earned it in this session. Run `quizgate record` only after that pass.\n- Push with the hook active. `--no-verify` is the human's call, never yours.\n- A blocked push routes back to step 1 for the commits the hook names. The ledger keys passes on `git patch-id`, so rewording, rebasing, or squashing quizzed commits needs no new quiz. New content does.\n- For a PR, draw the body from the walkthrough's Why, Scope, and Tradeoffs. The walkthrough and quiz file stay out of the tree.\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 1623,
+        "completion_tokens": 80,
+        "cached_tokens": 1600,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-10-18T20:30:21.489Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "I'll follow the skill: plan only, write it to `quiz.json`, stop. Starting with step 1 \u2014 scope.",
+      "reasoning_content": "The user asks me to do steps 1 and 2, skip the walkthrough, and write the plan of step 4 for a human examinee to the path given (quiz.json in this directory). Stop when `quizlint --plan` passes on it. Ask nothing.\n\nSo I need to:\n1. Run `quizgate pending` to see the scope.\n2. Diff with `git diff $(quizgate base) HEAD`.\n3. Read commit messages.\n4. Determine the target and altitude.\n5. Write a quiz plan to quiz.json in the current directory (the user said \"write the plan to quiz.json in this directory\" \u2014 this overrides the default `$(quizgate dir)/<branch>-<short-sha>.quiz.json` path).\n6. Run `quizlint --plan` on it and fix issues.\n\nLet me start. First, let me look at the scripts and check the current directory.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_a4hv9yuc",
+          "function_name": "bash",
+          "arguments": {
+            "command": "quizgate pending"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_rjt8in36",
+          "function_name": "bash",
+          "arguments": {
+            "command": "git log --oneline -20 && git branch --show-current"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_a4hv9yuc",
+            "content": "/bin/bash: line 1: quizgate: command not found\n\n\nCommand exited with code 127",
+            "extra": {
+              "is_error": true
+            }
+          },
+          {
+            "source_call_id": "call_rjt8in36",
+            "content": "53d6f31 docs: explain install, opt-in, and updates\n456b1e8 base\ndocs/install\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 4199,
+        "completion_tokens": 247,
+        "cached_tokens": 1664,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-10-18T20:30:37.696Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "The `quizgate` tool isn't on PATH. The skill says tools live in `scripts/` under the skill directory. Let me locate them.",
+      "reasoning_content": "The `quizgate` command is not on PATH. The skill says tools are in `scripts/` relative to the skill directory. Let me find them.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_1el5bj4t",
+          "function_name": "bash",
+          "arguments": {
+            "command": "ls /opt/multeval/skills/own-your-diff/scripts/ /opt/multeval/skills/own-your-diff/references/ 2>&1"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_1el5bj4t",
+            "content": "/opt/multeval/skills/own-your-diff/references/:\nagent-mode.md\nquiz-file.md\n\n/opt/multeval/skills/own-your-diff/scripts/:\nquizgate\nquizlint\nquizstats\nsnippet\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 4499,
+        "completion_tokens": 107,
+        "cached_tokens": 4096,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-10-18T20:30:48.428Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_i4umon57",
+          "function_name": "bash",
+          "arguments": {
+            "command": "/opt/multeval/skills/own-your-diff/scripts/quizgate pending"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_wbo4quuw",
+          "function_name": "bash",
+          "arguments": {
+            "command": "/opt/multeval/skills/own-your-diff/scripts/quizgate base"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_i4umon57",
+            "content": "/bin/bash: line 1: /opt/multeval/skills/own-your-diff/scripts/quizgate: Permission denied\n\n\nCommand exited with code 126",
+            "extra": {
+              "is_error": true
+            }
+          },
+          {
+            "source_call_id": "call_wbo4quuw",
+            "content": "/bin/bash: line 1: /opt/multeval/skills/own-your-diff/scripts/quizgate: Permission denied\n\n\nCommand exited with code 126",
+            "extra": {
+              "is_error": true
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 4658,
+        "completion_tokens": 50,
+        "cached_tokens": 4416,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-10-18T20:30:58.301Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "Not executable \u2014 I'll run them through bash.",
+      "reasoning_content": "The scripts aren't executable. I'll run them via bash, or maybe I can chmod them... Actually, modifying the skill directory might be inappropriate, but running via `bash` is safe. Let me check what they are first.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_sy1j6oqz",
+          "function_name": "bash",
+          "arguments": {
+            "command": "head -30 /opt/multeval/skills/own-your-diff/scripts/quizgate"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_zvb4svfp",
+          "function_name": "bash",
+          "arguments": {
+            "command": "bash /opt/multeval/skills/own-your-diff/scripts/quizgate pending"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_sy1j6oqz",
+            "content": "#!/usr/bin/env bash\n# Push gate for the own-your-diff skill. A commit may be pushed only after its\n# author passed a quiz on it. Passes are stored as `git patch-id --stable`\n# values, so rebases, rewords, and squashes of quizzed work stay quizzed.\nset -euo pipefail\n\nEMPTY_TREE=$(git hash-object -t tree /dev/null)\nZERO=0000000000000000000000000000000000000000\n\nusage() {\n  cat <<'EOF'\nusage: quizgate <command>\n  pending    unquizzed commits a push of HEAD would send, oldest first\n  base       commit the explainer diffs from (parent of the oldest pending commit)\n  dir        directory holding explainers, quiz transcripts, and the ledger\n  record --by human|agent\n             mark every pending commit, and their combined diff, as quizzed\n  open FILE  open an explainer in the browser\n  check      pre-push hook entry point; reads pushed refs on stdin\n  install    opt this repo in: write .own-your-diff and the pre-push hook\n  sync       copy quizgate to $QUIZGATE_BIN (default ~/.local/bin), and\n             install the hook in an opted-in repo that lacks it\nEOF\n}\n\nstate_dir() {\n  local d\n  d=\"$(git rev-parse --path-format=absolute --git-common-dir)/own-your-diff\"\n  mkdir -p \"$d\"\n  echo \"$d\"\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_zvb4svfp",
+            "content": "53d6f31 docs: explain install, opt-in, and updates\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 4780,
+        "completion_tokens": 112,
+        "cached_tokens": 4544,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-10-18T20:31:08.688Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "One pending commit: `53d6f31 docs: explain install, opt-in, and updates` on top of `456b1e8 base`. Let me get the base and diff it.",
+      "reasoning_content": "The pending commit is `53d6f31 docs: explain install, opt-in, and updates`. The base would be the parent of that commit (`456b1e8 base`). Let me get the diff and look at the commit in detail.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_o8577wzr",
+          "function_name": "bash",
+          "arguments": {
+            "command": "bash /opt/multeval/skills/own-your-diff/scripts/quizgate base && bash /opt/multeval/skills/own-your-diff/scripts/quizgate dir"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_n37bmslr",
+          "function_name": "bash",
+          "arguments": {
+            "command": "git diff $(bash /opt/multeval/skills/own-your-diff/scripts/quizgate base) HEAD --stat"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_o8577wzr",
+            "content": "456b1e87f4bd051409c4b547bb51767fbbb5ee6e\n/workspace/.git/own-your-diff\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_n37bmslr",
+            "content": " AGENTS.md |  9 +++++++++\n CLAUDE.md |  1 +\n README.md | 63 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n 3 files changed, 73 insertions(+)\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 5235,
+        "completion_tokens": 174,
+        "cached_tokens": 4672,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 8,
+      "timestamp": "2026-10-18T20:31:19.434Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_rqzwflxh",
+          "function_name": "bash",
+          "arguments": {
+            "command": "git diff 456b1e87f4bd051409c4b547bb51767fbbb5ee6e HEAD"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_b42f0flp",
+          "function_name": "bash",
+          "arguments": {
+            "command": "git log -1 --format='%B' 53d6f31"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_rqzwflxh",
+            "content": "diff --git a/AGENTS.md b/AGENTS.md\nnew file mode 100644\nindex 0000000..61426b7\n--- /dev/null\n+++ b/AGENTS.md\n@@ -0,0 +1,9 @@\n+# AGENTS.md\n+\n+One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.claude-plugin/` and `hooks/hooks.json`, so there is one copy of each, not one per harness.\n+\n+- Run `scripts/selftest` after changing anything under `skills/` or `hooks/`. It drives the gate through real `git push` and feeds the guard each harness's tool name.\n+- Run `claude plugin validate .` after changing a manifest.\n+- Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up. Claude Code and Codex cache by it.\n+- Hook scripts find the plugin root with `dirname \"$0\"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder inside hook processes, so they never read it from the environment.\n+- Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks`.\ndiff --git a/CLAUDE.md b/CLAUDE.md\nnew file mode 120000\nindex 0000000..47dc3e3\n--- /dev/null\n+++ b/CLAUDE.md\n@@ -0,0 +1 @@\n+AGENTS.md\n\\ No newline at end of file\ndiff --git a/README.md b/README.md\nnew file mode 100644\nindex 0000000..9fe032f\n--- /dev/null\n+++ b/README.md\n@@ -0,0 +1,63 @@\n+# own-your-diff\n+\n+Push only what you can explain. Before a push, your agent writes an HTML walkthrough of the unpushed change and quizzes you on it. A git pre-push hook blocks commits that have no passed quiz.\n+\n+One plugin tree serves Claude Code, Factory Droid, and Codex. Each harness gets:\n+\n+- The `own-your-diff` skill: walkthrough, quiz, and record steps, plus the `quizgate` and `snippet` tools.\n+- A session-start hook. It keeps `quizgate` current in `~/.local/bin` and installs the git hook in any clone of an opted-in repo.\n+- A shell guard. It denies an agent's `git push --no-verify` and any `core.hooksPath` change. Skipping the gate is the human's call.\n+\n+## Install\n+\n+The repo is private, so git needs working GitHub credentials first (`gh auth login && gh auth setup-git`, or an SSH key in your agent).\n+\n+```bash\n+git clone https://github.com/krimvp/own-your-diff && own-your-diff/install.sh            # every harness on PATH\n+own-your-diff/install.sh codex                                                          # or name them\n+```\n+\n+`install.sh` runs these. You can also run them by hand:\n+\n+| Harness | Commands |\n+|---|---|\n+| Claude Code | `claude plugin marketplace add krimvp/own-your-diff`<br>`claude plugin install own-your-diff@own-your-diff` |\n+| Factory Droid | `droid plugin marketplace add krimvp/own-your-diff`<br>`droid plugin install own-your-diff@own-your-diff --scope user` |\n+| Codex | `codex plugin marketplace add krimvp/own-your-diff`<br>`codex plugin add own-your-diff@own-your-diff`<br>`scripts/codex-trust-hooks` |\n+\n+Codex skips plugin hooks until you trust them. `scripts/codex-trust-hooks` writes the same trust entries the Codex TUI writes when you approve them. Rerun it after an update that changes `hooks/hooks.json`.\n+\n+## Opt a repo in\n+\n+```bash\n+quizgate install    # writes .own-your-diff and .git/hooks/pre-push\n+git add .own-your-diff && git commit -m \"chore: require own-your-diff before push\"\n+```\n+\n+The committed `.own-your-diff` file is the opt-in. In a fresh clone, the plugin's session-start hook sees it and installs the git hook. `quizgate install` leaves an existing pre-push hook alone and prints the line to add to it.\n+\n+To have Claude Code and Droid offer the plugin to everyone who opens the repo, commit this as `.claude/settings.json` and `.factory/settings.json`:\n+\n+```json\n+{\n+  \"extraKnownMarketplaces\": {\n+    \"own-your-diff\": { \"source\": { \"source\": \"github\", \"repo\": \"krimvp/own-your-diff\" } }\n+  },\n+  \"enabledPlugins\": { \"own-your-diff@own-your-diff\": true }\n+}\n+```\n+\n+## Without a plugin\n+\n+Any agent that reads skills from `~/.agents/skills` can use the skill directly:\n+\n+```bash\n+ln -s \"$PWD/own-your-diff/skills/own-your-diff\" ~/.agents/skills/own-your-diff\n+own-your-diff/skills/own-your-diff/scripts/quizgate sync\n+```\n+\n+The git hook does not depend on any harness. It runs `quizgate` from `PATH` or `~/.local/bin`, and blocks with an install hint when it finds neither.\n+\n+## Updating\n+\n+Claude Code and Codex cache the plugin by the `version` in `.claude-plugin/plugin.json`. Bump it with every change you want installs to pick up. Then run `claude plugin update own-your-diff@own-your-diff`, `droid plugin update own-your-diff@own-your-diff --scope user`, or `codex plugin marketplace upgrade own-your-diff && codex plugin add own-your-diff@own-your-diff`.\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_b42f0flp",
+            "content": "docs: explain install, opt-in, and updates\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB\n\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 5494,
+        "completion_tokens": 65,
+        "cached_tokens": 5120,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 9,
+      "timestamp": "2026-10-18T20:31:47.720Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "The diff is docs-only: a new `AGENTS.md` (with contributor rules), a `CLAUDE.md` symlink to it, and a new `README.md` documenting install/opt-in/update. Let me examine the repo to see what behavior these docs describe, so I can pick the right altitude.",
+      "reasoning_content": "The diff is docs-only: AGENTS.md (new), CLAUDE.md (symlink to AGENTS.md), README.md (new). The commit message: \"docs: explain install, opt-in, and updates\".\n\nNow, per the skill's step 2 (Pick the altitude):\n\n- **Docs.** The change only documents or explains behavior the code already has. Treat it as trivial: the author owned that design when it was built. A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\n\nSo I need to determine: does this change only document existing behavior, or does it set new rules/policies?\n\nLooking at AGENTS.md:\n- \"One plugin tree for Claude Code, Factory Droid, and Codex...\" \u2014 this documents existing design.\n- But then there are rules: \"Run `scripts/selftest` after changing anything under `skills/` or `hooks/`\", \"Run `claude plugin validate .` after changing a manifest\", \"Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up\", \"Hook scripts find the plugin root with `dirname \"$0\"`... so they never read it from the environment\", \"Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks`.\"\n\nThese are rules in AGENTS.md \u2014 they set new contracts/policies for contributors. Per the skill: \"A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.\"\n\nWait \u2014 but I need to check whether these rules document behavior the code already has, or set new rules. Let me examine the repo to see what exists. The diff shows the base commit is \"base\" \u2014 let me look at the whole tree to understand the plugin.\n\nLet me check the existing tree structure to understand what behavior exists.\n\nRules in AGENTS.md:\n1. Run `scripts/selftest` after changing anything under `skills/` or `hooks/` \u2014 this is a contributor step. Per skill: \"Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\" Hmm \u2014 so checks to run are incidental.\n2. Run `claude plugin validate .` after changing a manifest \u2014 also a step, incidental.\n3. Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up \u2014 a version bump step, incidental.\n4. Hook scripts find the plugin root with `dirname \"$0\"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder... so they never read it from the environment \u2014 this is a design rule / contract. It's a policy about how hook scripts must be written. This could be the target at design altitude. Actually, this is stating behavior the code already has... but it's also stated as a rule (\"they never read it from the environment\" \u2014 a constraint on the code). Hmm.\n5. Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks` \u2014 this is a rule about what to say in changes... a policy for future changes.\n\nHmm. Let me think about what the \"target\" is. The commit says \"docs: explain install, opt-in, and updates\". The README documents install, opt-in, and update flows \u2014 behavior the code already has. AGENTS.md sets contributor rules.\n\nPer the skill's Docs altitude:\n- \"The change only documents or explains behavior the code already has. Treat it as trivial... A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\"\n\nSo the rules in AGENTS.md that are new policies (not steps) would be the target at design altitude. Which of the AGENTS.md bullets are new rules vs. steps?\n\n1. \"Run `scripts/selftest` after changing anything under `skills/` or `hooks/`\" \u2014 a check to run \u2192 incidental (per skill explicitly).\n2. \"Run `claude plugin validate .` after changing a manifest\" \u2014 a check to run \u2192 incidental.\n3. \"Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up. Claude Code and Codex cache by it.\" \u2014 a version to bump \u2192 incidental per skill (\"a version to bump\").\n4. \"Hook scripts find the plugin root with `dirname \"$0\"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder inside hook processes, so they never read it from the environment.\" \u2014 this is a design rule: a contract about how hook scripts locate the plugin root. This is a policy that new hook code must follow. That makes it the target, at design altitude? Or is it just documenting behavior the code already has?\n\nLet me look at the actual repo to understand. Let me check the hooks and scripts to see if this behavior exists.\n\n5. \"Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks`.\" \u2014 the first half is a fact about behavior; the second half (\"Say in the change that...\") is a new policy/rule for making changes. Hmm, it's a communication rule. Is that a \"rule that makes the target at design altitude\"? It's a rule in AGENTS.md. It sets a contract for how changes to hooks/hooks.json must be communicated.\n\nLet me explore the repo structure to understand what exists and whether these docs reflect existing behavior.\n\nAlso, I should check the task that produced this change if available \u2014 \"Read the commit messages, and the task that produced the change if this session or its transcript has it.\" The commit message has a Claude session link, but I don't have access to that transcript. Let me check the working directory for any task files. Actually the current session \u2014 the user just asked me to plan the quiz. The commit was created in a previous Claude session (link in the commit message). I can't access that transcript. Let me look at the repo.\n\nLet me explore the repo tree.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_qhn34qfq",
+          "function_name": "bash",
+          "arguments": {
+            "command": "git ls-tree -r HEAD --name-only && echo --- && git log --oneline --all"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_mnt044jc",
+          "function_name": "bash",
+          "arguments": {
+            "command": "ls /workspace"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_qhn34qfq",
+            "content": ".claude-plugin/marketplace.json\n.claude-plugin/plugin.json\nAGENTS.md\nCLAUDE.md\nREADME.md\nhooks/guard\nhooks/hooks.json\nhooks/session-start\ninstall.sh\nscripts/codex-trust-hooks\nscripts/selftest\nskills/own-your-diff/SKILL.md\nskills/own-your-diff/assets/explainer.html\nskills/own-your-diff/references/agent-mode.md\nskills/own-your-diff/scripts/quizgate\nskills/own-your-diff/scripts/snippet\n---\n456b1e8 base\n53d6f31 docs: explain install, opt-in, and updates\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_mnt044jc",
+            "content": "AGENTS.md\nCLAUDE.md\nREADME.md\nhooks\ninstall.sh\nscripts\nskills\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 6943,
+        "completion_tokens": 1485,
+        "cached_tokens": 5376,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 10,
+      "timestamp": "2026-10-18T20:32:11.479Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "The repo is the own-your-diff plugin itself; the pending commit adds its docs. Now I need to check which of the AGENTS.md rules describe existing behavior vs. set new contracts. Let me read the code the docs reference.",
+      "reasoning_content": "The repo is the own-your-diff plugin itself. The base commit contains the plugin code (hooks, scripts, skills, install.sh, manifests). The pending commit adds the docs.\n\nNow, the key question for altitude: does this change only document existing behavior (trivial), or does it set new rules/contracts/policies (design altitude for those rules)?\n\nPer the skill:\n- \"Docs. The change only documents or explains behavior the code already has. Treat it as trivial... A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\"\n\nLet me read the existing files to check which AGENTS.md rules describe existing behavior vs. set new policy.\n\nAGENTS.md rules:\n1. \"Run `scripts/selftest` after changing anything under `skills/` or `hooks/`\" \u2014 check to run \u2192 incidental.\n2. \"Run `claude plugin validate .` after changing a manifest\" \u2014 check to run \u2192 incidental.\n3. \"Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up. Claude Code and Codex cache by it.\" \u2014 version to bump \u2192 incidental.\n4. \"Hook scripts find the plugin root with `dirname \"$0\"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder inside hook processes, so they never read it from the environment.\" \u2014 this is a design contract for hook scripts. It documents existing behavior (hook scripts use dirname $0) but stated as a rule (\"they never read it from the environment\"). This is a design rule \u2014 a constraint that future hook code must follow. Per the skill, \"A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.\"\n5. \"Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks`.\" \u2014 first half is a fact about existing behavior; second half is a new communication policy for changes.\n\nSo the target could be: the new contributor contracts in AGENTS.md \u2014 specifically the plugin-root discovery contract (dirname $0, never CLAUDE_PLUGIN_ROOT) and the Codex trust-hash rule \u2014 at design altitude. And the rest (README install/opt-in/update docs) documents existing behavior \u2192 trivial/incidental.\n\nHmm, but wait. Let me re-read: \"Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\" So rules 1, 2, 3 are incidental even though they're stated as rules. Rule 4 is a design rule about how hook scripts locate the plugin root \u2014 that's a rule about the code's structure, a contract. Rule 5's \"Say in the change...\" part is a policy about communication... it's arguably a rule that sets a contract for how changes are made. Hmm, is \"say in the change\" a step a contributor runs? It's more of a communication policy. But it's tied to the existing behavior (Codex trust hash).\n\nLet me look at the actual hook scripts to see whether the dirname $0 rule reflects existing behavior and whether it was a deliberate design decision. Let me read the hooks and scripts.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_c3kaatkk",
+          "function_name": "read",
+          "arguments": {
+            "path": "/workspace/hooks/session-start"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        },
+        {
+          "tool_call_id": "call_atvewhj0",
+          "function_name": "read",
+          "arguments": {
+            "path": "/workspace/hooks/hooks.json"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_c3kaatkk",
+            "content": "#!/usr/bin/env bash\n# Runs at session start in every harness. Keeps quizgate current on PATH and\n# installs the pre-push hook in opted-in clones. Never fails the session.\ngate=\"$(cd \"$(dirname \"$0\")/..\" && pwd)/skills/own-your-diff/scripts/quizgate\"\n\"$gate\" sync || true\ntop=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0\n[[ -e \"$top/.own-your-diff\" ]] || exit 0\necho \"This repo is opted into own-your-diff: a push of commits without a passed quiz is blocked. Run the own-your-diff skill before any push or PR.\"\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_atvewhj0",
+            "content": "{\n  \"hooks\": {\n    \"SessionStart\": [\n      {\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"\\\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\\\"\", \"timeout\": 10 }\n        ]\n      }\n    ],\n    \"PreToolUse\": [\n      {\n        \"matcher\": \"Bash|Execute\",\n        \"hooks\": [\n          { \"type\": \"command\", \"command\": \"\\\"${CLAUDE_PLUGIN_ROOT}/hooks/guard\\\"\", \"timeout\": 10 }\n        ]\n      }\n    ]\n  }\n}\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 8592,
+        "completion_tokens": 797,
+        "cached_tokens": 6848,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 11,
+      "timestamp": "2026-10-18T20:32:41.612Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_pvt3tgy3",
+          "function_name": "read",
+          "arguments": {
+            "path": "/workspace/hooks/guard"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        },
+        {
+          "tool_call_id": "call_lh21revx",
+          "function_name": "read",
+          "arguments": {
+            "path": "/workspace/scripts/codex-trust-hooks"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_pvt3tgy3",
+            "content": "#!/usr/bin/env bash\n# PreToolUse guard for shell tools. Bypassing the pre-push hook is the human's\n# call, so an agent's command that skips or disables it is denied.\ninput=$(cat)\ncmd=$(grep -o '\"command\"[[:space:]]*:[[:space:]]*\"\\([^\"\\\\]\\|\\\\.\\)*\"' <<<\"$input\" | head -n1)\n\nreason=\"\"\nif [[ \"$cmd\" =~ git && \"$cmd\" =~ push && \"$cmd\" =~ --no-verify ]]; then\n  reason=\"git push --no-verify skips the own-your-diff gate. Run the own-your-diff skill and pass the quiz instead. Only the human may push with --no-verify.\"\nelif [[ \"$cmd\" =~ core\\.hooks[Pp]ath && ! \"$cmd\" =~ --get ]]; then\n  reason=\"Changing core.hooksPath can disable the own-your-diff pre-push hook. Ask the human to make that change.\"\nfi\n\n[[ -z \"$reason\" ]] && exit 0\nprintf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"%s\"}}\\n' \"$reason\"\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_lh21revx",
+            "content": "#!/usr/bin/env python3\n\"\"\"Trust the own-your-diff plugin hooks in Codex.\n\nCodex skips plugin hooks until their definition hash is trusted. This writes\nthe same hooks.state entries the Codex TUI writes when you approve them.\n\"\"\"\nimport json\nimport os\nimport subprocess\nimport sys\n\nPLUGIN = \"own-your-diff@own-your-diff\"\n\nproc = subprocess.Popen(\n    [\"codex\", \"app-server\"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True\n)\n\n\ndef call(msg_id, method, params=None):\n    msg = {\"jsonrpc\": \"2.0\", \"method\": method}\n    if params is not None:\n        msg[\"params\"] = params\n    if msg_id is not None:\n        msg[\"id\"] = msg_id\n    proc.stdin.write(json.dumps(msg) + \"\\n\")\n    proc.stdin.flush()\n    if msg_id is None:\n        return None\n    for line in proc.stdout:\n        reply = json.loads(line)\n        if reply.get(\"id\") == msg_id:\n            if \"error\" in reply:\n                sys.exit(f\"codex app-server {method}: {reply['error']}\")\n            return reply[\"result\"]\n    sys.exit(f\"codex app-server closed before answering {method}\")\n\n\ntry:\n    call(1, \"initialize\", {\"clientInfo\": {\"name\": \"own-your-diff\", \"version\": \"0\"}})\n    call(None, \"initialized\")\n    listed = call(2, \"hooks/list\", {\"cwds\": [os.getcwd()]})\n    hooks = [h for entry in listed[\"data\"] for h in entry[\"hooks\"] if h.get(\"pluginId\") == PLUGIN]\n    if not hooks:\n        sys.exit(f\"no hooks found for {PLUGIN}; is the plugin installed?\")\n    pending = {h[\"key\"]: {\"trusted_hash\": h[\"currentHash\"]} for h in hooks if h[\"trustStatus\"] != \"trusted\"}\n    if pending:\n        call(3, \"config/batchWrite\", {\n            \"edits\": [{\"keyPath\": \"hooks.state\", \"value\": pending, \"mergeStrategy\": \"upsert\"}],\n            \"reloadUserConfig\": True,\n        })\n    print(f\"trusted {len(pending)} of {len(hooks)} {PLUGIN} hook(s) in Codex\")\nfinally:\n    proc.stdin.close()\n    proc.terminate()\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 9654,
+        "completion_tokens": 30,
+        "cached_tokens": 8512,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 12,
+      "timestamp": "2026-10-18T20:33:08.866Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "Now let me look at the quizgate script more thoroughly \u2014 especially the `sync` and `install` commands referenced by the docs \u2014 and the install.sh and selftest, so I can confirm the README/AGENTS.md statements describe existing behavior.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_djrqamao",
+          "function_name": "read",
+          "arguments": {
+            "path": "/workspace/install.sh"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        },
+        {
+          "tool_call_id": "call_hqe3ks5s",
+          "function_name": "bash",
+          "arguments": {
+            "command": "sed -n 30,200p /workspace/skills/own-your-diff/scripts/quizgate"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_djrqamao",
+            "content": "#!/usr/bin/env bash\n# Install the own-your-diff plugin into each harness named, or each one on PATH.\n# OWN_YOUR_DIFF_SOURCE overrides the marketplace (a local clone path works).\nset -euo pipefail\n\nHERE=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\nSOURCE=${OWN_YOUR_DIFF_SOURCE:-krimvp/own-your-diff}\nID=own-your-diff@own-your-diff\n\nclaude_install() {\n  claude plugin marketplace add \"$SOURCE\" || claude plugin marketplace update own-your-diff\n  claude plugin install \"$ID\" --scope user\n}\n\ndroid_install() {\n  droid plugin marketplace add \"$SOURCE\" || droid plugin marketplace update own-your-diff\n  droid plugin install \"$ID\" --scope user\n}\n\ncodex_install() {\n  codex plugin marketplace add \"$SOURCE\" || codex plugin marketplace upgrade own-your-diff\n  codex plugin add \"$ID\"\n  \"$HERE/scripts/codex-trust-hooks\"\n}\n\nharnesses=(\"$@\")\nif ((${#harnesses[@]} == 0)); then\n  for h in claude droid codex; do command -v \"$h\" >/dev/null && harnesses+=(\"$h\"); done\nfi\nfor h in \"${harnesses[@]}\"; do\n  case \"$h\" in\n    claude | droid | codex) echo \"== $h\"; \"${h}_install\" ;;\n    *) echo \"unknown harness: $h (claude, droid, codex)\" >&2; exit 2 ;;\n  esac\ndone\n\"$HERE/skills/own-your-diff/scripts/quizgate\" sync\necho \"quizgate is in ${QUIZGATE_BIN:-$HOME/.local/bin}. Opt a repo in with: quizgate install\"\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_hqe3ks5s",
+            "content": "  echo \"$d\"\n}\n\nledger() { local f; f=\"$(state_dir)/ledger\"; touch \"$f\"; echo \"$f\"; }\n\ncommit_pid() { git show --no-color --format= \"$1\" | git patch-id --stable | cut -d' ' -f1; }\n\nrange_pid() { git diff --no-color \"$1\" \"$2\" | git patch-id --stable | cut -d' ' -f1; }\n\nquizzed() { grep -q \"^$1\"$'\\t' \"$(ledger)\"; }\n\n# Commits reachable from $1 that no remote has, oldest first. A commit with an\n# empty diff has no patch-id and needs no quiz.\nunpushed() { git rev-list --reverse --no-merges \"$1\" --not --remotes; }\n\nunquizzed() {\n  local c pid\n  for c in $(unpushed \"$1\"); do\n    pid=$(commit_pid \"$c\")\n    [[ -z \"$pid\" ]] && continue\n    quizzed \"$pid\" || echo \"$c\"\n  done\n}\n\ncmd_pending() { unquizzed HEAD | xargs -r git log --no-walk=unsorted --format='%h %s'; }\n\ncmd_base() {\n  local pending oldest\n  pending=$(unquizzed HEAD)\n  oldest=${pending%%$'\\n'*}\n  [[ -z \"$oldest\" ]] && { echo \"nothing pending\" >&2; exit 1; }\n  git rev-parse --verify -q \"$oldest^\" || echo \"$EMPTY_TREE\"\n}\n\ncmd_record() {\n  local by commits c pid base now\n  [[ \"${1:-}\" == --by && \"${2:-}\" =~ ^(human|agent)$ ]] || { echo \"usage: quizgate record --by human|agent\" >&2; exit 2; }\n  by=$2\n  commits=$(unquizzed HEAD)\n  [[ -z \"$commits\" ]] && { echo \"nothing pending\"; return; }\n  base=$(cmd_base)\n  now=$(date -u +%FT%TZ)\n  {\n    for c in $commits; do\n      printf '%s\\t%s\\t%s\\tcommit\\t%s\\n' \"$(commit_pid \"$c\")\" \"$(git rev-parse --short \"$c\")\" \"$now\" \"$by\"\n    done\n    pid=$(range_pid \"$base\" HEAD)\n    [[ -n \"$pid\" ]] && printf '%s\\t%s\\t%s\\trange\\t%s\\n' \"$pid\" \"$(git rev-parse --short HEAD)\" \"$now\" \"$by\"\n  } >>\"$(ledger)\"\n  echo \"recorded $(wc -w <<<\"$commits\") commit(s) as quizzed by $by\"\n}\n\ncmd_open() {\n  local f=${1:?usage: quizgate open FILE}\n  if command -v wslview >/dev/null; then wslview \"$f\"\n  elif command -v explorer.exe >/dev/null; then explorer.exe \"$(wslpath -w \"$f\")\" || true\n  elif command -v xdg-open >/dev/null; then xdg-open \"$f\"\n  elif command -v open >/dev/null; then open \"$f\"\n  else echo \"open $f in a browser\"\n  fi\n}\n\ncmd_check() {\n  local local_ref local_sha remote_ref remote_sha missing=\"\"\n  while read -r local_ref local_sha remote_ref remote_sha; do\n    [[ \"$local_sha\" == \"$ZERO\" ]] && continue\n    missing+=$(unquizzed \"$local_sha\")$'\\n'\n  done\n  missing=$(sort -u <<<\"$missing\" | sed '/^$/d')\n  [[ -z \"$missing\" ]] && exit 0\n  {\n    echo \"own-your-diff: push blocked. These commits have no passed quiz:\"\n    xargs git log --no-walk --format='  %h %s' <<<\"$missing\"\n    echo \"Ask your agent to run the own-your-diff skill, read the explainer, and pass the quiz.\"\n  } >&2\n  exit 1\n}\n\nHOOK_TAG=\"# own-your-diff pre-push hook\"\n\nhook_path() { echo \"$(git rev-parse --path-format=absolute --git-path hooks)/pre-push\"; }\n\nwrite_hook() {\n  local hook\n  hook=$(hook_path)\n  grep -qF \"$HOOK_TAG\" \"$hook\" 2>/dev/null && return\n  if [[ -e \"$hook\" ]]; then\n    echo \"own-your-diff: $hook already exists. Add this line to it: quizgate check || exit 1\" >&2\n    return 1\n  fi\n  mkdir -p \"$(dirname \"$hook\")\"\n  cat >\"$hook\" <<'HOOK'\n#!/bin/sh\n# own-your-diff pre-push hook\ngate=$(command -v quizgate || echo \"$HOME/.local/bin/quizgate\")\n[ -x \"$gate\" ] || { echo \"own-your-diff: push blocked. quizgate is not installed, see https://github.com/krimvp/own-your-diff\" >&2; exit 1; }\nexec \"$gate\" check\nHOOK\n  chmod +x \"$hook\"\n  echo \"installed $hook\"\n}\n\ncmd_install() {\n  local marker\n  marker=\"$(git rev-parse --show-toplevel)/.own-your-diff\"\n  [[ -e \"$marker\" ]] || { echo \"Pushes from this repo need a passed own-your-diff quiz.\" >\"$marker\"; echo \"wrote $marker, commit it\"; }\n  write_hook\n}\n\ncmd_sync() {\n  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top\n  mkdir -p \"$bin\"\n  cmp -s \"$0\" \"$bin/quizgate\" || install -m 755 \"$0\" \"$bin/quizgate\"\n  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0\n  [[ -e \"$top/.own-your-diff\" ]] && write_hook >/dev/null || true\n}\n\ncase \"${1:-}\" in\n  pending) cmd_pending ;;\n  base) cmd_base ;;\n  dir) state_dir ;;\n  record) shift; cmd_record \"$@\" ;;\n  open) shift; cmd_open \"$@\" ;;\n  check) cmd_check ;;\n  install) cmd_install ;;\n  sync) cmd_sync ;;\n  *) usage; exit 2 ;;\nesac\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 10433,
+        "completion_tokens": 92,
+        "cached_tokens": 9536,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 13,
+      "timestamp": "2026-10-18T20:33:55.467Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "Now let me check the selftest and the plugin.json/marketplace.json to fully understand what the docs reference.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_nxvfnv1h",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cat /workspace/scripts/selftest /workspace/.claude-plugin/plugin.json /workspace/.claude-plugin/marketplace.json"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_nxvfnv1h",
+            "content": "#!/usr/bin/env bash\n# Behavior tests for the plugin: the push gate through real `git push` into a\n# bare remote, the snippet renderer, and the harness hooks.\nset -euo pipefail\n\nROOT=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\nT=\"$(mktemp -d)\"\ntrap 'rm -rf \"$T\"' EXIT\npass=0 fail=0\n\ncheck() { # description expected-exit command...\n  local want=$1 desc=$2; shift 2\n  local got=0\n  \"$@\" >\"$T/out\" 2>&1 || got=$?\n  if [[ ( $want == ok && $got == 0 ) || ( $want == blocked && $got != 0 ) ]]; then\n    pass=$((pass + 1)); echo \"ok    $desc\"\n  else\n    fail=$((fail + 1)); echo \"FAIL  $desc (exit $got)\"; sed 's/^/      /' \"$T/out\"\n  fi\n}\n\nexport HOME=\"$T/home\" QUIZGATE_BIN=\"$T/home/.local/bin\"\nPATH=\"$QUIZGATE_BIN:$(tr : '\\n' <<<\"$PATH\" | while read -r d; do [[ -x \"$d/quizgate\" ]] || printf '%s:' \"$d\"; done)\"\nexport GIT_CONFIG_GLOBAL=\"$T/gitconfig\" GIT_CONFIG_NOSYSTEM=1\ngit config --global user.email t@example.com\ngit config --global user.name t\ngit config --global init.defaultBranch main\ngate=\"$ROOT/skills/own-your-diff/scripts/quizgate\"\nsnip=\"$ROOT/skills/own-your-diff/scripts/snippet\"\n\ngit init -q --bare \"$T/remote.git\"\ngit init -q \"$T/work\"\ncd \"$T/work\"\ngit remote add origin \"$T/remote.git\"\ncommit() { echo \"$2\" >\"$1\"; git add -A; git commit -qm \"$3\"; }\n\ncommit a.txt one \"root commit\"\ncheck ok \"push with no hook installed\" git push -q -u origin main\n\"$gate\" install >/dev/null\ncheck ok \"install writes the opt-in marker\" test -f .own-your-diff\ncheck ok \"install writes the pre-push hook\" test -x \"$(git rev-parse --git-path hooks)/pre-push\"\ngit add .own-your-diff && git commit -qm \"opt in\"\ncheck blocked \"push is blocked while quizgate is not installed\" git push -q\ncp \"$T/out\" \"$T/out.missing\"\ncheck ok \"block message says how to install\" grep -q \"quizgate is not installed\" \"$T/out.missing\"\n\"$gate\" sync\ncheck ok \"sync puts quizgate in QUIZGATE_BIN\" cmp -s \"$gate\" \"$QUIZGATE_BIN/quizgate\"\n\"$gate\" record --by human >/dev/null\ncheck ok \"quizzed opt-in commit pushes\" git push -q\n\ncommit a.txt two \"change a\"\ncheck blocked \"unquizzed commit is blocked\" git push -q\ncp \"$T/out\" \"$T/out.blocked\"\ncheck ok \"block message names the commit\" grep -q \"change a\" \"$T/out.blocked\"\n\ncheck ok \"pending lists the commit\" bash -c \"$gate pending | grep -q 'change a'\"\ncheck ok \"base is the last pushed commit\" bash -c \"[[ \\$($gate base) == \\$(git rev-parse origin/main) ]]\"\n\"$gate\" record --by human >/dev/null\ncheck ok \"quizzed commit pushes\" git push -q\ncheck ok \"nothing pending after push\" bash -c \"[[ -z \\$($gate pending) ]]\"\n\ngit switch -qc feature\ncommit b.txt b1 \"feature part 1\"\ncommit b.txt b2 \"feature part 2\"\ncheck ok \"base with several pending commits is the branch point\" bash -c \"[[ \\$($gate base) == \\$(git rev-parse main) ]]\"\n\"$gate\" record --by human >/dev/null\ngit commit -q --amend -m \"feature part 2, reworded\"\ncheck ok \"reworded quizzed commit still pushes\" git push -q --dry-run -u origin feature\n\ngit reset -q --soft main\ngit commit -qm \"feature squashed\"\ncheck ok \"squash of quizzed commits still pushes\" git push -q --dry-run -u origin feature\n\ncommit b.txt b3 \"sneaky edit\"\ncheck blocked \"commit added after the quiz is blocked\" git push -q --dry-run -u origin feature\ncheck ok \"pending holds only the new commit\" bash -c \"[[ \\$($gate pending | wc -l) == 1 ]]\"\n\"$gate\" record --by human >/dev/null\n\ngit switch -q main\ncommit c.txt c1 \"main moves on\"\n\"$gate\" record --by human >/dev/null\ngit push -q\ngit switch -q feature\ngit rebase -q main\ncheck ok \"rebased quizzed commits still push\" git push -q -u origin feature\n\ngit commit -q --allow-empty -m \"empty commit\"\ncheck ok \"empty commit needs no quiz\" git push -q\n\ngit branch -q doomed && git push -q origin doomed 2>/dev/null || true\ncheck ok \"deleting a remote branch is never blocked\" git push -q origin --delete doomed\n\ncheck blocked \"record names who passed\" \"$gate\" record\ncheck ok \"ledger keeps who passed\" grep -q $'\\thuman$' \"$(git rev-parse --git-common-dir)/own-your-diff/ledger\"\n\nseq 1 20 >s.txt\ngit add s.txt && git commit -qm \"twenty lines\" && \"$gate\" record --by agent >/dev/null && git push -q\nawk 'NR == 1 { $0 = \"<b>&\" } NR == 20 { $0 = \"last\" } 1' s.txt >s.new && mv s.new s.txt\ngit commit -qam \"two hunks\"\ncheck ok \"diff escapes html\" bash -c \"$snip diff s.txt | grep -q '&lt;b&gt;&amp;'\"\ncheck ok \"diff shows only the hunks named\" bash -c \"[[ \\$($snip diff s.txt 2 | grep -o 'class=\\\"l h\\\"' | wc -l) == 1 ]] && ! $snip diff s.txt 2 | grep -q 'lt;b'\"\nprintf '<p>\\n  <!-- snippet diff s.txt -->\\n</p>\\n' >page.html\n\"$snip\" expand page.html && cp page.html page.first && \"$snip\" expand page.html\ncheck ok \"expand fills the directive\" grep -q '<!-- snippet diff s.txt --><figure class=\"ed\">' page.html\ncheck ok \"expand is idempotent\" cmp -s page.html page.first\n\ngit clone -q \"$T/remote.git\" \"$T/clone\"\ncheck ok \"a fresh clone has no hook\" bash -c \"! test -e $T/clone/.git/hooks/pre-push\"\n(cd \"$T/clone\" && \"$ROOT/hooks/session-start\" >\"$T/ctx\")\ncheck ok \"session start installs the hook in an opted-in clone\" test -x \"$T/clone/.git/hooks/pre-push\"\ncheck ok \"session start tells the agent the repo is opted in\" grep -q \"own-your-diff skill\" \"$T/ctx\"\n(cd \"$T/clone\" && commit z.txt z \"clone change\")\ncheck blocked \"the clone blocks an unquizzed push\" git -C \"$T/clone\" push -q\n\ngit init -q \"$T/foreign\"\nprintf '#!/bin/sh\\nexit 0\\n' >\"$T/foreign/.git/hooks/pre-push\"\ncheck blocked \"install leaves a foreign pre-push hook alone\" bash -c \"cd $T/foreign && $gate install\"\ncheck ok \"the foreign hook is unchanged\" bash -c \"! grep -q own-your-diff $T/foreign/.git/hooks/pre-push\"\ngit init -q \"$T/plain\"\ncheck ok \"session start says nothing outside opted-in repos\" bash -c \"cd $T/plain && [[ -z \\$($ROOT/hooks/session-start) ]]\"\n\nguard() { printf '{\"tool_name\":\"%s\",\"tool_input\":{\"command\":\"%s\"}}' \"$1\" \"$2\" | \"$ROOT/hooks/guard\"; }\ndenies() { guard \"$1\" \"$2\" | grep -q '\"permissionDecision\":\"deny\"'; }\ncheck ok \"guard denies git push --no-verify from Bash\" denies Bash \"git push --no-verify origin main\"\ncheck ok \"guard denies git push --no-verify from Execute\" denies Execute \"cd x && git push -u origin f --no-verify\"\ncheck ok \"guard denies a core.hooksPath override\" denies Bash \"git -c core.hooksPath=/dev/null push\"\ncheck ok \"guard allows a plain push\" bash -c \"[[ -z \\$(guard Bash 'git push -u origin main') ]]\"\ncheck ok \"guard allows commit --no-verify\" bash -c \"[[ -z \\$(guard Bash 'git commit --no-verify -m x') ]]\"\ncheck ok \"guard allows reading core.hooksPath\" bash -c \"[[ -z \\$(guard Bash 'git config --get core.hooksPath') ]]\"\n\necho \"$pass passed, $fail failed\"\n[[ $fail == 0 ]]\n{\n  \"name\": \"own-your-diff\",\n  \"version\": \"0.1.0\",\n  \"description\": \"Explain the unpushed change in an HTML walkthrough, quiz the author, and block pushes of unquizzed commits.\",\n  \"author\": { \"name\": \"krimvp\" },\n  \"repository\": \"https://github.com/krimvp/own-your-diff\"\n}\n{\n  \"name\": \"own-your-diff\",\n  \"description\": \"The own-your-diff plugin for Claude Code, Factory Droid, and Codex.\",\n  \"owner\": { \"name\": \"krimvp\" },\n  \"plugins\": [\n    {\n      \"name\": \"own-your-diff\",\n      \"source\": \"./\",\n      \"description\": \"Explain the unpushed change, quiz the author, and block pushes of unquizzed commits.\"\n    }\n  ]\n}\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 12254,
+        "completion_tokens": 57,
+        "cached_tokens": 10368,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 14,
+      "timestamp": "2026-10-18T20:34:09.585Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "The diff is docs-only for the own-your-diff plugin itself. Now let me check the quiz-file reference and the quizlint tool, since the plan must match its shape and pass `quizlint --plan`.",
+      "reasoning_content": "Now I have a good picture of the repo. Let me now work through step 2 (altitude).\n\n**Step 1 done \u2014 target.** The commit \"docs: explain install, opt-in, and updates\" adds:\n1. `README.md` \u2014 new file documenting: what the plugin is, the three components per harness, install (install.sh, per-harness commands, codex trust), opt-in (quizgate install, .own-your-diff marker, session-start hook in fresh clones, settings.json for org-wide), without-a-plugin usage, and updating (version bump, plugin update commands).\n2. `AGENTS.md` \u2014 new file with contributor rules: single plugin tree rationale, selftest, plugin validate, version bump, dirname $0 rule (never read CLAUDE_PLUGIN_ROOT from env), Codex trust hash rule.\n3. `CLAUDE.md` \u2014 symlink to AGENTS.md.\n\n**Step 2 \u2014 altitude.** Per the skill's Docs rule:\n- \"The change only documents or explains behavior the code already has. Treat it as trivial... A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\"\n\nNow, which parts of this change set new rules/contracts/policies?\n\nAGENTS.md bullets:\n1. \"One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.claude-plugin/` and `hooks/hooks.json`, so there is one copy of each, not one per harness.\" \u2014 This documents the existing design of the plugin tree. It's arguably a design statement (\"one copy of each, not one per harness\") \u2014 a constraint on the architecture. Hmm. Is it a new rule? It's more a description of existing architecture. It explains behavior the code already has. But it's also a design rule for future changes: don't fork the tree per harness. Hmm.\n\n2. \"Run `scripts/selftest` after changing anything under `skills/` or `hooks/`\" \u2014 check to run \u2192 incidental per skill.\n\n3. \"Run `claude plugin validate .` after changing a manifest\" \u2014 check to run \u2192 incidental.\n\n4. \"Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up. Claude Code and Codex cache by it.\" \u2014 version to bump \u2192 incidental per skill.\n\n5. \"Hook scripts find the plugin root with `dirname \"$0\"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder inside hook processes, so they never read it from the environment.\" \u2014 This is a design contract about how hook scripts must locate the plugin root. It documents existing behavior (session-start uses `dirname \"$0\"`/..), and it sets a rule for future hook code: never read CLAUDE_PLUGIN_ROOT from the environment. This is a rule in AGENTS.md that sets a contract \u2014 a design-altitude target.\n\n6. \"Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks`.\" \u2014 First clause documents existing behavior (Codex trust hash mechanism). Second clause sets a policy: changes to hooks.json must tell Codex users to rerun codex-trust-hooks. Is this \"a step a contributor runs\"? The rerun is a step users run, not the contributor. The rule itself is a communication policy \u2014 \"say in the change\". Hmm. It's a new rule about how changes must be made. But is it a design rule or a step? It's about process/communication. The skill says \"Steps a contributor runs, such as a check to run or a version to bump, stay incidental\". \"Say in the change that Codex users must rerun X\" is not a step the contributor runs; it's a rule for what changes must include. Hmm, it's borderline.\n\nLet me think about the \"target\" more holistically. The skill says: \"Done when you can name the **target** of the task: the one thing the work set out to change.\"\n\nThe commit message: \"docs: explain install, opt-in, and updates\". The work set out to document how to install the plugin, opt a repo in, and update it \u2014 plus contributor rules in AGENTS.md. Hmm, but the \"one thing\" the work set out to change: the repo previously had no docs; the change adds the docs that explain the plugin's distribution model (one plugin tree for three harnesses, install, opt-in, update).\n\nNow the Docs altitude rule splits this:\n- README.md: documents behavior the code already has (install.sh, quizgate install/sync/record, codex-trust-hooks, guard, session-start). Mostly trivial-by-docs. But wait \u2014 does the README set any new rules? \"Bump it with every change you want installs to pick up\" \u2014 a version-bump rule \u2192 incidental per skill. The install instructions are steps \u2192 incidental. \"Rerun it after an update that changes hooks/hooks.json\" \u2014 step \u2192 incidental.\n- AGENTS.md: contains rules. Some are steps (selftest, validate, version bump \u2192 incidental). Two are design rules:\n  - The plugin-root discovery contract (dirname $0, never env CLAUDE_PLUGIN_ROOT).\n  - The Codex trust-hash rule (editing hooks.json changes the trust hash; changes must tell Codex users to rerun codex-trust-hooks).\n  - Possibly the \"one plugin tree\" design statement \u2014 but that's documentation of existing architecture, not a new rule. Hmm, \"so there is one copy of each, not one per harness\" \u2014 it's a statement of the design, explaining why the tree is shaped this way. It's the rationale for the existing shape. Not a new rule per se.\n\nSo the target: \"A doc that sets a new rule, contract, or policy... makes that rule the target, at design altitude.\" The rules set by this change:\n1. Hook scripts locate the plugin root via `dirname \"$0\"`, never `CLAUDE_PLUGIN_ROOT` from the environment (because Droid sets it to a placeholder). \u2014 design contract at design altitude.\n2. Edits to `hooks/hooks.json` invalidate the Codex trust hash, so changes that edit it must tell Codex users to rerun `scripts/codex-trust-hooks`. \u2014 a policy tied to the Codex trust mechanism.\n\nAre there other rules? Let me re-read AGENTS.md and README.md once more:\n\nAGENTS.md:\n- Intro: \"One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.claude-plugin/` and `hooks/hooks.json`, so there is one copy of each, not one per harness.\" \u2014 design rationale, documents existing shape.\n- selftest rule \u2014 step \u2192 incidental.\n- validate rule \u2014 step \u2192 incidental.\n- version bump rule \u2014 step \u2192 incidental (per skill, \"a version to bump\").\n- dirname $0 rule \u2014 design contract.\n- Codex trust hash rule \u2014 policy; \"Say in the change that Codex users must rerun scripts/codex-trust-hooks.\"\n\nREADME.md:\n- Explains the plugin's three components \u2014 documents existing behavior.\n- Install steps \u2014 steps \u2192 incidental.\n- \"Codex skips plugin hooks until you trust them. `scripts/codex-trust-hooks` writes the same trust entries the Codex TUI writes when you approve them. Rerun it after an update that changes `hooks/hooks.json`.\" \u2014 documents existing behavior + a step \u2192 incidental (but it's the user-facing counterpart of the AGENTS.md trust rule).\n- Opt-in: \"The committed `.own-your-diff` file is the opt-in. In a fresh clone, the plugin's session-start hook sees it and installs the git hook. `quizgate install` leaves an existing pre-push hook alone and prints the line to add to it.\" \u2014 documents existing behavior.\n- Settings.json snippet \u2014 documents how to distribute the plugin org-wide.\n- Without a plugin: symlink to ~/.agents/skills, quizgate sync \u2014 documents existing capability.\n- Updating: version caching \u2192 documents existing behavior + step.\n\nSo: is this change trivial (docs-only) or does it carry a design-altitude target in the AGENTS.md rules?\n\nThe skill is explicit: \"A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.\"\n\nTwo rules qualify as new rules (not steps the contributor runs):\n1. The plugin-root contract: hook scripts use `dirname \"$0\"`, never `CLAUDE_PLUGIN_ROOT` from env. This is a contract for hook code.\n2. The Codex trust-hash policy: changes touching `hooks/hooks.json` must call out the rerun of `scripts/codex-trust-hooks`.\n\nWait \u2014 is rule 2 \"a step a contributor runs\"? The rerun is run by Codex users, not the contributor. The rule for the contributor is \"say in the change that...\". Hmm. Actually, I'd argue the substantive content of this rule is the mechanism: editing hooks.json changes the Codex trust hash, which means Codex users' trusted hooks become untrusted until rerun. The rule is a consequence of that mechanism. At design altitude, the point is: hooks.json's content is load-bearing for Codex trust; editing it has a downstream effect on Codex users.\n\nActually, let me reconsider. Is \"Say in the change that Codex users must rerun...\" more of a communication step? The skill's example of incidental: \"Steps a contributor runs, such as a check to run or a version to bump\". \"Say in the change\" is not running a check; it's a policy about what changes must communicate. I think it qualifies as a rule/policy. But the deeper design point it rests on is the Codex trust mechanism.\n\nHmm, but wait. Let me reconsider whether these AGENTS.md rules are \"new\" or just documentation of existing behavior. The behavior in the code:\n- session-start uses `dirname \"$0\"` \u2014 existing. The rule \"never read CLAUDE_PLUGIN_ROOT from the environment\" is a new rule constraining future code (it documents why existing code is written that way and forbids changing it).\n- codex-trust-hooks exists \u2014 existing. The rule \"editing hooks.json changes its Codex trust hash\" documents existing behavior; \"say in the change\" is a new policy for future changes.\n\nPer the skill: \"The author owned that design when it was built\" for docs of existing behavior. But \"A doc that sets a new rule... makes that rule the target\". These rules ARE being set now (new), so they're the target at design altitude. The design points:\n\n- Why must hook scripts use `dirname \"$0\"` rather than `CLAUDE_PLUGIN_ROOT`? Because Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes. What does this contract protect? It keeps hook scripts working in all three harnesses regardless of whether the env var is set correctly. What breaks if violated? Hook scripts in Droid would resolve a placeholder path and fail.\n- What's the consequence of editing hooks/hooks.json? Codex's trust entries key on a hash of the hook definition; editing changes the hash, so previously trusted hooks become untrusted/pending again; Codex users must rerun scripts/codex-trust-hooks. What does the rule protect? Codex users don't silently lose the guard/session hooks after an update.\n\nAnd the \"one plugin tree\" design statement \u2014 is it a rule? \"One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.claude-plugin/` and `hooks/hooks.json`, so there is one copy of each, not one per harness.\" Hmm, this is the design rationale for the tree shape. It's not phrased as a rule for future changes, but it does establish the architecture contract. Since the plugin tree already exists, this is documentation of existing design \u2192 trivial per the docs rule (\"The author owned that design when it was built\"). But hmm \u2014 it's in AGENTS.md, and it's the rationale for why future changes keep one copy. I could treat it as part of the design context. But per the skill, docs of existing behavior are trivial; only new rules make the target.\n\nLet me be careful about the overall structure. The skill says:\n\n\"Done when every hunk in the diff belongs to the target or to the incidental list.\"\n\nSo the plan:\n- **Target** (design altitude): the new contributor contracts in AGENTS.md \u2014 the plugin-root discovery contract (dirname $0, never env CLAUDE_PLUGIN_ROOT) and the Codex trust-hash rule for hooks.json edits.\n\nWait, should I treat those as one target or two? The target is \"the one thing the work set out to change\". Hmm. The work set out to document install/opt-in/updates AND set contributor rules. The docs of existing behavior are trivial; the new rules are the target. Actually, let me re-read: \"A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.\"\n\nSo each new rule is \"the target\" \u2014 collectively, the new contributor rules in AGENTS.md are the target. The README is documentation of existing behavior \u2192 trivial, except its steps are... hmm wait. If most of the change is trivial docs, and the target is just the rules...\n\nActually, let me reconsider. \"Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\" So:\n- selftest, validate, version bump \u2192 incidental.\n- The README's install/opt-in/update explanations \u2192 trivial docs of existing behavior. Per skill: \"Treat it as trivial: the author owned that design when it was built.\" Trivial items get no questions. Hmm, but wait \u2014 trivial applies to \"the whole change\". When part of the change is docs-of-existing-behavior and part is new rules, the new rules are the target and the doc-of-existing-behavior parts are... incidental? The skill's incidental list: \"Helpers, renames, plumbing, version bumps, and test scaffolding that serve the target.\" Docs of existing behavior that serve the target (context) could be incidental. Hmm, or the README is the target in the \"explain install, opt-in, and updates\" sense...\n\nLet me think again about what the \"target\" is. The task: \"docs: explain install, opt-in, and updates\". The one thing the work set out to change: the repo had no README or agent instructions; the change adds them. The new thing the change introduces is not code \u2014 it's the documented contract. Per the skill's Docs rule, I must classify:\n\n1. Docs of behavior the code already has \u2192 trivial (no questions). That covers: README's explanation of the three components, install steps, opt-in flow, without-a-plugin flow, update flow. And AGENTS.md's \"one plugin tree\" rationale.\n\n2. New rules/contracts/policies in AGENTS.md \u2192 target, design altitude:\n   - Rule A: hook scripts find the plugin root with `dirname \"$0\"`; never read `CLAUDE_PLUGIN_ROOT` from the environment (Droid sets it to a placeholder).\n   - Rule B: editing `hooks/hooks.json` changes its Codex trust hash; changes that do so must say Codex users must rerun `scripts/codex-trust-hooks`.\n\n   Steps stated as rules \u2192 incidental: selftest, validate, version bump.\n\nSo the target is: **the new contributor contracts in AGENTS.md** \u2014 the plugin-root discovery contract and the Codex trust-hash/communication rule. At design altitude.\n\nHmm, wait. Let me double-check rule A against the code. In hooks/hooks.json, commands are `\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\"` \u2014 so the harness expands CLAUDE_PLUGIN_ROOT when invoking hooks. The hook script itself computes `gate=\"$(cd \"$(dirname \"$0\")/..\" && pwd)/skills/...\"`. So the contract: hook scripts must not rely on CLAUDE_PLUGIN_ROOT being valid inside their process, because Droid sets it to a placeholder. The design decision: derive paths from $0 instead.\n\nIs this a \"mechanism\" or \"design\" altitude point? It's a rule about how components interact with the environment across harnesses \u2014 a cross-harness compatibility contract. Design altitude fits: \"the change introduces or reshapes... how components talk\" \u2014 the contract for hook scripts. The rule's content: why dirname $0, what breaks otherwise (Droid placeholder), what it protects (hooks work in all three harnesses).\n\nNow \u2014 is one of these rules more \"core\" than the other? Let me structure the points at the target's altitude that the author must own:\n\nPoints (from the whole diff \u2014 there's only the docs):\n\n1. **Core**: The plugin-root contract \u2014 hook scripts locate the plugin root via `dirname \"$0\"` and never via `CLAUDE_PLUGIN_ROOT` from the environment, because Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes. This is a boundary: it decouples hook scripts from the harness environment. What does it protect? Hook scripts keep working in all three harnesses; the failure mode it prevents is Droid hook processes resolving a placeholder path.\n\n2. **Core or important**: The Codex trust-hash rule \u2014 editing `hooks/hooks.json` changes the Codex trust hash; Codex users must rerun `scripts/codex-trust-hooks`; the rule requires changes that edit hooks.json to say so. Why: Codex skips plugin hooks until their definition hash is trusted; the hash keys on the hooks definition content. What breaks if ignored: Codex users silently run without the guard and session hook after an update. Boundary: this rule is the cost of the single-tree design (one hooks.json serves three harnesses, but Codex's trust model keys on its content).\n\n3. **Important**: The single-tree rationale \u2014 one plugin tree for three harnesses because all three read `.claude-plugin/` and `hooks/hooks.json`; one copy of each, not one per harness. This is documentation of the existing architecture... but it's the design context that rules A and B hang on: the single tree is what makes hooks.json content load-bearing for Codex, and what makes cross-harness env differences (Droid placeholder) matter. Hmm. Since it's doc-of-existing-design, is it target or trivial? I'd say it's the context of the target. The skill says trivial gets no questions. But this statement is the reason the two rules exist. Hmm.\n\nHmm, wait. Let me reconsider. Maybe I'm overcomplicating. Let me re-read the Docs rule once more:\n\n\"**Docs.** The change only documents or explains behavior the code already has. Treat it as trivial: the author owned that design when it was built. A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.\"\n\nSo the classification:\n- README install/opt-in/update explanations \u2192 docs of existing behavior \u2192 trivial. No questions.\n- AGENTS.md \"one plugin tree\" statement \u2192 docs of existing behavior \u2192 trivial. No questions. (It explains the existing shape.)\n- AGENTS.md selftest/validate/version-bump rules \u2192 steps \u2192 incidental. No questions.\n- AGENTS.md dirname-$0/CLAUDE_PLUGIN_ROOT rule \u2192 new contract \u2192 target, design altitude. Questions.\n- AGENTS.md Codex trust-hash rule \u2192 new rule/policy \u2192 target, design altitude. Questions.\n\nSo the quiz focuses on the two new rules. The \"one plugin tree\" rationale is the frame but not itself quizzed (it documents existing design).\n\nNow, \"Done when every hunk in the diff belongs to the target or to the incidental list.\" Trivial parts \u2014 the skill treats the trivial case as \"the whole change is trivial\". Here the whole change isn't trivial because of the two rules. The trivial doc parts are... hmm, they don't serve the target per se; they ARE the bulk of the commit (\"explain install, opt-in, and updates\"). \n\nHold on. Let me reconsider \u2014 maybe I have the target wrong. The commit is titled \"docs: explain install, opt-in, and updates\". The work set out to explain install, opt-in, and updates. The one thing the change is for: making the plugin's distribution story known (how to install, how to opt in, how to update). That's documentation of existing behavior \u2192 trivial \u2192 no questions. And the AGENTS.md rules: two are new contracts (target at design altitude), three are steps (incidental).\n\nI think the right plan is:\n- Target: the new AGENTS.md contributor contracts (plugin-root discovery; Codex trust-hash policy), design altitude.\n- Incidental: selftest/validate/version-bump steps (stated as rules but incidental per the skill), the README's step-by-step install/update instructions, CLAUDE.md symlink.\n- Trivial-by-docs: the rest of README and the \"one plugin tree\" statement document existing behavior.\n\nHmm, but \"trivial\" as a category applies to the whole change. Let me just put: the docs-of-existing-behavior parts are trivial (no questions), the steps are incidental (no questions), and the two new rules are the target. Every hunk belongs to one of these buckets. AGENTS.md contains both target and trivial/incidental lines; README.md and CLAUDE.md are trivial/incidental.\n\nNow step 4 (quiz plan). The user said: \"write the plan of step 4 for a human examinee to the path you were given\" \u2014 quiz.json in this directory (/workspace/quiz.json). The skill says \"Asked for the quiz plan only... write the plan of step 4 for a human examinee to the path you were given. Stop when `quizlint --plan` passes on it. Ask nothing.\"\n\nSo I need to write the quiz.json in the shape of references/quiz-file.md, and it must pass `quizlint --plan`. Let me read references/quiz-file.md now.\n\nThen: \"List every point at the target's altitude that the author must own to stand behind the push, from the whole diff, before you write a question.\"\n\nPoints at design altitude:\n\nPoint 1 (core): The plugin-root contract. Hook scripts derive the plugin root from `dirname \"$0\"`, never from `CLAUDE_PLUGIN_ROOT` in the environment, because Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes. The contract keeps hook scripts working across all three harnesses (Claude Code, Droid, Codex) without per-harness copies. What it protects: hook scripts from harness-specific environment breakage; the failure if violated: in Droid, a hook script reading CLAUDE_PLUGIN_ROOT gets a placeholder path and fails to find the plugin root.\n\nPoint 2 (core or important): The Codex trust rule. Codex skips plugin hooks until their definition hash is trusted. The hash keys on hooks/hooks.json content (the hook definitions). So editing hooks/hooks.json invalidates the trust, and Codex users must rerun scripts/codex-trust-hooks. The rule: a change that edits hooks.json must say so. What it protects: Codex users don't silently lose the guard/session-start hooks after an update. Cost: every hooks.json edit carries a communication obligation.\n\nAre these both \"core\"? \"core: What the change is for, and the boundary or contract it sets.\" The change (the target part) is for setting these two contracts. Hmm, I'd rate:\n- Plugin-root contract: core \u2014 it's a contract the change sets.\n- Codex trust rule: core too \u2014 the other contract the change sets. Hmm, or important. Both are rules the change sets. Let me think about which boundary matters more for standing behind the push.\n\nActually both are contracts the change sets. I'd rate both core. But then two core points, two questions minimum. The skill says: \"Write one question per core and important point, 10 at most. Ask about a useful point only when the quiz would otherwise have no question.\"\n\nAny other points at the target's altitude? Let me scan the whole diff again for design-level points in the two rules' orbit:\n\n- The \"one plugin tree\" rationale: documents existing design (trivial). But it's the reason hooks.json is shared and thus why rule B exists. Should there be a question connecting the single-tree design to the Codex trust cost? Hmm \u2014 \"A new requirement arrives. Where does it go, and what changes?\" or \"What breaks if <assumption> stops holding?\" The single-tree design is the backdrop. I could ask a transfer question that makes the author apply the rules to a new case. E.g., \"A new PreToolUse hook is added to hooks/hooks.json. What must the change that adds it do, and why?\" That applies both rules (new hook script must use dirname $0, not CLAUDE_PLUGIN_ROOT; editing hooks.json changes the Codex trust hash, so say Codex users must rerun codex-trust-hooks).\n\nHmm, but is the \"one plugin tree\" statement itself target or trivial? It documents existing behavior \u2192 trivial \u2192 no question on it per se. But the consequences of the single-tree design for the two rules are the target. I'll keep questions on the two rules.\n\nWait, actually, I want to reconsider whether the \"one plugin tree\" statement sets a new rule. \"One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.claude-plugin/` and `hooks/hooks.json`, so there is one copy of each, not one per harness.\" \u2014 It's stated as a fact with rationale, in AGENTS.md, the file agents read for rules. It effectively constrains future changes (don't add per-harness copies). Hmm. But per the skill, docs of existing behavior are trivial. The tree already exists; the doc explains it. I'll treat it as trivial but use it as context in the questions' framing.\n\nNow let me also reconsider: does the README set any new rules? \"Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up.\" \u2014 version bump \u2192 incidental. \"Rerun it after an update that changes `hooks/hooks.json`\" \u2014 step \u2192 incidental. The settings.json snippet \u2014 documents existing feature. OK.\n\nSo: 2 points, both core. Two questions? Hmm, let me think about whether there are more points at design altitude within the two rules. Each rule has:\n- The problem it addresses (Droid placeholder; Codex trust invalidation).\n- The shape chosen (dirname $0; say-in-the-change communication obligation backed by codex-trust-hooks rerun).\n- What it protects / failure mode if violated.\n- How it fits the existing architecture (single tree, three harnesses; hooks.json shared).\n\n\"List every point at the target's altitude that the author must own\": I'd say the two rules are the two points. Rating: both core? Or one core, one important?\n\nLet me think about it differently: \"core: What the change is for, and the boundary or contract it sets. An author who misses it cannot defend the push.\"\n\nThe change is for explaining install/opt-in/updates \u2014 the doc bulk is trivial. The contracts it sets: plugin-root contract and Codex trust policy. If the author misses either, can they defend the push? The push is docs; the author must own the rules they just set for future contributions. Missing the plugin-root contract means they don't understand why the hooks are written that way and could write env-dependent hook code. Missing the Codex trust rule means they could edit hooks.json and silently break Codex users. Both are core.\n\nHmm, but actually, let me reconsider the relative weight. The plugin-root contract is the sharper design decision (a real cross-harness constraint with a root cause: Droid's placeholder). The Codex trust rule is a policy whose mechanism (hash invalidation) already exists \u2014 the new part is the obligation to communicate. I could rate:\n- Plugin-root contract: core (the contract the change sets; boundary between hook scripts and harness env).\n- Codex trust rule: important (a failure mode of the shared hooks.json; a cost of the single-tree design). Hmm.\n\nOr both core. The skill says core = \"what the change is for, and the boundary or contract it sets\". Both rules set contracts. I'll make both core. Actually \u2014 wait. Let me think about the closing question requirement: \"End the quiz with a multi-select or a free-form question that applies several points to one new case.\" With two points, the quiz would be: Q1 (core 1), Q2 (core 2), and the final question applying both to a new case. Hmm, but \"Stop when the points run out. A small fix usually carries one or two, a trivial change none.\"\n\nWith 2 core points: 2 questions. But then the closing question \u2014 \"End the quiz with a multi-select or a free-form question that applies several points to one new case. That is where the pieces come together.\" Does that mean the last of the per-point questions should be the multi-select/free-form that applies several points? Or an additional question? \"Write one question per core and important point, 10 at most... Stop when the points run out.\" So the total question count = number of core + important points (unless none, then maybe a useful one). The closing question is one of these \u2014 the last one should apply several points to one new case.\n\nSo with 2 points: 2 questions. Question 1: the core plugin-root contract (single-select, to lead). Question 2: the Codex trust rule, but framed to apply both points to a new case (e.g., \"A new hook is added...\") \u2014 a multi-select or free-form that brings the pieces together. Hmm, but then does Q2 cover point 2 alone or both? Let me think.\n\nAlternative: 3 questions \u2014 but \"Stop when the points run out\" means one question per point, 10 at most. With 2 points, 2 questions. But hmm, maybe I should identify a third point: the relationship between the single-tree design and the Codex trust cost (\"what the boundary protects the rest of the system from\"). Let me re-list carefully.\n\nPoints at the target's altitude (the two new contracts), with their sub-facets:\n\nPoint A \u2014 Plugin-root discovery contract (core):\n- Hook scripts must find the plugin root with `dirname \"$0\"` (of the invoked script), never by reading `CLAUDE_PLUGIN_ROOT` from the environment.\n- Why: Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes; the env var is only reliable as expanded by the harness in hooks.json command strings (which the harness does: `\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\"`).\n- What it protects: hooks keep working in every harness / no per-harness copies; violation \u2192 Droid hooks resolve a placeholder path and fail.\n\nPoint B \u2014 Codex trust-hash rule (core):\n- Codex trusts hooks by hash of their definitions (in hooks/hooks.json). Editing hooks.json changes the hash, so Codex users' trust becomes stale; they must rerun scripts/codex-trust-hooks.\n- The rule: a change that edits hooks/hooks.json must say that Codex users need to rerun the script.\n- What it protects: Codex users don't silently lose the guard/session hooks after an update (Codex skips untrusted hooks).\n- Why it exists here: the single shared hooks.json serves all three harnesses, so a cross-harness change has a Codex-specific cost.\n\nHmm, is there a Point C: \"the single tree is why these rules exist\" \u2014 the design context? That's the trivial doc. I'll fold it into A and B as context, not as a separate point.\n\nOK here's my plan: 2 points, both core \u2192 2 questions. But wait \u2014 should I rate one core and one important, and add a useful point? Let me re-read: \"core. What the change is for, and the boundary or contract it sets. An author who misses it cannot defend the push. important. How the parts hold together: a failure mode, an invariant, where the next requirement goes. useful. A detail worth knowing that the push does not stand on.\"\n\nThe two rules are contracts the change sets \u2192 both core. Fine.\n\nBut hold on \u2014 with only 2 questions, is the quiz too thin? \"Stop when the points run out. A small fix usually carries one or two, a trivial change none.\" A docs change with two new contracts \u2192 two questions is consistent with the skill. But the closing question must \"apply several points to one new case\". With 2 points, Q2 (the last) can apply both to a new case: e.g., \"A new hook script is added to hooks/hooks.json \u2014 what two things must the change that adds it account for, and why?\" That applies A (the new script must use dirname $0) and B (hooks.json edit \u2192 Codex trust hash changes \u2192 say to rerun codex-trust-hooks).\n\nHmm wait, but then Q1 covers point A and Q2 covers point B (while applying both). That works: Q1 on point A (core), Q2 on point B framed as the closing new-case question applying several points.\n\nOr 3 questions: Q1 point A single-select, Q2 point B single-select, Q3 closing multi-select applying both to a new case. But that would be a question without a point \u2014 violating \"one question per core and important point\"? Hmm, the closing question IS one of the per-point questions \u2014 it covers its point while applying several. With 2 points I could do: Q1 = point A (single-select, category: rationale or boundary), Q2 = point B + applies both (multi-select or free-form, category: failure or extension).\n\nHmm, hmm. But is 2 questions right for this change? Let me reconsider whether the change carries more design-altitude points. Let me re-read the diff one more time...\n\nAGENTS.md line by line:\n\n1. \"One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.claude-plugin/` and `hooks/hooks.json`, so there is one copy of each, not one per harness.\"\n   - This explains the existing architecture. Trivial per docs rule. BUT \u2014 as the very first rule in AGENTS.md, it sets the policy \"one copy of each, not one per harness\". Hmm. It's stated as a description of what is, with the rationale. A future contributor adding a harness-specific manifest would violate it. Is it a new rule? The tree already has one copy each; the doc explains why. I lean trivial (doc of existing design), with its consequences quizzed via A and B. Actually hmm, wait \u2014 let me reconsider. Could the target be broader: \"the contributor contract for the plugin tree\"? The two operative rules (dirname $0; codex trust) both follow from the single-tree-across-harnesses design. The \"target\" as one thing: \"the contributor rules that keep the plugin working across all three harnesses from one tree.\" That's a nice framing: the change sets contributor rules for maintaining one plugin tree across three harnesses. The two rules are the operative contracts; the single-tree statement is the frame.\n\n2. selftest rule \u2192 incidental.\n3. validate rule \u2192 incidental.\n4. version bump \u2192 incidental.\n5. dirname $0 / CLAUDE_PLUGIN_ROOT \u2192 target rule A (core).\n6. Codex trust hash / say-in-the-change \u2192 target rule B (core).\n\nREADME line by line: all install/opt-in/update docs of existing behavior \u2192 trivial; the steps within are incidental. No new rules. (The version-bump and rerun-trust steps appear here too \u2192 incidental.)\n\nCLAUDE.md: symlink so Claude Code reads AGENTS.md \u2192 plumbing \u2192 incidental.\n\nOK. Now, per skill: \"Write one question per core and important point, 10 at most. Ask about a useful point only when the quiz would otherwise have no question.\"\n\nSo 2 questions for 2 core points. Hmm, but let me think if point B deserves to be split... no, one point one question.\n\nHmm, wait. Actually, let me reconsider the classification of rule B once more. \"Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks`.\" The first sentence documents existing behavior (Codex hashes hooks.json). The second sentence is the new rule: changes that edit hooks.json must tell Codex users to rerun. Per the skill's example, \"a rule in AGENTS.md\" makes that rule the target. Yes, rule B is a target rule at design altitude.\n\nAnd rule A: \"Hook scripts find the plugin root with `dirname \"$0\"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder inside hook processes, so they never read it from the environment.\" First sentence: documents existing behavior (session-start does this). \"so they never read it from the environment\" \u2014 the rule: never read CLAUDE_PLUGIN_ROOT from env. New contract for future hook code. Target rule.\n\nNow the quiz design.\n\n**Question order**: \"Order the quiz by relevance, most relevant first.\" Both core. Which is more relevant? \"Open with the core points, starting from what the change is for and its main boundary\". Hmm. What IS the change for? Explaining install/opt-in/updates + setting contributor rules. The main boundary/contract among the rules... I'd say rule A (plugin-root contract) is the sharpest design contract with a root cause; rule B is the policy that protects Codex users. Which first?\n\nHmm, actually \u2014 let me think about which is more central to defending the push. The commit is \"docs: explain install, opt-in, and updates\". A reviewer pushing this... the rules in AGENTS.md are directives for future agents/contributors. The most defensible-critical rule: the plugin-root contract (it's why the hooks work at all in Droid; a contributor who misses it writes broken hooks). The Codex trust rule: a contributor who misses it breaks Codex users silently. Both matter. I'll order: Q1 = rule A (boundary: hook scripts vs harness env), Q2 = rule B (closing, applies both to a new case).\n\nHmm, wait. Actually, let me reconsider making Q1 about the single-tree frame + rule A. The skill says \"starting from what the change is for and its main boundary\". The change (the AGENTS.md part) is for setting the contributor contract for the plugin tree. Q1 could be: \"Why do the hook scripts derive the plugin root from dirname $0 instead of CLAUDE_PLUGIN_ROOT?\" \u2014 category `rationale` (design): \"Why this abstraction over <the rejected alternative>?\" The rejected alternative: reading CLAUDE_PLUGIN_ROOT from the environment. Key points:\n- Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes, so env-based discovery breaks in Droid.\n- dirname $0 (the invoked script's path) works in every harness regardless of env.\n- The contract keeps one copy of each script working across all three harnesses.\n\nThat's a good single-select or free-form. Lead with single-select (\"Lead the quiz with these\"). Single-select: one correct option among 2-4. Options:\n- A: Because Droid replaces CLAUDE_PLUGIN_ROOT with a placeholder inside hook processes, so $0 is the only path that works everywhere. (correct)\n- B: Because CLAUDE_PLUGIN_ROOT is not expanded in hooks.json by any harness. (plausible misreading \u2014 it IS expanded in hooks.json by the harness; the issue is inside hook processes)\n- C: Because Codex does not set CLAUDE_PLUGIN_ROOT at all. (plausible misreading)\n- D: Because dirname $0 is faster than resolving env vars. (filler-ish... \"Every wrong option is a plausible misreading of the change, never filler.\" D is not plausible. Drop it. Use 3 options.)\n\nHmm, or free-form for the rationale? \"Single-select... They frame a point quickly.\" Lead the quiz with single-select. OK, Q1 single-select, category `rationale`, point A.\n\nWait, actually \u2014 hmm, is the category here `rationale` or `boundary`? \"rationale: Why this abstraction over <the rejected alternative>?\" The dirname-$0 choice over env-var discovery is a design choice with a rejected alternative (env var). Category: rationale. Or `boundary`: \"What does this boundary protect the rest of the system from?\" The contract protects hook scripts from harness env breakage. Hmm. The question I framed (\"why $0 instead of the env var\") is rationale. I could do one of each... but one question per point. Q1 = rationale (why dirname $0 over env var). \n\nQ2 = the closing question, applies several points (A + B) to one new case: \"A new PreToolUse hook is added to hooks/hooks.json. What must the change that adds it account for?\" \u2014 as multi-select: which of these hold. Options (multi-select, exact set passes):\n- The new hook script must find the plugin root via dirname \"$0\", not CLAUDE_PLUGIN_ROOT from the environment. (correct \u2014 rule A applied to a new script)\n- Editing hooks.json changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks. (correct \u2014 rule B)\n- The manifest version in .claude-plugin/plugin.json must be bumped so installs pick up the new hook. (plausible but incidental \u2014 hmm, this is a true step, but is it a correct option? \"Bump version with every change that installs should pick up\" \u2014 a new hook IS a change installs should pick up. So this is TRUE per AGENTS.md. If I include it as an option and it's true, it must be in the correct set. But it's an incidental step, not target altitude... The skill says rubric points stay at target altitude, but options in a multi-select can include true statements. Hmm \u2014 \"Every wrong option is a plausible misreading of the change, never filler.\" If version bump is true, including it makes the correct set {A, B, version}. That mixes an incidental point into the closing question. Risky: quizlint might not care, but the skill says options' correctness must be exact-set. Including the version-bump option tests whether the author knows the incidental rule \u2014 allowed? \"Ask about a useful point only when the quiz would otherwise have no question\" \u2014 incidental items get no question. Making it an option inside a question is borderline. I'd rather keep options at target altitude. Let me craft wrong options as plausible misreadings:\n  - \"The new hook script must find the plugin root with dirname \\\"$0\\\"; CLAUDE_PLUGIN_ROOT is a placeholder in Droid hook processes.\" (correct)\n  - \"Editing hooks/hooks.json changes its Codex trust hash; the change must tell Codex users to rerun scripts/codex-trust-hooks.\" (correct)\n  - \"A hooks/ edit cannot ship until every harness revalidates the manifest with claude plugin validate.\" (wrong \u2014 validate applies to manifest changes, not hooks edits; plausible misreading of the validate rule)\n  - \"Because the tree is shared, the hook must be copied per harness before it can run in all three.\" (wrong \u2014 the opposite of the single-tree design; plausible misreading)\n\nSo multi-select with 4 options, correct set = {1, 2}. That applies both target points to one new case (adding a new hook). \n\nWait \u2014 but should Q2 be about point B alone or apply both? The closing question \"applies several points to one new case. That is where the pieces come together.\" With only two points, Q2 applies both. But then point B gets its question (Q2) and point A gets two (Q1 shares B?). Hmm \u2014 Q1 is on point A, Q2 on point B (with A reapplied). Each point has its question. Good.\n\nHmm, hold on. Let me reconsider question count and whether 2 is really right. \"List every point at the target's altitude that the author must own to stand behind the push, from the whole diff, before you write a question.\"\n\nLet me be thorough about the whole diff at design altitude. The two new rules are the target. Are there sub-points that deserve separate questions?\n\nPoint A facets: why dirname $0 (Droid placeholder) \u2014 the rationale; what breaks if a hook script reads CLAUDE_PLUGIN_ROOT (Droid hooks fail to find the plugin root \u2192 session-start sync / guard don't run... wait, guard is invoked by the harness; if guard itself needed the plugin root and read env, it would misresolve in Droid); the boundary: hook scripts are self-locating, independent of harness env. One point.\n\nPoint B facets: the mechanism (Codex hashes hooks.json definitions; untrusted \u2192 skipped); the obligation (say in the change); what it protects (Codex users keep the guard after updates); the failure if ignored (Codex silently runs hooks-untrusted \u2192 guard absent \u2192 --no-verify possible... wait, actually if hooks are untrusted, Codex skips them, so the guard and session hook don't run \u2014 the gate weakens silently for Codex users). One point.\n\nAlso \u2014 is there a point about WHERE these rules live (AGENTS.md as the contributor contract file, CLAUDE.md symlink so all harnesses read it)? That's plumbing \u2192 incidental. One line, no question.\n\nAnd the \"one plugin tree\" statement \u2192 trivial context. No question. Hmm, wait, actually \u2014 hmm. Let me reconsider once more whether the single-tree statement is a new rule. It's the first line of AGENTS.md: \"One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.claude-plugin/` and `hooks/hooks.json`, so there is one copy of each, not one per harness.\"\n\nThe skill: \"A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.\"\n\nDoes this line set a rule? It asserts the tree is one tree and explains why. As an agent-instruction file, it directs future agents: keep one copy. But the fact being documented (the tree IS one tree) is existing behavior/design. The line's function is to explain the existing design so agents don't fork it. I'll classify it as documentation of existing design \u2192 trivial, but as the frame of the target. The two operative rules are the new contracts. I'm comfortable.\n\nHmm, but you know, let me reconsider the rating of the two rules once more. Actually \u2014 could one argue rule B is \"important\" rather than \"core\" because the Codex trust mechanism already existed (documented in codex-trust-hooks' docstring: \"Rerun it after an update...\" \u2014 wait, the docstring says: \"Codex skips plugin hooks until their definition hash is trusted. This writes the same hooks.state entries the Codex TUI writes when you approve them.\" and the README says \"Rerun it after an update that changes hooks/hooks.json\"). The NEW part in AGENTS.md: \"Say in the change that Codex users must rerun\" \u2014 a communication policy. And \"Editing hooks/hooks.json changes its Codex trust hash\" \u2014 already true. The new rule: the obligation on changes. It's a rule the change sets \u2192 core? \"core: What the change is for, and the boundary or contract it sets.\" Yes, the obligation is a contract the change sets. Core.\n\nOK, 2 core points. But hmm, \"10 at most\" \u2014 fine. \"A small fix usually carries one or two\" \u2014 2 is consistent.\n\nHmm, wait. Now let me reconsider whether to also count a third point: the *cost* the single-tree design imposes and what the boundaries protect \u2014 i.e., a synthesis point: \"the plugin keeps one tree across three harnesses at the cost of per-harness quirks; the AGENTS.md rules are the contract that manages those quirks (Droid's placeholder env, Codex's trust hash)\". Is that a separate point or the frame? I think the frame. The closing question (multi-select) brings the pieces together anyway.\n\nAlright \u2014 but hold on, I want to reconsider the question-kind mix and categories more carefully, and the \"Spread a quiz across categories rather than asking the same kind of question twice\" rule.\n\nCategories (design altitude): rationale, failure, extension, boundary.\nQ1 (point A): rationale \u2014 \"Why dirname $0 over CLAUDE_PLUGIN_ROOT?\" \u2014 single-select.\nQ2 (point B, closing): should it be failure or extension? The new-case framing (adding a new hook) is extension-flavored (\"A new requirement arrives. Where does it go, and what changes?\") but the multi-select is \"which of these hold\" \u2014 hmm. Let me think about what Q2's category is. The closing question applies several points to one new case. The new case: a new PreToolUse hook arrives. Where does it go and what changes? \u2192 extension. Or: \"What breaks if the obligation is ignored?\" \u2192 failure.\n\nThe point B core content: editing hooks.json invalidates Codex trust; changes must say so; failure mode if ignored: Codex users silently lose hooks. A question like: \"A change edits hooks/hooks.json but doesn't mention codex-trust-hooks. What happens for Codex users?\" \u2192 failure category, free-form. That covers point B: Codex skips untrusted hooks (hash mismatch), so the guard and session hook stop running for Codex users until they rerun codex-trust-hooks \u2014 silent weakening of the gate.\n\nThen the closing question must be multi-select or free-form applying several points. If Q2 is the failure question on B, then the closing question would need to apply A+B to a new case \u2014 that'd be a third question without a point. Hmm.\n\n\"End the quiz with a multi-select or a free-form question that applies several points to one new case.\" \u2014 This instructs the shape of the LAST question. If the last question is Q2 (on point B), it should apply several points to one new case. So Q2 can be: multi-select, new case = adding a new hook to hooks/hooks.json, correct options = rule A applied (dirname $0 for the new script) + rule B applied (say Codex users must rerun codex-trust-hooks). Category: extension. That covers point B (its question) while applying A too. \n\nSo final plan: 2 questions.\n- Q1: point A, single-select, category rationale. \"Why do hook scripts locate the plugin root with dirname $0 rather than CLAUDE_PLUGIN_ROOT?\" Options (random order, unmarked):\n  a) CLAUDE_PLUGIN_ROOT is only reliable where the harness expands it (hooks.json commands); inside hook processes Droid replaces it with a placeholder, so $0 is the one path that works in all three harnesses. (correct)\n  b) Codex never sets CLAUDE_PLUGIN_ROOT, so hooks in Codex can only rely on $0. (plausible misreading)\n  c) hooks.json expands CLAUDE_PLUGIN_ROOT differently per harness, so the scripts can't trust the value it passes. (plausible misreading \u2014 hmm, this is close to the truth... the harness expands it in the command line; the scripts don't receive it via env reliably. Let me make wrong options clearly wrong-but-plausible:\n  \n  Let me redo options:\n  a) Inside hook processes Droid sets CLAUDE_PLUGIN_ROOT to a placeholder, so $0 is the only reliable way to the plugin root in all three harnesses. (correct)\n  b) CLAUDE_PLUGIN_ROOT is unset in Claude Code hook processes, so Claude Code hooks need $0 too. (plausible misreading \u2014 shifts the harness and the reason)\n  c) Codex trusts only hooks that locate the plugin root from $0; env-based paths fail its trust check. (plausible misreading \u2014 conflates Codex trust with path discovery)\n  \n  3 options, one correct. Good \u2014 \"One correct option among 2 to 4.\"\n\n- Q2: point B + applies both, multi-select, category extension. \"A new PreToolUse hook (hooks/preflight) is added to hooks/hooks.json. Which of these must the change that adds it account for? Pick all that hold.\"\n  Options (random order):\n  a) The new script must find the plugin root with dirname \"$0\", never CLAUDE_PLUGIN_ROOT from the environment. (correct \u2014 rule A applied to a new hook script)\n  b) The edit changes the Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks. (correct \u2014 rule B)\n  c) The new script must be copied per harness, since only one harness can read hooks/hooks.json at a time. (wrong \u2014 misreads the single-tree design... hmm \"at a time\" is weird. Better: \"The single-tree design means the hook must ship as three copies, one per harness, inside .claude-plugin/.\" \u2014 plausible misreading of the tree design)\n  d) The manifest version must be bumped before Codex will run the new hook at all. (plausible misreading \u2014 version bump is about install caching, not Codex trust; conflates the update rule with the trust rule)\n  \n  Correct set = {a, b}, exact set passes.\n\nHmm wait, is (d) \"plausible misreading\"? It conflates two AGENTS.md rules (version bump for install caches; trust hash for Codex). Yes, plausible. (c) misreads the single-tree statement. Plausible.\n\nCategories: Q1 rationale, Q2 extension. Two different categories. Kinds: single-select, multi-select. Good mix. Order: core A first, then closing multi-select applying several points. \n\nNow key points for each question (the rubric \u2014 \"For each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. ... Keep the rubric to yourself until the quiz ends.\" But the quiz FILE contains the rubric \u2014 \"Write the questions as a plan to $(quizgate dir)/... in the shape of references/quiz-file.md\". Let me read references/quiz-file.md to get the exact shape. And also check agent-mode reference? No \u2014 the user said \"plan only... for a human examinee\" (\"write the plan of step 4 for a human examinee\"). Human examinee, so no agent-mode.\n\nAlso: \"Run `quizlint --plan` on it and fix what it reports before the first question.\" The user said \"Stop when `quizlint --plan` passes on it. Ask nothing.\"\n\nThe path: the user said \"write the plan to quiz.json in this directory\" \u2014 /workspace/quiz.json. The skill says to write to `$(quizgate dir)/<branch>-<short-sha>.quiz.json`, but the user's instruction overrides: \"write the plan to quiz.json in this directory and stop.\" The skill's plan-only path says \"write the plan of step 4 for a human examinee to the path you were given.\" So the given path is /workspace/quiz.json. \n\nLet me now read references/quiz-file.md.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_ua56vhwd",
+          "function_name": "read",
+          "arguments": {
+            "path": "/opt/multeval/skills/own-your-diff/references/quiz-file.md"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        },
+        {
+          "tool_call_id": "call_h6s3k7jn",
+          "function_name": "bash",
+          "arguments": {
+            "command": "head -80 /opt/multeval/skills/own-your-diff/scripts/quizlint"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_ua56vhwd",
+            "content": "# The quiz file\n\nOne JSON file per quiz, `$(quizgate dir)/<branch>-<short-sha>.quiz.json`. You write it as a **plan** before the first question, and you add each attempt and the outcome as the quiz runs. `scripts/quizlint --plan FILE` checks a plan. `scripts/quizlint FILE` checks a finished quiz. Evals and stats read this file, and a UI can render it, so keep to this shape.\n\n```json\n{\n  \"version\": 1,\n  \"branch\": \"feat/opt-in-marker\",\n  \"base\": \"42c2cb8\",\n  \"head\": \"0389727\",\n  \"target\": \"Repos opt into the gate with a tracked marker instead of core.hooksPath.\",\n  \"altitude\": \"design\",\n  \"incidental\": [\"usage text of quizgate\"],\n  \"examinee\": \"human\",\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"kind\": \"single\",\n      \"category\": \"rationale\",\n      \"relevance\": \"core\",\n      \"prompt\": \"Why does the hook run quizgate from ~/.local/bin and not from the plugin's install directory?\",\n      \"options\": [\n        { \"label\": \"The install directory holds the version and moves on update\", \"correct\": true },\n        { \"label\": \"Git refuses hooks outside the repo\", \"correct\": false },\n        { \"label\": \"The plugin directory is read-only\", \"correct\": false }\n      ],\n      \"key_points\": [\"the cache path changes on every update\"],\n      \"attempts\": [\n        { \"answer\": [\"The install directory holds the version and moves on update\"], \"verdict\": \"pass\" }\n      ]\n    }\n  ],\n  \"outcome\": \"passed\"\n}\n```\n\n- **Top level.** `target` is the one thing the change set out to do. `altitude` is `design`, `mechanism`, or `trivial`. `incidental` lists what gets no question. `examinee` is `human` or `agent`. `questions` holds 0 to 10 questions. `outcome` is `passed` or `failed`, and a plan has none. Agent mode adds `findings`, one object per finding with its round, evidence, and fix.\n- **Question.** `relevance` is `core`, `important`, or `useful`, and the questions run from most to least relevant, except the last. `kind` is `single`, `multi`, or `free`. A `single` question has 2 to 4 options with exactly one correct. A `multi` question has 3 or 4 options with at least one correct. A `free` question has no options. `key_points` is the rubric. `attempts` stays empty in a plan.\n- **Category.** Each question has one. Design questions are `rationale` (why this over the alternative), `failure` (what breaks when an assumption stops holding), `extension` (where a new requirement goes), or `boundary` (what a boundary protects). Mechanism questions are `flow` (walk the mechanism, where it can fail), `invalidation` (what invalidates the state), `measurement` (why the number moved), or `failure`.\n- **Attempt.** One per answer, in order. A probe or a retry adds an attempt with its own `prompt`, and `kind` and `options` when they differ from the question's. `answer` is the author's words verbatim, or the list of labels they picked. `verdict` is `pass`, `vague`, or `wrong`. `feedback` is what you told them. Agent mode adds `round`.\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_h6s3k7jn",
+            "content": "#!/usr/bin/env python3\n\"\"\"Check a quiz file against the shape in references/quiz-file.md.\n\nusage: quizlint [--plan] FILE\n  --plan   the quiz has not run yet: no attempts and no outcome\n\"\"\"\nimport json\nimport sys\n\nALTITUDES = {\"design\", \"mechanism\", \"trivial\"}\nKINDS = {\"single\", \"multi\", \"free\"}\nCATEGORIES = {\"rationale\", \"failure\", \"extension\", \"boundary\", \"flow\", \"invalidation\", \"measurement\"}\nVERDICTS = {\"pass\", \"vague\", \"wrong\"}\nRELEVANCE = {\"core\": 0, \"important\": 1, \"useful\": 2}\nTOP_KEYS = {\"version\", \"branch\", \"base\", \"head\", \"target\", \"altitude\", \"incidental\",\n            \"examinee\", \"questions\", \"outcome\", \"findings\"}\nQUESTION_KEYS = {\"id\", \"kind\", \"category\", \"relevance\", \"prompt\", \"options\", \"key_points\", \"attempts\"}\nATTEMPT_KEYS = {\"prompt\", \"kind\", \"options\", \"answer\", \"verdict\", \"feedback\", \"round\"}\nMAX_QUESTIONS = 10\n\n\ndef text(value):\n    return isinstance(value, str) and value.strip() != \"\"\n\n\ndef check_options(where, kind, options, problems):\n    if kind == \"free\":\n        if options:\n            problems.append(f\"{where}: a free question has no options\")\n        return\n    low, high = (2, 4) if kind == \"single\" else (3, 4)\n    if not isinstance(options, list) or not low <= len(options) <= high:\n        problems.append(f\"{where}: a {kind} question has {low} to {high} options\")\n        return\n    labels = [o.get(\"label\") for o in options if isinstance(o, dict)]\n    if len(labels) != len(options) or not all(text(label) for label in labels):\n        problems.append(f\"{where}: every option is {{\\\"label\\\": text, \\\"correct\\\": bool}}\")\n        return\n    if len(set(labels)) != len(labels):\n        problems.append(f\"{where}: option labels repeat\")\n    correct = [o for o in options if o.get(\"correct\") is True]\n    if any(not isinstance(o.get(\"correct\"), bool) for o in options):\n        problems.append(f\"{where}: every option says whether it is correct\")\n    if kind == \"single\" and len(correct) != 1:\n        problems.append(f\"{where}: a single question has exactly one correct option, not {len(correct)}\")\n    if kind == \"multi\" and not correct:\n        problems.append(f\"{where}: a multi question has at least one correct option\")\n\n\ndef lint(quiz, plan):\n    problems = []\n    if not isinstance(quiz, dict):\n        return [\"the quiz file holds one JSON object\"]\n    for key in sorted(set(quiz) - TOP_KEYS):\n        problems.append(f\"unknown key {key!r}\")\n    if quiz.get(\"version\") != 1:\n        problems.append(\"version is 1\")\n    for key in (\"branch\", \"base\", \"head\", \"target\"):\n        if not text(quiz.get(key)):\n            problems.append(f\"{key} is a non-empty string\")\n    if quiz.get(\"altitude\") not in ALTITUDES:\n        problems.append(f\"altitude is one of {sorted(ALTITUDES)}\")\n    incidental = quiz.get(\"incidental\", [])\n    if not isinstance(incidental, list) or not all(text(i) for i in incidental):\n        problems.append(\"incidental is a list of strings\")\n    examinee = quiz.get(\"examinee\")\n    if examinee not in {\"human\", \"agent\"}:\n        problems.append(\"examinee is human or agent\")\n\n    questions = quiz.get(\"questions\")\n    if not isinstance(questions, list):\n        return problems + [\"questions is a list\"]\n    if len(questions) > MAX_QUESTIONS:\n        problems.append(f\"{len(questions)} questions, more than {MAX_QUESTIONS}\")\n    ids = set()\n    for n, q in enumerate(questions, 1):\n        where = f\"question {n}\"\n        if not isinstance(q, dict):\n            problems.append(f\"{where}: is an object\")\n            continue\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 14504,
+        "completion_tokens": 11895,
+        "cached_tokens": 12160,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 15,
+      "timestamp": "2026-10-18T20:36:31.483Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "Let me see the rest of quizlint to fully understand the plan checks.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_x68zr09j",
+          "function_name": "bash",
+          "arguments": {
+            "command": "sed -n 80,200p /opt/multeval/skills/own-your-diff/scripts/quizlint"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_x68zr09j",
+            "content": "            continue\n        for key in sorted(set(q) - QUESTION_KEYS):\n            problems.append(f\"{where}: unknown key {key!r}\")\n        qid = q.get(\"id\")\n        if not text(qid) or qid in ids:\n            problems.append(f\"{where}: id is a unique non-empty string\")\n        ids.add(qid)\n        kind = q.get(\"kind\")\n        if kind not in KINDS:\n            problems.append(f\"{where}: kind is one of {sorted(KINDS)}\")\n            continue\n        if examinee == \"agent\" and kind != \"free\":\n            problems.append(f\"{where}: an agent examinee gets free questions only\")\n        if q.get(\"category\") not in CATEGORIES:\n            problems.append(f\"{where}: category is one of {sorted(CATEGORIES)}\")\n        if q.get(\"relevance\") not in RELEVANCE:\n            problems.append(f\"{where}: relevance is one of {sorted(RELEVANCE, key=RELEVANCE.get)}\")\n        if not text(q.get(\"prompt\")):\n            problems.append(f\"{where}: prompt is a non-empty string\")\n        check_options(where, kind, q.get(\"options\"), problems)\n        points = q.get(\"key_points\")\n        if not isinstance(points, list) or not points or not all(text(p) for p in points):\n            problems.append(f\"{where}: key_points is a non-empty list of strings\")\n        attempts = q.get(\"attempts\")\n        if plan:\n            if attempts:\n                problems.append(f\"{where}: a plan has no attempts yet\")\n            continue\n        if not isinstance(attempts, list) or not attempts:\n            problems.append(f\"{where}: has at least one attempt\")\n            continue\n        for m, a in enumerate(attempts, 1):\n            at = f\"{where} attempt {m}\"\n            if not isinstance(a, dict):\n                problems.append(f\"{at}: is an object\")\n                continue\n            for key in sorted(set(a) - ATTEMPT_KEYS):\n                problems.append(f\"{at}: unknown key {key!r}\")\n            answer = a.get(\"answer\")\n            if not (text(answer) or (isinstance(answer, list) and all(text(x) for x in answer))):\n                problems.append(f\"{at}: answer is the text or the picked labels\")\n            if a.get(\"verdict\") not in VERDICTS:\n                problems.append(f\"{at}: verdict is one of {sorted(VERDICTS)}\")\n\n    ranks = [RELEVANCE.get(q.get(\"relevance\")) for q in questions[:-1] if isinstance(q, dict)]\n    if None not in ranks and ranks != sorted(ranks):\n        problems.append(\"the questions run from most to least relevant, except the last\")\n\n    if examinee == \"human\" and len(questions) >= 2:\n        kinds = [q.get(\"kind\") for q in questions if isinstance(q, dict)]\n        if kinds[0] != \"single\":\n            problems.append(\"the quiz opens with a single question\")\n        if kinds[-1] not in {\"multi\", \"free\"}:\n            problems.append(\"the quiz ends with a multi or a free question\")\n\n    outcome = quiz.get(\"outcome\")\n    if plan:\n        if outcome is not None:\n            problems.append(\"a plan has no outcome yet\")\n    elif outcome not in {\"passed\", \"failed\"}:\n        problems.append(\"outcome is passed or failed\")\n    elif outcome == \"passed\":\n        for n, q in enumerate(questions, 1):\n            attempts = q.get(\"attempts\") if isinstance(q, dict) else None\n            if isinstance(attempts, list) and attempts and isinstance(attempts[-1], dict) \\\n                    and attempts[-1].get(\"verdict\") != \"pass\":\n                problems.append(f\"question {n}: a passed quiz ends every question on a pass\")\n    return problems\n\n\ndef main(argv):\n    plan = \"--plan\" in argv\n    files = [a for a in argv if a != \"--plan\"]\n    if len(files) != 1:\n        sys.exit(__doc__.strip())\n    try:\n        with open(files[0]) as f:\n            quiz = json.load(f)\n    except (OSError, json.JSONDecodeError) as error:\n        sys.exit(f\"quizlint: {files[0]}: {error}\")\n    problems = lint(quiz, plan)\n    if problems:\n        print(\"\\n\".join(f\"quizlint: {p}\" for p in problems))\n        return 1\n    questions = quiz[\"questions\"]\n    kinds = \",\".join(q[\"kind\"] for q in questions) or \"none\"\n    print(f\"ok: {len(questions)} question(s), kinds {kinds}\")\n    return 0\n\n\nif __name__ == \"__main__\":\n    sys.exit(main(sys.argv[1:]))\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 28104,
+        "completion_tokens": 49,
+        "cached_tokens": 14400,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 16,
+      "timestamp": "2026-10-18T20:36:36.020Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "I now have the full picture. Let me work through the skill's steps:\n\n**Step 1 \u2014 Scope.** One pending commit on `docs/install`: `53d6f31` over base `456b1e8`. It adds `README.md` (install, opt-in, update instructions), `AGENTS.md` (contributor rules), and a `CLAUDE.md` symlink. The code it documents (install.sh, quizgate install/sync, session-start, guard, codex-trust-hooks) already exists in the base commit.\n\n**Step 2 \u2014 Altitude.** Per the skill's Docs rule: documentation of existing behavior is trivial, contributor steps stated as rules stay incidental, but **new rules/contracts in AGENTS.md are the target at design altitude**. Classifying every hunk:\n\n- **Target (design):** two new contributor contracts in AGENTS.md \u2014 (A) hook scripts locate the plugin root with `dirname \"$0\"` and never read `CLAUDE_PLUGIN_ROOT` from the environment, because Droid sets it to a placeholder inside hook processes; (B) editing `hooks/hooks.json` changes its Codex trust hash, so changes must tell Codex users to rerun `scripts/codex-trust-hooks`. Both core points.\n- **Incidental/trivial:** the README's explanations of existing behavior, the step rules (selftest, `claude plugin validate`, version bump, codex-trust-hooks rerun), the single-tree statement documenting the existing layout, and the CLAUDE.md symlink \u2014 each gets a line, no question.\n\n**Step 4 \u2014 Quiz plan** (two core points \u2192 two questions, human examinee, opened by a single-select, closed by a multi-select applying both points to a new case, spread across rationale/extension categories). Writing the plan now:",
+      "reasoning_content": "Now I understand the full lint constraints. Let me finalize my step-2 classification and step-4 plan.\n\n**Step 1 done \u2014 target.** The pending commit is `53d6f31` (docs: explain install, opt-in, and updates) on branch `docs/install` over base `456b1e8`. The change adds:\n- README.md: documents the plugin's components, install (install.sh + per-harness commands + Codex trust), opt-in (quizgate install + committed `.own-your-diff` marker + session-start hook), org-wide distribution via settings.json, pluginless usage via `~/.agents/skills` symlink, and updating (version bump + plugin update commands).\n- AGENTS.md: contributor rules \u2014 single plugin tree rationale; run selftest; run `claude plugin validate`; bump version; hook scripts find plugin root with `dirname \"$0\"` (never `CLAUDE_PLUGIN_ROOT` from env, because Droid sets it to a placeholder); editing `hooks/hooks.json` changes its Codex trust hash (say Codex users must rerun `scripts/codex-trust-hooks`).\n- CLAUDE.md: symlink to AGENTS.md.\n\n**Step 2 \u2014 altitude.** Per the skill's Docs rule:\n- Docs of existing behavior \u2192 trivial, no questions: README's install/opt-in/update explanations; AGENTS.md's single-tree statement (documents the existing tree's shape).\n- Steps stated as rules \u2192 incidental, no questions: selftest, `claude plugin validate`, version bump, `codex-trust-hooks` rerun instructions (steps), CLAUDE.md symlink (plumbing).\n- New rules/contracts in AGENTS.md \u2192 target at design altitude:\n  - Point A: the plugin-root discovery contract \u2014 hook scripts locate the plugin root via `dirname \"$0\"` and never read `CLAUDE_PLUGIN_ROOT` from the environment, because Droid sets it to a placeholder inside hook processes. This contract keeps one copy of each script working across all three harnesses.\n  - Point B: the Codex trust rule \u2014 editing `hooks/hooks.json` changes its Codex trust hash, so Codex users must rerun `scripts/codex-trust-hooks`; changes that edit hooks.json must say so. If ignored: Codex skips the now-untrusted hooks, so users silently lose the guard and session hook.\n\nBoth points are core (contracts the change sets; missing either, the author can't defend the rules they just wrote for contributors).\n\n**Step 4 \u2014 quiz plan.** 2 questions, one per core point:\n\nQ1 (single, rationale, core): Why must hook scripts find the plugin root with `dirname \"$0\"` rather than `CLAUDE_PLUGIN_ROOT` from the environment?\nKey points:\n- Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes, so an env lookup would resolve to a bogus path in Droid.\n- $0 (the invoked script's own path) is the only reliable route to the plugin root in every harness, which lets one copy of each script serve all three.\nWait \u2014 should key points include \"one copy serves all three\"? That's the single-tree frame (trivial context). Hmm, \"At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric.\" The single-tree consequence is design-level, fine to include as a key point? Key points should cover what a correct answer must cover. The core of the answer: Droid's placeholder breaks env-based discovery; dirname $0 works everywhere. That's the rubric. I might add a second key point about what the contract buys (hooks work unchanged in all three harnesses / no per-harness copies). That's a design-level point tied to the boundary. I'll include two key points:\n- \"Droid replaces CLAUDE_PLUGIN_ROOT with a placeholder inside hook processes, so reading it from the environment would misresolve the plugin root in Droid\"\n- \"dirname \\\"$0\\\" (the invoked script's own path) works in every harness, so one copy of each hook script serves Claude Code, Droid, and Codex\"\n\nOptions for Q1 (one correct, 3 options, plausible misreadings, random order, unmarked \u2014 in the file \"correct\": true/false marks exist though. \"Put options in random order and mark none of them\" \u2014 that refers to how you present them in chat (don't label A/B/C or bold the correct one). In the file, the shape has \"correct\" booleans, required by lint. OK.)\n\nOptions:\n1. \"Inside hook processes Droid replaces CLAUDE_PLUGIN_ROOT with a placeholder, so the invoked script's own path is the only reliable route to the plugin root in all three harnesses\" \u2014 correct.\n2. \"Claude Code does not set CLAUDE_PLUGIN_ROOT at all, so hooks must locate the root from their own path everywhere\" \u2014 wrong (misattributes the harness and reason).\n3. \"Codex skips hooks whose scripts read CLAUDE_PLUGIN_ROOT, because its trust hash covers the whole environment\" \u2014 wrong (conflates Codex trust with path discovery; plausible misreading).\n\nQ2 (multi, extension, core, closing \u2014 applies both points to one new case): \"A new PreToolUse hook script is added under hooks/ and wired into hooks/hooks.json. Which of these must the change that adds it account for? Pick all that hold.\"\nOptions:\n1. \"The new script must find the plugin root from its own path (dirname \"$0\"), not from CLAUDE_PLUGIN_ROOT in the environment\" \u2014 correct (rule A applied).\n2. \"Editing hooks/hooks.json changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks\" \u2014 correct (rule B applied).\n3. \"The single-tree design means the hook needs one copy per harness, so the change adds it under each harness's manifest\" \u2014 wrong (misreads the single-tree design).\n4. \"Codex will not run the new hook until the plugin version in .claude-plugin/plugin.json is bumped\" \u2014 wrong (conflates the version-cache rule with the Codex trust rule; the trust hash, not the version, gates Codex's running of the hook... hmm, wait. Actually \u2014 is this wrong? Codex caches the plugin by version, and Codex skips untrusted hooks. If the version isn't bumped, an installed Codex won't pick up the new hook at all (stale cache). Hmm \u2014 but the question is \"must the change account for\" in the sense of the target rules. The version-bump rule is incidental (a step), and the option conflates trust with version. The option as phrased says \"will not run the new hook until the version is bumped\" \u2014 that's the cache mechanism, which is arguably true for installs... but \"must the change account for\" \u2014 the AGENTS.md does say bump version with every change installs should pick up. Hmm. This option is TRUE per AGENTS.md (version bump needed so installs pick up the change). That would make it a correct option, but it's an incidental point. \"Every wrong option is a plausible misreading of the change, never filler.\" If I include a true-but-incidental option marked wrong, the quiz punishes knowing AGENTS.md. Bad. Let me rephrase option 4 to be clearly a misreading: \"Codex runs the new hook once the plugin version is bumped; no other step is needed for Codex\" \u2014 this is a misreading: the trust hash also must be re-trusted (rerun codex-trust-hooks), so \"no other step\" is wrong. Plausible conflation of the update rule with the trust rule. Correct: false.\n\nHmm, but with 4 options in a multi where correct = {1,2}: options 3 and 4 wrong. Lint: multi needs 3-4 options, at least one correct. Good.\n\nKey points for Q2:\n- \"The new hook script must locate the plugin root via dirname \\\"$0\\\" (Droid's CLAUDE_PLUGIN_ROOT placeholder), not from the environment\"\n- \"Editing hooks/hooks.json changes its Codex trust hash, so Codex users must rerun scripts/codex-trust-hooks and the change must say so\"\nMaybe a third: \"one shared hooks.json/tree serves all three harnesses, so a hooks change has cross-harness effects (Droid env quirk, Codex trust)\". Hmm, keep rubric tight: the two applied rules. I'll include the two, maybe three. Let me keep 2-3 key points each.\n\nQ1 key points (2):\n1. \"Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes, so reading it from the environment would resolve to a bogus path in Droid\"\n2. \"The invoked script's own path (dirname \\\"$0\\\") works in every harness, which is what lets one copy of each hook script serve all three harnesses\"\n\nQ2 key points (2):\n1. \"The new script must find the plugin root from its own path, never CLAUDE_PLUGIN_ROOT from the environment\"\n2. \"The edit to hooks/hooks.json changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks\"\n\nCategory spread: Q1 rationale, Q2 extension. Different. Kind mix: single, multi. Order: both core, Q1 first (opens with single \u2014 lint requires first kind = single for human with \u22652 questions; last must be multi or free \u2014 Q2 is multi). Relevance ranks: [core, core] for questions[:-1] \u2192 [0], sorted OK. \n\nTop-level fields:\n- version: 1\n- branch: \"docs/install\"\n- base: short sha of base? The example shows \"base\": \"42c2cb8\" (short) and \"head\": \"0389727\" (short). quizgate base \u2192 456b1e87f4bd... short = 456b1e8. Head short = 53d6f31.\n- target: \"The AGENTS.md contributor rules for keeping one plugin tree working across Claude Code, Droid, and Codex: hook scripts locate the plugin root from their own path, and hooks.json edits invalidate Codex trust.\" Hmm \u2014 target should be \"the one thing the work set out to change\". The commit: \"docs: explain install, opt-in, and updates\". Hmm. But per the skill, the doc-of-existing-behavior parts are trivial; the new rules are the target. The target field should state the target as classified. Let me phrase: \"AGENTS.md sets two new contributor contracts: hook scripts find the plugin root from their own path, never CLAUDE_PLUGIN_ROOT from the environment; and hooks.json edits change the Codex trust hash, so changes must tell Codex users to rerun scripts/codex-trust-hooks.\" That's the target at design altitude.\n\nHmm, wait. Let me reconsider once more. Is the target really just those two rules, given the commit is titled \"explain install, opt-in, and updates\"? The skill for docs: \"A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.\" So yes \u2014 the new rules are the target. The rest is trivial/incidental. But should `altitude` be \"design\"? The change carries both kinds? \"A change can carry both kinds\" (design and mechanism). Here: the target rules are at design altitude \u2192 altitude: \"design\". \n\nHmm, but wait \u2014 could one argue altitude should be \"trivial\" because the change is mostly docs-of-existing-behavior, and the two rules are small? The skill: trivial = \"The whole change is a typo, formatting, a version bump, or a one-line config change... The quiz usually has no questions.\" No \u2014 the change sets new rules \u2192 those rules are the target at design altitude. Altitude: design. The incidental list captures the rest.\n\nincidental list:\n- \"README install, opt-in, and update instructions (steps to run)\"\n- \"selftest, claude plugin validate, and plugin.json version-bump rules (steps, stated as rules)\"\n- \"scripts/codex-trust-hooks rerun steps in README\"\n- \"CLAUDE.md symlink to AGENTS.md (plumbing)\"\n- \"the single-tree statement documenting the existing layout\"\n- hmm, also \"org-wide settings.json snippet\" \u2014 part of README docs of existing behavior.\n\nWait \u2014 but docs-of-existing-behavior is \"trivial\", not \"incidental\". The top-level has no \"trivial\" list; only \"incidental\" lists what gets no question. The skill: \"Done when every hunk in the diff belongs to the target or to the incidental list.\" So the trivial-doc parts also go in the incidental list (they get no question). The field is just named \"incidental\". I'll list them: README's explanations of existing behavior (install/opt-in/update), the single-tree statement, the steps (selftest, validate, version bump, codex-trust-hooks rerun), CLAUDE.md symlink.\n\n- examinee: \"human\"\n- questions: [q1, q2]\n- outcome: absent in a plan.\n\nNow \u2014 the prompt wording. \"Ask outside in. Open with the core points, starting from what the change is for and its main boundary, then move inward.\" Q1 opens with the boundary/contract (plugin-root discovery). Good.\n\nAlso, \"Transfer questions\": Q1 rationale (why this over the rejected alternative: env var) \u2014 transfer: the author must apply the reasoning. Q2 extension (new hook arrives \u2014 where does it go, what changes) \u2014 transfer. Good, both transfer.\n\nLet me also double-check the lint rules for the plan:\n- version == 1 \u2713\n- branch, base, head, target non-empty strings \u2713\n- altitude in {design, mechanism, trivial} \u2192 \"design\" \u2713\n- incidental: list of strings \u2713\n- examinee: \"human\" \u2713\n- questions: list, \u2264 10 \u2713\n- q1: id unique, kind \"single\" (2-4 options, exactly one correct, all have label+correct bool) \u2713\n- q2: kind \"multi\" (3-4 options, \u22651 correct) \u2713\n- category in set: rationale / extension \u2713\n- relevance: core both \u2713\n- prompt non-empty \u2713\n- key_points: non-empty list of strings \u2713\n- attempts: [] for each in plan \u2014 wait: \"if plan: if attempts: problems.append(...)\". So attempts must be empty or absent. The example shape includes \"attempts\": [] \u2014 wait, the example shows attempts with entries because it's a finished quiz. For a plan: \"attempts stays empty in a plan.\" Empty list is fine.\n- kinds[0] == \"single\" \u2713 (Q1 single), kinds[-1] in {multi, free} \u2713 (Q2 multi)\n- relevance ranks of questions[:-1] = [core(0)] sorted \u2713\n- plan: no outcome \u2713\n\nOne more consideration: the skill says options should be \"in random order and mark none of them\" \u2014 in chat presentation. In the file, \"correct\" booleans are required. Fine.\n\nAlso \"Every wrong option is a plausible misreading of the change, never filler.\" My wrong options:\nQ1-b: \"Claude Code does not set CLAUDE_PLUGIN_ROOT at all...\" \u2014 plausible misreading (right idea, wrong harness). Hmm, is it plausible? Someone who skimmed might think env vars are unreliable everywhere. It's plausible enough. Alternatively: \"CLAUDE_PLUGIN_ROOT points at the repo root, not the plugin root, in every harness\" \u2014 hmm. Or \"Reading environment variables is denied inside hook processes by the shell guard\" \u2014 conflates the guard with hooks; plausible. Let me pick two clearly-wrong-but-plausible options:\n  - \"Claude Code never sets CLAUDE_PLUGIN_ROOT inside hook processes, so $0 is the only path that works even there\" \u2014 plausible (misattributes the failing harness).\n  - \"Codex refuses to run any hook that reads CLAUDE_PLUGIN_ROOT, since its trust hash covers the hook's environment\" \u2014 plausible (conflates Codex trust with path discovery).\nBoth misread the change; neither is filler. Good.\n\nQ2 wrong options:\n  - \"The single-tree layout means the hook must be added once per harness, since each reads a different hooks file\" \u2014 misreads the single-tree design (all three read the same hooks.json). Plausible.\n  - \"Codex picks the new hook up once the version in plugin.json is bumped; nothing else is needed on the Codex side\" \u2014 misreads: conflates version cache with trust hash; the trust hash changes and Codex users must rerun codex-trust-hooks. Plausible.\n\nGood.\n\nNow, where to write? \"write the plan to quiz.json in this directory\" \u2014 /workspace/quiz.json. Note: /workspace is the repo working tree. The skill normally keeps the quiz file out of the tree (\"The walkthrough and quiz file stay out of the tree\") and in `$(quizgate dir)` \u2014 but the user explicitly directed quiz.json in this directory. The plan-only path in the skill: \"write the plan of step 4 for a human examinee to the path you were given.\" The path given by the user: quiz.json in this directory. So write to /workspace/quiz.json.\n\nBranch: docs/install. Base short sha: 456b1e8. Head short sha: 53d6f31.\n\nLet me also double-check: does the user's \"this directory\" mean /workspace? Yes, cwd is /workspace, and the repo is /workspace. quiz.json in this directory = /workspace/quiz.json.\n\nHmm, one concern: writing quiz.json into the repo working tree \u2014 will it pollute git status? It's untracked; the skill says walkthrough and quiz files stay out of the tree (committed). Untracked is fine; user asked for it.\n\nLet me also reconsider the question count once more. Two points, two questions. The skill: \"Write one question per core and important point... Stop when the points run out.\" Two core points \u2192 two questions. The last one applies several points to one new case (both A and B via the new-hook scenario). Good.\n\nWait, I should double check one thing about Q1's category: rationale = \"why this over the alternative\". The alternative = env var CLAUDE_PLUGIN_ROOT. Yes.\n\nAnd Q2: extension = \"A new <requirement> arrives. Where does it go, and what changes?\" New hook arrives \u2192 where does it go (hooks/ + hooks.json, one copy) and what changes (script self-locates via $0; Codex trust hash changes \u2192 tell users to rerun). Category: extension. \u2713.\n\nNow, about the \"target\" field wording \u2014 keep it one crisp sentence. \"AGENTS.md sets two new contributor contracts for the shared plugin tree: hook scripts locate the plugin root from their own path, never CLAUDE_PLUGIN_ROOT from the environment (Droid sets it to a placeholder), and edits to hooks/hooks.json change the Codex trust hash, so changes must tell Codex users to rerun scripts/codex-trust-hooks.\" Good.\n\nincidental list (strings):\n- \"README's explanations of existing behavior: plugin components, install.sh, per-harness install commands, quizgate install opt-in, session-start hook in fresh clones, org-wide settings.json, ~/.agents/skills symlink, plugin update commands\"\n- \"AGENTS.md step rules: scripts/selftest after skills/ or hooks/ changes, claude plugin validate after manifest changes, plugin.json version bump for installs\"\n- \"AGENTS.md's one-plugin-tree statement (documents the existing layout)\"\n- \"CLAUDE.md symlink to AGENTS.md\"\n- \"README's codex-trust-hooks rerun step (a step, restated from AGENTS.md)\" \u2014 hmm, this is covered by \"step rules\". Keep list tight but complete. Every hunk: README.md (docs of existing behavior + steps) \u2192 covered; AGENTS.md (single-tree statement + steps + the two target rules) \u2192 target + incidental; CLAUDE.md \u2192 incidental. Good.\n\nLet me now write the file. One more look at the question prompts to make them natural, outside-in, and at design altitude:\n\nQ1 prompt: \"The new AGENTS.md rule says hook scripts find the plugin root with dirname \\\"$0\\\" and never read CLAUDE_PLUGIN_ROOT from the environment. Why this rule over letting the scripts use CLAUDE_PLUGIN_ROOT?\" Hmm \u2014 that's wordy. Simpler: \"Why must the hook scripts locate the plugin root from their own path (dirname \\\"$0\\\") instead of CLAUDE_PLUGIN_ROOT in the environment?\"\n\nQ2 prompt: \"A new PreToolUse hook script is added under hooks/ and wired into hooks/hooks.json. Which of these must the change that adds it account for? Pick all that hold.\"\n\nNote for the multi question \u2014 I should tell the examinee to pick several when actually asking in chat; the plan's prompt can carry \"Pick all that hold.\" Fine.\n\nKey points \u2014 let me finalize:\n\nQ1 key_points:\n1. \"Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes, so reading it from the environment would resolve a bogus plugin root in Droid\"\n2. \"The invoked script's own path (dirname \\\"$0\\\") works in every harness, which keeps one copy of each hook script serving Claude Code, Droid, and Codex\"\n\nQ2 key_points:\n1. \"The new script must locate the plugin root from its own path, never CLAUDE_PLUGIN_ROOT from the environment, or it breaks in Droid\"\n2. \"Wiring the hook into hooks/hooks.json edits that file, which changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks or their hooks stay untrusted and are skipped\"\n\nHmm, that second key point bundles the mechanism (skipped when untrusted). Is \"Codex skips untrusted hooks\" a mechanism detail below design altitude? No \u2014 it's the failure mode the rule protects against, design-level. Keep it.\n\nNow write /workspace/quiz.json, then run quizlint --plan on it.\n\nLet me construct the JSON carefully. Option labels must be unique within a question. All strings non-empty. attempts: [] \u2014 wait, for a plan, \"attempts\" must be empty or absent; the question keys set includes \"attempts\" and lint checks `set(q) - QUESTION_KEYS` \u2014 attempts is in QUESTION_KEYS, so including \"attempts\": [] is fine and matches the reference shape.\n\nOne more check on option ordering \"random\": I'll interleave correct/wrong naturally.\n\nQ1 options:\n1. { \"label\": \"Inside hook processes Droid replaces CLAUDE_PLUGIN_ROOT with a placeholder, so the invoked script's own path is the one route to the plugin root that works in all three harnesses\", \"correct\": true }\n2. { \"label\": \"Claude Code never sets CLAUDE_PLUGIN_ROOT in hook processes, so even there the scripts need their own path\", \"correct\": false }\n3. { \"label\": \"Codex refuses to run a hook that reads CLAUDE_PLUGIN_ROOT, because its trust hash covers the hook's environment\", \"correct\": false }\n\nQ2 options:\n1. { \"label\": \"The new script must find the plugin root from its own path, never from CLAUDE_PLUGIN_ROOT in the environment\", \"correct\": true }\n2. { \"label\": \"The single-tree layout means the hook must be added once per harness, since each reads its own hooks file\", \"correct\": false }\n3. { \"label\": \"Editing hooks/hooks.json changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks\", \"correct\": true }\n4. { \"label\": \"Once the version in .claude-plugin/plugin.json is bumped, Codex runs the new hook with no further steps\", \"correct\": false }\n\nMulti correct set = {1, 3} \u2014 exact set passes.\n\nBoth questions relevance \"core\". Lint rank check: questions[:-1] = [q1] ranks [0] sorted \u2713. First kind single \u2713, last kind multi \u2713.\n\nWrite the file and lint it.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_qj2qb52d",
+          "function_name": "write",
+          "arguments": {
+            "content": "{\n  \"version\": 1,\n  \"branch\": \"docs/install\",\n  \"base\": \"456b1e8\",\n  \"head\": \"53d6f31\",\n  \"target\": \"AGENTS.md sets two new contributor contracts for the shared plugin tree: hook scripts locate the plugin root from their own path (dirname \\\"$0\\\"), never CLAUDE_PLUGIN_ROOT from the environment because Droid replaces it with a placeholder in hook processes; and editing hooks/hooks.json changes its Codex trust hash, so a change that edits it must tell Codex users to rerun scripts/codex-trust-hooks.\",\n  \"altitude\": \"design\",\n  \"incidental\": [\n    \"README.md: explanations of existing behavior (the three plugin components, install.sh and per-harness install commands, quizgate install opt-in, the session-start hook in fresh clones, org-wide settings.json, the ~/.agents/skills symlink, plugin update commands) - docs of a design the author already owned\",\n    \"AGENTS.md step rules: run scripts/selftest after skills/ or hooks/ changes, run claude plugin validate after manifest changes, bump version in .claude-plugin/plugin.json so installs pick up the change - steps, incidental even though stated as rules\",\n    \"AGENTS.md and README rerun-steps for scripts/codex-trust-hooks after an update that touches hooks/hooks.json - steps, incidental even though stated as rules\",\n    \"AGENTS.md's one-plugin-tree statement: documents the existing layout, context for the target rules\",\n    \"CLAUDE.md: symlink to AGENTS.md so Claude Code reads the same rules - plumbing\"\n  ],\n  \"examinee\": \"human\",\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"kind\": \"single\",\n      \"category\": \"rationale\",\n      \"relevance\": \"core\",\n      \"prompt\": \"Why must the hook scripts locate the plugin root with dirname \\\"$0\\\" instead of reading CLAUDE_PLUGIN_ROOT from the environment?\",\n      \"options\": [\n        {\n          \"label\": \"Inside hook processes Droid replaces CLAUDE_PLUGIN_ROOT with a placeholder, so the invoked script's own path is the one route to the plugin root that works in all three harnesses\",\n          \"correct\": true\n        },\n        {\n          \"label\": \"Claude Code never sets CLAUDE_PLUGIN_ROOT in hook processes, so even there the scripts need their own path\",\n          \"correct\": false\n        },\n        {\n          \"label\": \"Codex refuses to run a hook that reads CLAUDE_PLUGIN_ROOT, because its trust hash covers the hook's environment\",\n          \"correct\": false\n        }\n      ],\n      \"key_points\": [\n        \"Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes, so reading it from the environment would resolve a bogus plugin root in Droid\",\n        \"The invoked script's own path (dirname \\\"$0\\\") works in every harness, which keeps one copy of each hook script serving Claude Code, Droid, and Codex\"\n      ],\n      \"attempts\": []\n    },\n    {\n      \"id\": \"q2\",\n      \"kind\": \"multi\",\n      \"category\": \"extension\",\n      \"relevance\": \"core\",\n      \"prompt\": \"A new PreToolUse hook script is added under hooks/ and wired into hooks/hooks.json. Which of these must the change that adds it account for? Pick all that hold.\",\n      \"options\": [\n        {\n          \"label\": \"The new script must find the plugin root from its own path, never from CLAUDE_PLUGIN_ROOT in the environment\",\n          \"correct\": true\n        },\n        {\n          \"label\": \"The single-tree layout means the hook must be added once per harness, since each reads its own hooks file\",\n          \"correct\": false\n        },\n        {\n          \"label\": \"Editing hooks/hooks.json changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks\",\n          \"correct\": true\n        },\n        {\n          \"label\": \"Once the version in .claude-plugin/plugin.json is bumped, Codex runs the new hook with no further steps\",\n          \"correct\": false\n        }\n      ],\n      \"key_points\": [\n        \"The new script must locate the plugin root via dirname \\\"$0\\\" and not CLAUDE_PLUGIN_ROOT from the environment, or it breaks in Droid where that variable is a placeholder\",\n        \"Wiring the hook into hooks/hooks.json edits that file, which changes its Codex trust hash, so the change must tell Codex users to rerun scripts/codex-trust-hooks or Codex skips the untrusted hook\"\n      ],\n      \"attempts\": []\n    }\n  ]\n}",
+            "path": "/workspace/quiz.json"
+          },
+          "extra": {
+            "category": "file_edit"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_qj2qb52d",
+            "content": "Successfully wrote to /workspace/quiz.json",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 29165,
+        "completion_tokens": 6565,
+        "cached_tokens": 28032,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 17,
+      "timestamp": "2026-10-18T20:37:35.108Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "Now lint the plan:",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_ny72ksx6",
+          "function_name": "bash",
+          "arguments": {
+            "command": "bash /opt/multeval/skills/own-your-diff/scripts/quizlint --plan /workspace/quiz.json"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_ny72ksx6",
+            "content": "/opt/multeval/skills/own-your-diff/scripts/quizlint: line 6: Check a quiz file against the shape in references/quiz-file.md.\n\nusage: quizlint [--plan] FILE\n  --plan   the quiz has not run yet: no attempts and no outcome\n: No such file or directory\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 7: import: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 8: import: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 10: ALTITUDES: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 11: KINDS: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 12: CATEGORIES: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 13: VERDICTS: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 14: RELEVANCE: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 15: TOP_KEYS: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 16: examinee,: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 17: QUESTION_KEYS: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 18: ATTEMPT_KEYS: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 19: MAX_QUESTIONS: command not found\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 22: syntax error near unexpected token `('\n/opt/multeval/skills/own-your-diff/scripts/quizlint: line 22: `def text(value):'\n\n\nCommand exited with code 2",
+            "extra": {
+              "is_error": true
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 35742,
+        "completion_tokens": 39,
+        "cached_tokens": 29056,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 18,
+      "timestamp": "2026-10-18T20:37:40.323Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "The script needs Python \u2014 let me run it with `python3` directly.",
+      "reasoning_content": "quizlint is a Python script with a bash shebang issue \u2014 no, it's a Python file with `#!/usr/bin/env python3`? Let me check the first line. Earlier I read `head -80` and it started with `#!/usr/bin/env python3`? Actually looking back at my first read: it shows `#!/usr/bin/env python3` \u2014 wait, the output I saw was:\n\n```\n#!/usr/bin/env python3\n\"\"\"Check a quiz file against the shape in references/quiz-file.md.\n```\n\nHmm, but running with bash treated it as shell. Let me check the shebang. The error says line 6: \"Check a quiz file...\" \u2014 so the docstring was executed as shell. That means bash is running it. The shebang might not be python3. Let me run it with python3 explicitly.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_vw20pypd",
+          "function_name": "bash",
+          "arguments": {
+            "command": "head -1 /opt/multeval/skills/own-your-diff/scripts/quizlint; python3 /opt/multeval/skills/own-your-diff/scripts/quizlint --plan /workspace/quiz.json"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_vw20pypd",
+            "content": "#!/usr/bin/env python3\nok: 2 question(s), kinds single,multi\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 36242,
+        "completion_tokens": 248,
+        "cached_tokens": 35648,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 19,
+      "timestamp": "2026-10-18T20:37:44.446Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "The plan passes `quizlint --plan`. Done \u2014 stopping here as instructed.\n\n## Summary\n\n**Scope** (`quizgate pending`): one unpushed commit on `docs/install` \u2014 `53d6f31` \"docs: explain install, opt-in, and updates\" over base `456b1e8`. It adds `README.md`, `AGENTS.md`, and a `CLAUDE.md` symlink to the own-your-diff plugin repo.\n\n**Target and altitude** (design): the change is mostly docs of behavior that already existed (trivial \u2014 no questions), but AGENTS.md sets two **new contributor contracts**, which are the target:\n\n- **Core point A** \u2014 Hook scripts locate the plugin root with `dirname \"$0\"`, never `CLAUDE_PLUGIN_ROOT` from the environment, because Droid replaces it with a placeholder inside hook processes. This is what lets one copy of each script serve all three harnesses.\n- **Core point B** \u2014 Editing `hooks/hooks.json` changes its Codex trust hash, so a change that edits it must tell Codex users to rerun `scripts/codex-trust-hooks`, or Codex silently skips the now-untrusted hooks.\n\nIncidental (one line, no question): README's install/opt-in/update docs of existing behavior, the step rules (selftest, `claude plugin validate`, version bump, codex-trust-hooks rerun), the single-tree statement, and the symlink.\n\n**Plan** written to `/workspace/quiz.json` \u2014 2 questions, one per core point, for a human examinee:\n\n1. **Q1 (single, `rationale`, core)** \u2014 why `dirname \"$0\"` over the env var; wrong options misattribute the failing harness and conflate Codex trust with path discovery.\n2. **Q2 (multi, `extension`, core, closing)** \u2014 applies both contracts to a new case (adding a PreToolUse hook): exact set = self-locating script + tell Codex users to rerun `codex-trust-hooks`; wrong options misread the single-tree design and conflate the version cache with the trust hash.\n\n`quizlint --plan` reports: `ok: 2 question(s), kinds single,multi`. No walkthrough written, no questions asked, nothing recorded \u2014 quiz.json holds the plan and empty `attempts`, ready for a future quiz run.",
+      "reasoning_content": "`quizlint --plan` passes: \"ok: 2 question(s), kinds single,multi\".\n\nThe user said \"plan only: write the plan to quiz.json in this directory and stop. Nobody will answer questions in this run.\" So I stop here. No walkthrough (step 3 skipped per the skill's plan-only path), no questions, no recording, no pushing.\n\nLet me summarize what I did:\n1. Scope: `quizgate pending` \u2192 one commit, 53d6f31 \"docs: explain install, opt-in, and updates\" on branch docs/install, base 456b1e8.\n2. Altitude: design \u2014 the target is the two new AGENTS.md contributor contracts (plugin-root discovery via dirname $0; Codex trust-hash rule); the rest (README docs of existing behavior, step rules, symlink) is trivial/incidental.\n3. Plan written to /workspace/quiz.json: 2 questions (single rationale + multi extension closing that applies both points), human examinee.\n4. quizlint --plan passes.\n\nStop now, as instructed.",
+      "metrics": {
+        "prompt_tokens": 36513,
+        "completion_tokens": 724,
+        "cached_tokens": 36160,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 258634,
+    "total_completion_tokens": 22816,
+    "total_cached_tokens": 222208,
+    "total_cost_usd": 0.0,
+    "total_steps": 19
+  }
+}

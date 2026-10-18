@@ -1,0 +1,200 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "9ed8a8c",
+  "head": "6853a1c",
+  "target": "check(run) judges a run log by separating engine invariants (one failure is an engine bug) from model behaviors (bets on the model, measured as rates, skipped when the model had no chance) from cost (reported and never judged).",
+  "altitude": "design",
+  "incidental": [
+    "the cost table's rounding of cachedRatio to two decimals",
+    "evidence field shapes beyond the fields the failing cases assert",
+    "the strings, argsMatch and pluginOf helpers"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The live test asserted a few ad hoc properties and logged the rest. Why does check(run) instead report invariants, behaviors and cost as three separate kinds of judgment?",
+      "options": [
+        {
+          "label": "Behaviors are optional scenario entries while invariants always run, so the report stores them apart.",
+          "correct": false
+        },
+        {
+          "label": "An invariant failure anywhere is an engine bug: one failure settles it, never a rate; a behavior is a bet on the model, judged per trial and measured as a rate; cost is a number to report, not a verdict.",
+          "correct": true
+        },
+        {
+          "label": "Invariants are cheap pure checks while behaviors need the model's script, so they are split for speed.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "an invariant failure is an engine bug, settled by a single failure, never averaged into a rate",
+        "behaviors are the design's bets on the model, judged per trial so they aggregate into rates",
+        "cost is reported and never judged: a measurement, not a pass/fail verdict"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The checks read the final transcript and the per-step events together, rather than either one alone. What does each source see that the other misses?",
+      "options": [
+        {
+          "label": "The events are a debug log; the final transcript alone holds everything a check needs.",
+          "correct": false
+        },
+        {
+          "label": "Records written when a session is created reach no listener, since nobody can subscribe before the session is returned, and a schema-rejected core__call_tool leaves no tool event, only an error tool result in the transcript; the events, in turn, carry per-step emission order, turn ends and tool_end outcomes the transcript alone does not.",
+          "correct": true
+        },
+        {
+          "label": "The transcript is a fallback consulted only when an event fails to parse.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "creation-time records reach no listener, so only the transcript holds them",
+        "a core__call_tool rejected by the schema leaves no tool event, only an error result in the transcript under the same call id",
+        "events carry what the transcript lacks: per-step order, turn ends, tool_end denial outcomes"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "In one weather run the model never enables the weather plugin, and the prompt step carries a `use` expectation. Which of these hold? Pick all that do.",
+      "options": [
+        {
+          "label": "Counting that trial as a fail would make the use rate punish a model for a chance it never had, and it would measure enablement, not use.",
+          "correct": true
+        },
+        {
+          "label": "The verdict is skip, and a skip counts as a pass because nothing went wrong.",
+          "correct": false
+        },
+        {
+          "label": "The verdict is skip: the model never had the chance to call the tool, so the trial is left out of the behavior's rate.",
+          "correct": true
+        },
+        {
+          "label": "Counting it as a pass would let a model that dodges the enable look perfect on use.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "no chance means skip, and a skipped trial is left out of the behavior's rate entirely",
+        "a no-chance trial counted as a fail makes the rate measure the wrong thing: enablement, not use",
+        "a no-chance trial counted as a pass rewards a model for avoiding the situation the check is about"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "check takes only a RunLog: no session, no runner state, nothing else. What does that boundary protect?",
+      "options": [
+        {
+          "label": "Every caller, the live test, `aigent run`, `aigent check` and a future multeval grader, grades the same run from the same files: a result directory round-trips the log exactly, so a written run can be re-graded and no caller judges from memory the files do not hold.",
+          "correct": true
+        },
+        {
+          "label": "It keeps check cheap, because parsing a result directory is faster than listening to a live session.",
+          "correct": false
+        },
+        {
+          "label": "It lets the runner call check mid-run and abort a step whose invariant fails.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the run log is the whole input, so every caller gets the same verdict from the same files",
+        "a written run can be re-graded later; the runner grades the files it wrote, never its memory",
+        "judging stays decoupled from running: check needs no session or runner internals"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "boundary",
+      "prompt": "Which of these hold about how test/checks.test.ts pins the checks? Pick all that hold.",
+      "options": [
+        {
+          "label": "Both case tables are keyed by the check names, so a check added without a right case and a wrong case does not compile.",
+          "correct": true
+        },
+        {
+          "label": "An invariant's wrong case is also driven by a model script: a clever enough script can make a correct engine break an invariant.",
+          "correct": false
+        },
+        {
+          "label": "A behavior's wrong case is driven by the faux model's script, and each wrong case asserts the evidence that names its mistake.",
+          "correct": true
+        },
+        {
+          "label": "A passing invariant case must carry evidence the invariant was exercised, so the pass is not vacuous.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "keying the tables by the check names makes the tested set and the judged set unable to drift apart",
+        "a behavior fails through the model's script, and the failing verdict must name the mistake through its evidence",
+        "no model script can break a correct engine, so an invariant's failing case is one fault applied to a correct run, named for the bug it stands for",
+        "a passing case must show the invariant was exercised, not pass vacuously"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A new behavior arrives: `ask-clarify`, the model must ask a clarifying question when the user's prompt is ambiguous. Where does it go, and what must it come with so it cannot ship half-built?",
+      "key_points": [
+        "a new arm in the Expectation union in scenario.ts, with its fields, plus its parser entry and FIELDS list, since a check without a parser fails the build",
+        "a new judge arm in checks.ts, forced by the `e satisfies never` default in the judge switch",
+        "its own precondition and skip rule: when the run gave the model no chance to show it, the verdict is skip and the trial stays out of the rate",
+        "cases in the typed behavior table: a right script and a wrong script whose failing evidence names the mistake, or the build fails",
+        "a referencedNames entry if it names plugins, tools or skills, so a misspelling costs no paid run"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "A scenario has three prompt steps. The second ends `error` on a provider failure, so the third never runs; the engine itself behaved correctly. Which of these hold about check's report on that run? Pick all that hold.",
+      "options": [
+        {
+          "label": "`complete` is false, so the report tells this run apart from one where every step ran.",
+          "correct": true
+        },
+        {
+          "label": "The behaviors on the second prompt count as fails, because the model did not deliver an answer.",
+          "correct": false
+        },
+        {
+          "label": "The behaviors on the second and third prompts appear with skip verdicts, `the prompt ended error` and `an earlier prompt ended the run`, and stay out of their rates.",
+          "correct": true
+        },
+        {
+          "label": "The invariants are still judged on what ran, and passing them says the engine kept its properties on the partial run.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "a run that stops short is reported through `complete`, not silently absorbed",
+        "behaviors on the errored prompt and the unreached steps skip and stay out of their rates: a dead run is not model fails",
+        "a provider error is a run-completeness fact, never an invariant violation",
+        "the invariants still judge whatever ran, since they hold on every run"
+      ],
+      "attempts": []
+    }
+  ]
+}

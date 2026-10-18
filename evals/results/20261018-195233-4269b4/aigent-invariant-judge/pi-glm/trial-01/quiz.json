@@ -1,0 +1,223 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "9ed8a8c61b57789ab2842cbba64bba0ac39aa996",
+  "head": "6853a1cce978288e12ba95e9ecf5021d72d04b0b",
+  "target": "Judge a run through one check(run) pass over the run log: five invariants are engine contracts where a single failure is an engine bug, nine behaviors are bets on the model measured as rates that skip trials which never had the chance, and cost is reported and never judged.",
+  "altitude": "design",
+  "incidental": [
+    "the small helpers in checks.ts (pluginOf, matches, argsMatch, sum, ratio, the strings walker) and the per-field shape validation inside entriesOf and recordOf",
+    "the cost report's arithmetic: two-decimal ratios and 0 for an empty prompt",
+    "the harness helpers of test/checks.test.ts (run, scenario, pick, editUser, unredacted), which serve the case tables"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The live test used to assert a few properties inline and log the rest as metrics. check(run) now judges the whole run. Why does its report split verdicts into invariants and behaviors instead of keeping one flat list of pass/fail checks?",
+      "options": [
+        {
+          "label": "The split lets check short-circuit: behaviors are judged only after every invariant has passed.",
+          "correct": false
+        },
+        {
+          "label": "A failing invariant is the engine breaking a contract every run must keep, so the run itself is invalid; a failing behavior is one missed bet on the model, which rates over many runs turn into data. One flat list made an engine bug and a model mistake look alike.",
+          "correct": true
+        },
+        {
+          "label": "Invariants read the transcript while behaviors read the step events, so the two kinds cannot share one input.",
+          "correct": false
+        },
+        {
+          "label": "Behaviors come from the scenario's expect and invariants are declared nowhere, so they cannot live in one list.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "an invariant is a property of the engine that every trial must keep, so one failure is an engine bug that discredits the run",
+        "a behavior is a bet on the model, judged per trial and aggregated into a rate, so a miss is data about the model, not a bug in the run",
+        "the split is about what a failure means; the old live test's inline assertions and logged metrics could not tell an engine bug from a model mistake"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "On the silent weather run — the model answers both prompts without ever enabling weather — the report reads discover@1 fail, use@1 skip, follow@1 fail, resume@3 fail. What goes wrong if use@1 is made to fail instead of skip?",
+      "options": [
+        {
+          "label": "use's rate would count a trial the model had no chance in: its precondition, the model enabling weather, never happened, discover@1's fail already names that miss, and one mistake would count twice against models that never touch the plugin.",
+          "correct": true
+        },
+        {
+          "label": "Nothing that matters, because a skip and a fail both leave the trial out of the behavior's rate.",
+          "correct": false
+        },
+        {
+          "label": "The report's complete flag would flip to false, because a failing behavior means the run stopped early.",
+          "correct": false
+        },
+        {
+          "label": "check would start throwing on runs like this, because use cannot tell a missing precondition from a failed one.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "a skip leaves the trial out of the behavior's rate entirely, while a fail counts it as a miss",
+        "use's precondition — the model enabling the tool's plugin in that prompt — never happened, and discover's fail already names that miss, so failing use too counts one mistake twice",
+        "the same rule skips any behavior on a step the run never reached: rates count only trials that had the chance, and the report's complete flag, not a verdict, says the run stopped short"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "extension",
+      "prompt": "A stakeholder wants a run that spends more than 50k prompt tokens to count as a failed run. The report already carries the numbers. Where does that policy belong?",
+      "options": [
+        {
+          "label": "With whoever reads the report: cost is reported and never judged, so a spend threshold is the reader's policy over Cost, applied on the outside.",
+          "correct": true
+        },
+        {
+          "label": "In check, as a new invariant: a run that overspends breaks a contract every run must keep.",
+          "correct": false
+        },
+        {
+          "label": "In check, as a new behavior expectation the scenario declares, like restraint but about tokens.",
+          "correct": false
+        },
+        {
+          "label": "In Cost itself, as a verdict field next to cachedRatio.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "cost is measured and reported, never judged: spending is economics, not an engine contract or a bet on the model, so it carries no verdict",
+        "the threshold belongs to the caller that reads the report — the live test, the CLI, the future grader — because the policy is theirs and Cost gives them the numbers",
+        "judging cost inside check would print an expensive-but-correct run as failed, mixing economics into correctness verdicts"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "rationale",
+      "prompt": "check reads the run log's step events and its transcript together. Suppose a rewrite kept only the step events. Which of these would that rewrite get wrong?",
+      "options": [
+        {
+          "label": "restraint would start failing, because the model's own enable records reach check only through the transcript.",
+          "correct": false
+        },
+        {
+          "label": "enabled-before-call would report violations for calls on plugins enabled at a session's creation: those records reach no listener, so what was enabled at the start can be read only from the transcript.",
+          "correct": true
+        },
+        {
+          "label": "dispatch-recover would find nothing to recover: a core__call_tool the schema rejected before it ran leaves no tool event, only an error result in the transcript under the same call id.",
+          "correct": true
+        },
+        {
+          "label": "The cost report would lose its numbers, because usage rides on the transcript's assistant messages.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "creation-time records — the initial enables and the records a resume writes — reach no listener, so the transcript is the only record of what was enabled when a session began",
+        "a schema-rejected core__call_tool never becomes a tool event; its only trace is the transcript's error result under the same call id, and that trace is what dispatch-recover judges the recovery from",
+        "usage lives on the transcript's assistant messages, so the cost report needs the transcript too",
+        "the model's own mid-prompt enables do arrive as events, so restraint keeps working on events alone — that option is the misreading"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "boundary",
+      "prompt": "check never watches a run happen: it is a pure function over the run log the runner already wrote. Who is that boundary for, and what does it force the run log to carry?",
+      "key_points": [
+        "every consumer gets the same verdict from the same bytes: the live test, the CLI grading the result directory that readRun parses back, and the future multeval grader all call the same check on the same files",
+        "a result directory re-grades identically later, because the log is JSON-shaped and nothing outside it — runner memory, timing, a live subscription — can move a verdict",
+        "the cost of the bargain: the log must carry everything a verdict needs — per-step events, the final transcript, the transcripts resume steps saved — so check can judge only what writeRun records"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A new behavior check is wanted: cite, true when the model names the tool it used in its final answer. What has to change for it to ship, and what stops it from landing unjudged?",
+      "key_points": [
+        "the Expectation union in scenario.ts gains cite, and its parser, fields and referencedNames follow: the check names are the one vocabulary the scenario and the report share, and a scenario naming it is validated before a paid run",
+        "the judge's switch in checks.ts gains its case, and the exhaustive switch fails the build until it does",
+        "the behavior case table gains a cite case — it is typed by the check names, so the build fails until cite has a right script and wrong scripts, and each wrong case asserts the evidence that names its mistake",
+        "cite needs its own skip rule, what counts as never having had the chance — here a prompt with no tool call — so its rate counts only trials with the chance"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "A later engine version starts writing a new kind of transcript message — a developer role, say — and check grades a run that contains one. What happens, and why is that the right behavior for a judge?",
+      "options": [
+        {
+          "label": "check skips the message and judges the rest, because skipping is how the report handles what a run never did.",
+          "correct": false
+        },
+        {
+          "label": "check throws, naming the message and the problem: a judge that guesses past a message it cannot read would return verdicts it cannot stand behind, so version skew must surface as an error rather than silent misgrading.",
+          "correct": true
+        },
+        {
+          "label": "check reads it as a user message with empty text, so only checks that count user messages could notice.",
+          "correct": false
+        },
+        {
+          "label": "check marks the run incomplete, because an unknown message means the transcript did not round-trip.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the transcript reader throws on an unknown role — and on a malformed known one — naming the message's index and its problem",
+        "the design reason: a check over a misread transcript would be wrong without saying so, and a judge's worst failure is confident, silent misgrading",
+        "so version skew becomes a loud error the caller must fix, never a verdict"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "multi",
+      "category": "extension",
+      "prompt": "A new case to close on: a retry check is proposed — when a tool call runs and comes back with an error result, the model calls the same tool again later in the same prompt. Which of these hold?",
+      "options": [
+        {
+          "label": "A run whose tool never returned an error skips retry, and the run leaves retry's rate: the rate counts only trials that saw an error.",
+          "correct": true
+        },
+        {
+          "label": "retry is a behavior, not an invariant: the tool's error result is data the run legitimately contains, and the bet is that the model recovers from it.",
+          "correct": true
+        },
+        {
+          "label": "A run whose error came from a schema-rejected core__call_tool must fail an invariant too, because the engine rejected the call.",
+          "correct": false
+        },
+        {
+          "label": "The build fails until the behavior case table has a retry case, with a right script and a wrong script whose failing evidence names the mistake.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "the skip rule applies unchanged: no error result means no chance, so the trial leaves the rate",
+        "retry is a behavior: recovering from a tool's error result is a bet on the model, not an engine contract",
+        "the case-table typing applies unchanged: no passing and failing cases, no build",
+        "a schema-rejected core__call_tool is the model's bad dispatch call, not an engine bug — which is why dispatch-recover is a behavior, not an invariant"
+      ],
+      "attempts": []
+    }
+  ]
+}

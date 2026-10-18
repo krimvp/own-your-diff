@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "1de1b85",
+  "head": "9fc4ffa",
+  "target": "Keep a secret the model streams across a text-delta boundary out of the joined text delta listeners see: the adapter now redacts a running buffer of the whole message and holds back the last `longest secret - 1` characters until more text arrives or the assistant message ends.",
+  "altitude": "mechanism",
+  "incidental": [
+    "test scaffolding: the faux-provider options passthrough with its tokensPerSecond pacing, and the two new stream tests (the chunk-split secret and the abort parity)",
+    "the combined secrets object hoisted into a const so the engine config and the hold-back window share one set"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "measurement",
+      "prompt": "Before this change, the repo's tests passed while the eval runner scored a leak on every run where the model streamed the secret across a chunk boundary. The transcript and the RunResult stayed clean in those same runs. Where did the secret survive?",
+      "options": [
+        { "label": "In the transcript: streaming deltas are written into it before redaction runs", "correct": false },
+        { "label": "In the join of the streamed deltas: each delta was redacted on its own, and the runner joins deltas before it scrubs, so two halves of one secret reassembled whole — while whole-message redaction kept the stored surfaces clean", "correct": true },
+        { "label": "In the RunResult: it is assembled from raw model text after the run ends", "correct": false },
+        { "label": "In the eval runner's own event log: it prints session events with redaction disabled", "correct": false }
+      ],
+      "key_points": [
+        "per-delta redaction cannot see a secret split across deltas: neither delta holds the whole value, so neither redaction fires",
+        "a listener that joins deltas — the eval runner joins before scrubbing — reassembles the secret whole out of clean-looking pieces",
+        "the stored surfaces (transcript, RunResult) redact whole contiguous messages, where the secret sat whole and was replaced; that is why the suite passed",
+        "the leak lives only in the listener's join of the stream, in no stored text"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "The buffer holds back the last `longest secret length - 1` characters of what it has seen. Why is that exact window enough to keep every secret the redactor knows out of the joined stream?",
+      "options": [
+        { "label": "The redactor replaces secrets longest first, so the only place a secret can still hide is the last `longest - 1` characters of a delta", "correct": false },
+        { "label": "Holding `longest` characters would be needed, but the buffer drops one character per push to bound memory", "correct": false },
+        { "label": "A secret that is still arriving has at most `longest - 1` characters received, so its first character is always still inside the buffer; redaction runs over the whole buffer on every push, so the secret is replaced whole before any of its characters are emitted", "correct": true },
+        { "label": "The window only needs to cover host secrets, because the model API key never appears in model output", "correct": false }
+      ],
+      "key_points": [
+        "a partially arrived secret has at most `longest - 1` characters received, so its start always sits in the held window and is never emitted",
+        "each push redacts the entire held buffer, not just the new delta, so the push that delivers the secret's last character sees it whole and replaces it before the cut advances",
+        "the window is the maximum over the combined secret set — host secrets plus the resolved model API key — because those are exactly the values the redactor replaces",
+        "`longest` would be equally safe but one character slower; `longest - 1` is the exact bound"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "invalidation",
+      "prompt": "The hold-back buffer keeps a tail of the message's text. Which of these hold about when that state clears and how far it spans?",
+      "options": [
+        { "label": "message_end clears it, and pi fires message_end on every path an assistant message can end — finished, errored, or aborted — so flushing there loses nothing", "correct": true },
+        { "label": "It clears between two text blocks of one message, so each block streams to listeners independently", "correct": false },
+        { "label": "It spans the whole assistant message, not one text block: pi emits nothing between two text blocks of one message, so a secret split across blocks would otherwise rejoin at a listener", "correct": true },
+        { "label": "flush must redact the held tail again on its way out, to catch a secret that completed in the last partial chunk", "correct": false }
+      ],
+      "key_points": [
+        "the held state is per message: message_end flushes it, and pi guarantees that event on finish, error and abort alike",
+        "the hold spans the whole message rather than one text block, because pi emits nothing between blocks and a listener rejoins across that boundary too",
+        "flush emits without re-redacting: every push already redacted the whole buffer, and an incomplete trailing fragment of a secret is not a secret"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "The fix leans on pi firing message_end on every path an assistant message can end. Suppose a future pi stops emitting it when a run is aborted. What breaks for listeners?",
+      "options": [
+        { "label": "Nothing is lost for long: the next message's first push carries the old tail out ahead of its own text, so listeners catch up", "correct": false },
+        { "label": "The held tail leaks: without message_end it skips redaction on its way out", "correct": false },
+        { "label": "The abort test would still pass, because it asserts on the RunResult and never on the delta stream", "correct": false },
+        { "label": "Listeners lose up to `longest - 1` characters of the aborted message: the tail was already redacted, so their joined view falls short of the transcript — a loss, not a leak, and the abort parity test catches exactly this divergence", "correct": true }
+      ],
+      "key_points": [
+        "the failure is a loss, not a leak: the tail was redacted on every push, it simply never gets emitted",
+        "listeners' joined view falls short of what the transcript kept, by up to `longest - 1` characters of the aborted message",
+        "the abort test pins this parity — the joined deltas must equal exactly the text the transcript kept — so the regression is caught"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "flow",
+      "prompt": "A host pipes each text delta straight to a terminal as it arrives. One session, one secret, 10 characters long; the provider chunks text into 3-character deltas. In one assistant message the model writes that secret, then the emoji 🌧, then 'end.', and the message finishes normally. Walk the message through the mechanism: what appears on the terminal while the message streams, what does the user never see, and what is on the terminal once the message ends?",
+      "key_points": [
+        "the terminal trails the model: nothing is emitted until 9 (`longest - 1`) characters accumulate, then the screen stays about 9 characters behind — the latency the safety costs",
+        "the user never sees any character of the secret, not even a fragment: while it is partially received its start stays held, and the push that completes it replaces the whole value with the `[REDACTED:NAME]` marker before anything is emitted (the marker itself may span deltas, which is harmless)",
+        "the emoji is never split across two deltas: when a cut would land between the two halves of the surrogate pair the cut backs off one character and the pair is emitted together later — a host decoding per delta would otherwise print two replacement characters",
+        "at message_end the held tail flushes, so the finished screen shows exactly the redacted text — the same as the transcript, nothing more and nothing less"
+      ],
+      "attempts": []
+    }
+  ]
+}

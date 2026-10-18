@@ -1,0 +1,116 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "fd13468",
+  "head": "19e3b23",
+  "target": "Repos opt into the gate with a tracked .own-your-diff marker: quizgate sync distributes the gate to a stable PATH location and installs a pre-push hook in every opted-in clone, replacing the core.hooksPath + repo-carried .githooks design.",
+  "altitude": "design",
+  "incidental": [
+    "selftest moved from skills/own-your-diff/scripts/ to scripts/ (pure rename), and its SKILL.md bullet dropped",
+    "quizgate usage text for the new install and sync commands",
+    "agent-mode.md wording on spawning fresh examiner subagents"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Why does the repo opt in with a tracked .own-your-diff marker instead of the old core.hooksPath=.githooks design?",
+      "options": [
+        {
+          "label": "The marker itself enforces the gate: git blocks pushes from any clone that carries it, even with no plugin installed",
+          "correct": false
+        },
+        {
+          "label": "core.hooksPath no longer works in current git, so a config-based opt-in became impossible",
+          "correct": false
+        },
+        {
+          "label": "The marker is tracked content, so it arrives with every clone and sync can install the hook there automatically; core.hooksPath is clone-local config that never travels",
+          "correct": true
+        },
+        {
+          "label": "A .githooks directory tracked in the repo cannot contain a pre-push hook",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "git config such as core.hooksPath is clone-local: it never travels with a clone, so the old design needed a manual install step in every fresh clone",
+        "a tracked marker arrives with the clone, so the session hook's sync detects it and installs the pre-push hook automatically, with no human step",
+        "the marker is an opt-in signal, not enforcement: a clone without the plugin has no hook and pushes ungated",
+        "side effects: the repo no longer carries a .githooks dir and no per-clone git config is mutated"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "The installed pre-push hook runs quizgate resolved from PATH (falling back to ~/.local/bin/quizgate) instead of calling the script inside the plugin's install directory. What does that boundary buy?",
+      "options": [
+        {
+          "label": "Git refuses to execute a hook that calls a script outside the repository",
+          "correct": false
+        },
+        {
+          "label": "The plugin's install directory is wiped at the end of every session",
+          "correct": false
+        },
+        {
+          "label": "The hook stays a stable shim: the plugin's install path can move on update, and sync keeps a fresh quizgate at the stable location the hook resolves to",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "a hook that pinned the plugin's install path would break whenever the plugin updates and moves its files",
+        "sync refreshes a copy at a stable, conventional location (~/.local/bin by default) in every session, matching the hook's fallback",
+        "command -v runs first, so an existing quizgate on PATH wins and the design composes with other installs"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "A clone already has the hook installed. Which of these hold when things go wrong? Pick all that apply.",
+      "options": [
+        {
+          "label": "quizgate is gone from PATH and ~/.local/bin at push time: the push is blocked with a message pointing to the project, not silently allowed",
+          "correct": true
+        },
+        {
+          "label": "quizgate is gone at push time: the push goes through, since there is nothing left to enforce the gate",
+          "correct": false
+        },
+        {
+          "label": "A foreign pre-push hook already exists and you run install: it refuses to touch the hook and prints the line to add",
+          "correct": true
+        },
+        {
+          "label": "A foreign pre-push hook already exists when sync runs: the session is unaffected and the hook is left alone",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "an installed gate fails closed: a missing quizgate blocks the push with an install pointer, never a silent pass, because a silent no-op would let unquizzed work through while the gate is believed active",
+        "write_hook never clobbers a foreign hook: it refuses and prints the line to add, and install fails loudly because a human is there to act",
+        "sync runs automatically in every session, so it must never be fatal: it skips what it cannot do and leaves the hook alone"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A maintainer decides this repo should drop the gate: they delete the tracked .own-your-diff marker and commit. What state do existing clones stay in, what happens on their next push of new, unquizzed work, and where would a fix for the gap go?",
+      "key_points": [
+        "hooks are per-clone state: the marker only drives installation, and nothing removes a hook when the marker disappears",
+        "existing clones keep the installed hook and the gate on PATH, so their next push of unquizzed work is still blocked",
+        "the natural fix lives in sync, which already runs everywhere and owns the hook lifecycle: remove its own hook when the marker is absent",
+        "consciously accepting the stale-hook cost is also a defensible answer, as long as the gap is named"
+      ],
+      "attempts": []
+    }
+  ]
+}

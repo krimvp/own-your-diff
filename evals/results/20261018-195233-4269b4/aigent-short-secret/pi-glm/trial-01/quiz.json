@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "0864896",
+  "head": "902bb89",
+  "target": "runScenario refuses a secret or model key whose raw value is shorter than 8 characters, because the scrub replaces raw values wherever they occur, JSON keys included, and a short value corrupts the result directory.",
+  "altitude": "mechanism",
+  "incidental": [
+    "docs/design/eval-scenarios.md: the invariant-5 and verification paragraphs that restate the new rule",
+    "the doc comment on runScenario and the comment above MIN_SECRET_LENGTH",
+    "the wording of the new problem message"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Before this change, a run set WEATHER_API_KEY to a single character. Walk that run to its exit code: what did `aigent run` report, and why that code?",
+      "options": [
+        { "label": "Exit 2 before the first session: the runner refused the unusable secret.", "correct": false },
+        { "label": "Exit 4 after the model calls: the scrub rewrote keys such as run.json's \"scenario\" into [LEAKED:WEATHER_API_KEY] form, the written directory failed to read back, and the runner's own failure surfaced as exit 4.", "correct": true },
+        { "label": "Exit 1: the secret-free invariant failed on all the [LEAKED:WEATHER_API_KEY] marks the scrub had left.", "correct": false },
+        { "label": "Exit 3: the weather tool got the wrong key, so the prompt step ended 'error' and the run stopped early.", "correct": false }
+      ],
+      "key_points": [
+        "the scrub replaces each raw value wherever it occurs in the log, JSON keys included, so a 1-character value rewrote ordinary keys and strings, such as run.json's scenario key",
+        "the corrupt directory was still written; the read-back failed on the rewritten keys and threw a run-file error, which is not a scenario error, so the CLI exited 4 as a runner failure",
+        "sessions had already opened and model calls were already spent; the marks never reached secret-free because the read-back fails first"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "Which of these hold now that a secret or model key shorter than 8 characters is refused?",
+      "options": [
+        { "label": "A genuinely 7-character API key now ends the run at exit 2 with the problem named, before any model call.", "correct": true },
+        { "label": "The threshold guarantees that an accepted value can no longer corrupt the run log.", "correct": false },
+        { "label": "The rule covers the model key as well as the scenario's declared secrets, because the scrub replaces its raw value too.", "correct": true },
+        { "label": "A refused run writes no result directory, where the old failure left a corrupt one behind.", "correct": true }
+      ],
+      "key_points": [
+        "the rule is a cost as well as a protection: a real short key is a policy refusal at exit 2 (first option holds)",
+        "8 is a threshold against pathologically short values, not a proof against collisions; an accepted value that occurs in ordinary text still corrupts, so the second option does not hold",
+        "the runner scrubs the model key like a declared secret, so it gets the same length rule (third option holds)",
+        "the refusal fires in the pre-flight problem collection before anything is written; the old path wrote the corrupt directory and exited 4, leaving a directory that also blocks a rerun (fourth option holds)"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "measurement",
+      "prompt": "test/cli.test.ts changed the child's OLLAMA_API_KEY from 'unused' to 'sk-unused-key'. Why did this fix force that change?",
+      "options": [
+        { "label": "The provider adapter now rejects model keys that do not start with 'sk-'.", "correct": false },
+        { "label": "A 12-character key lets the test exercise the scrub on a realistic value.", "correct": false },
+        { "label": "The asserted refusal moved from the directory to the environment, so the key had to become valid to keep the message naming the directory.", "correct": false },
+        { "label": "'unused' is 7 characters, so the environment itself would now fail the new check, and the test's premise is that only the directory is wrong.", "correct": true }
+      ],
+      "key_points": [
+        "the length rule reaches the model key, and 'unused' is 7 characters, under the minimum",
+        "the CLI checks the directory before the environment, so the test would still pass with 'unused'; the change keeps its stated premise — everything but the directory is in order — true",
+        "'sk-unused-key' keeps the environment valid so the directory stays the only problem the refusal can name"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "invalidation",
+      "prompt": "A teammate now sets WEATHER_API_KEY to the 8 characters of 'scenario' and runs the weather scenario. What does the run do, and what does that show about what this fix guarantees and what it leaves open?",
+      "key_points": [
+        "'scenario' is 8 characters, so it passes the new rule; the run is not refused, sessions open, and model calls are spent",
+        "the scrub still replaces the value wherever it occurs, keys included, so run.json's scenario key and every ordinary 'scenario' string are rewritten; the directory fails to read back and the CLI exits 4, the pre-fix symptom",
+        "the fix guarantees a refusal, before paying, for values shorter than 8; it is a threshold, not a structural cure — replace-everywhere is what secret-freedom requires, so an accepted value that occurs in ordinary text still invalidates the parseable-log guarantee"
+      ],
+      "attempts": []
+    }
+  ]
+}

@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "ba5f87f",
+  "head": "98d379c",
+  "target": "Make the hard-coded live weather test a data-driven, headless eval: a scenario file runs on a model into a self-contained, secret-free result directory, and pure checks over that directory split engine invariants (engine bugs, they gate the exit code) from model behaviors (bets, reported as rates), as the contract a future multeval grader will read.",
+  "altitude": "design",
+  "incidental": [
+    "npm wiring: the bin entry and the .env-loading npm script in package.json",
+    "the boundary-test tweak that keeps src/eval/ under the eval-code guard",
+    "test scaffolding: the three new test files, the weather.json scenario fixture, and the fixture plugins under test/scenarios",
+    "the stderr progress line after each step"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "`aigent run` finishes a scenario holding the complete run log in memory, writes the result directory, then grades the directory it just read back. Why grade the files instead of the log it already has?",
+      "options": [
+        {
+          "label": "To free the runner's memory before grading, so a large log cannot exhaust the process",
+          "correct": false
+        },
+        {
+          "label": "So every run proves the written directory is the whole input to judgment — the same files `aigent check` and the future multeval grader read, so a gap is caught by the run that wrote it, not by the first downstream grader",
+          "correct": true
+        },
+        {
+          "label": "Because the in-memory log still holds raw secret values, and only the written files have passed the scrub",
+          "correct": false
+        },
+        {
+          "label": "Because check() only accepts data that has survived a JSON round trip, and the in-memory log is not JSON-shaped yet",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "grading the files it just wrote makes every run prove the result directory is enough to judge the run",
+        "the directory is the shared contract for every grader — `aigent check`, the live test, the multeval adapter — so all callers get the same verdict from the same files",
+        "a gap in what the directory carries surfaces on the run that produced it, not on the first downstream consumer"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "Which of these hold about the split between invariants and behaviors? (Pick all that hold.)",
+      "options": [
+        {
+          "label": "A behavior with no chance to show is left out of its rate, not counted as a miss",
+          "correct": true
+        },
+        {
+          "label": "An invariant skips when the run never reached the part of the scenario it watches",
+          "correct": false
+        },
+        {
+          "label": "A failing behavior moves the run's exit code once a majority of trials fail it",
+          "correct": false
+        },
+        {
+          "label": "One failing invariant is an engine bug whatever the model did, and it drives the exit code even when the run also stopped early",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "an invariant is an engine property every trial must keep, so one failure is an engine bug and it never skips",
+        "a failing invariant drives exit 1 and wins over the early-stop exit 3",
+        "behaviors are bets on the model, measured as rates over the trials that had the chance, and never change the exit code"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Take a scenario's step-3 expectation. The provider dies on step 1, so the run never reaches step 3. What goes wrong with that behavior's rate if the never-reached step counted as a fail instead of a skip?",
+      "options": [
+        {
+          "label": "Nothing, over enough runs: the rate converges, so occasional infrastructure noise is harmless",
+          "correct": false
+        },
+        {
+          "label": "Trouble the model is not responsible for — a provider failure, a timeout, a step that threw — would be mixed into the model's score, exactly the model-versus-engine confusion the split exists to end",
+          "correct": true
+        },
+        {
+          "label": "The run would exit 1 instead of 3, so the grader would report an engine bug",
+          "correct": false
+        },
+        {
+          "label": "The invariant checks would have to skip the unwritten steps as well, weakening them",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "a behavior's rate must count only trials that had the chance to attempt it",
+        "counting never-reached steps as fails mixes provider, timeout and runner trouble into the model's score",
+        "this is the confusion the old live test had: an engine bug and a model mistake looked alike"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "runScenario refuses a scenario — an unset secret or model key, a plugin set that fails to load, a plugin, tool or skill name its set lacks — before the first session opens, collecting every problem into one error. Why refuse there, instead of failing at the step that hits each problem?",
+      "key_points": [
+        "the refusal costs nothing, while a run that starts pays for model calls before it hits the bad name at a later step",
+        "one collected error, each problem named at its place in the file, lets an author fix the scenario in one round instead of one failure per run",
+        "bad input found before anything ran means nothing was written and the exit says bad input, not engine trouble"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The engine turns a known secret in the conversation into [REDACTED:NAME]. The runner scrubs the run log differently: it replaces a raw secret value with the mark [LEAKED:NAME], and the secret-free invariant fails if that mark appears anywhere in the log. What breaks about judging leaks if the log redacted values the way the conversation does?",
+      "key_points": [
+        "redaction prevents a leak; the log needs to detect one — a redacted log would look identical to a clean run",
+        "the secret-free invariant could never prove the runner failed: no mark, no evidence",
+        "the mark names the secret and its path while carrying no raw value, so a grader holding no key still learns what leaked and where",
+        "the fixture plugin echoes the scenario's declared secret, so every run exercises the scrub on a value that really flowed"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A run log keeps two views: the session events, tagged per step in emission order, and the transcript (plus each saved resume). Name one fact only the transcript can supply and one only the events can supply, and which check needs each.",
+      "key_points": [
+        "transcript-only: the records written at session creation, such as the enabled-at-start set — no listener can subscribe before the session is returned — which enabled-before-call reads",
+        "transcript-only: a schema-rejected core__call_tool leaves no tool event, only an error result under the same call id — which dispatch-recover reads to find the rejection",
+        "events-only: turn boundaries (turn_end), which `use` reads to take the calls of the turn right after the model's enable record"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The process is killed while writeRun is writing the result directory. What is on disk, and why can no reader mistake it for a run?",
+      "options": [
+        {
+          "label": "A half-written directory holding whichever files were flushed before the kill",
+          "correct": false
+        },
+        {
+          "label": "The named directory, empty, because it is created before the first file is written",
+          "correct": false
+        },
+        {
+          "label": "Only a `<dir>.partial-*` sibling: the files go to a temp directory that is renamed into place, so the named directory holds a whole run or does not exist",
+          "correct": true
+        },
+        {
+          "label": "Nothing at all: the operating system removes a killed process's unfinished files",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the write is all-or-nothing: the files land in a temp sibling and are renamed into place at the end",
+        "a crash leaves only the partial sibling, which no reader takes for a run; a reader of the named directory sees a whole run or nothing",
+        "refusing an existing directory is part of the same guarantee: a repeated run never touches an earlier run's evidence"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new model behavior must be judged: whether the model's answer on a prompt apologizes after a denial (a check named \"apologize\", with a pattern for what counts). Where does it go, and what must each piece of the design do for it?",
+      "key_points": [
+        "the scenario vocabulary first: an Expectation variant, a parser entry in the expectations table (a check without one fails the build), its allowed fields, and the names it references for the pre-flight refusal",
+        "a judge in the checks that owns its own precondition and skip rule, so its rate counts only trials that had the chance",
+        "a passing and a failing case in the typed case tables, or the build fails",
+        "as a behavior it never changes the exit code; the report carries it per step under its check name, and a future grade aggregates it into a rate"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q9",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A dispatch-mode run of a three-prompt scenario times out on step 1, after the model enabled a plugin and made one rejected core__call_tool with wrong arguments. No invariant fails. Which of these hold? (Pick all that hold.)",
+      "options": [
+        {
+          "label": "The run that got that far is still written and checked, and the exit code is 3",
+          "correct": true
+        },
+        {
+          "label": "The invariants skip the stopped run, since there is nothing left to check over",
+          "correct": false
+        },
+        {
+          "label": "The step-1 behaviors skip — the prompt ended aborted — so they leave the model's rates untouched",
+          "correct": true
+        },
+        {
+          "label": "The exit code is 1, because stopping early is an engine bug on the same footing as a broken invariant",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "a run that stops early is still written and checked, and with no invariant failing it exits 3",
+        "invariants never skip: they are judged over what the run actually did",
+        "behaviors on a step whose prompt ended aborted skip, so the model's rates do not absorb the timeout"
+      ],
+      "attempts": []
+    }
+  ]
+}

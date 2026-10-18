@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "fd13468",
+  "head": "19e3b23",
+  "target": "Repos opt into the quiz gate with a committed .own-your-diff marker and a per-clone pre-push hook in .git/hooks, replacing the core.hooksPath=.githooks opt-in; quizgate sync stages quizgate on PATH and installs the hook in clones that carry the marker.",
+  "altitude": "design",
+  "incidental": [
+    "selftest moved from skills/own-your-diff/scripts/ to the repo-level scripts/ directory, and its SKILL.md line dropped",
+    "agent-mode.md wording: examiner subagents spawn fresh with none of your context",
+    "usage text of quizgate describing the new install and sync commands"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Why does the opt-in now live in a committed .own-your-diff marker with the hook written into each clone's .git/hooks, instead of core.hooksPath pointing at a repo-carried .githooks directory?",
+      "options": [
+        { "label": "Git refuses to run hooks from a directory tracked in the repo, so the .githooks dir only worked after a manual copy in each clone", "correct": false },
+        { "label": "core.hooksPath is per-clone local config and swaps out the clone's entire hooks directory: the opt-in did not travel with the repo and it silenced every other hook. The tracked marker carries the opt-in to every clone, and the hook lands in the clone's own hooks dir, leaving the repo tree and the user's other hooks alone", "correct": true },
+        { "label": "With hooks tracked in the repo, the remote ran the gate during the push, so checks saw the server's clone instead of the author's", "correct": false }
+      ],
+      "key_points": [
+        "core.hooksPath is clone-local config, so the opt-in did not travel with the repo: every fresh clone had to opt in again by hand",
+        "pointing core.hooksPath at a repo directory replaces the clone's whole hooks dir, silencing whatever other hooks the user had",
+        "the tracked marker makes the opt-in travel with the repo to every clone and collaborator, and the hook installs into the clone's own .git/hooks so other hooks keep running and the tree stays clean"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "The design treats a clone's .git/hooks as territory it does not own. What rule does write_hook follow there, and what does that boundary protect?",
+      "options": [
+        { "label": "It backs the existing hook up and installs its own in its place", "correct": false },
+        { "label": "It rewrites nothing it does not recognize: a foreign pre-push hook stops the install with instructions to merge 'quizgate check || exit 1' in by hand, while its own tagged hook is recognized so reinstalling is a no-op", "correct": true },
+        { "label": "It appends the gate line to the bottom of any existing hook it finds", "correct": false },
+        { "label": "It installs a chain that runs the existing hook first and then the gate", "correct": false }
+      ],
+      "key_points": [
+        "nothing in the clone's hooks dir is ever overwritten or edited: a foreign pre-push hook makes the install fail loudly and tell the author the one line to merge in",
+        "its own hook is recognized by its tag comment, so sync can run every session and repeated installs are no-ops (idempotence)",
+        "the boundary protects the clone's existing tooling: the user's and other tools' hooks keep working untouched"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "An opted-in repo is cloned to a new machine. Pick every statement that holds under the new design.",
+      "options": [
+        { "label": "With the hook installed but quizgate missing from PATH and from ~/.local/bin, the push is blocked with a pointer to the installer, not let through", "correct": true },
+        { "label": "Once the marker is committed, the remote blocks pushes of unquizzed commits no matter which clone they come from", "correct": false },
+        { "label": "Before anything own-your-diff has run in that clone, a push goes through ungated: the marker by itself enforces nothing, only an installed pre-push hook gates", "correct": true },
+        { "label": "quizgate sync keeps a copy at ~/.local/bin so the pre-push hook can find the gate even outside the session that installed it", "correct": true }
+      ],
+      "key_points": [
+        "enforcement is per-clone: a clone where install or sync never ran has no gate at all, and the tracked marker only carries the intent",
+        "once the hook is in, it fails closed: no reachable quizgate means the push is blocked, never passed through",
+        "sync's staged copy is what lets the hook resolve the gate outside an own-your-diff session, so enforcement outlives the session that installed it"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A new requirement arrives: an opted-in repo must keep working on a CI box whose clone already holds the team's own pre-push hook, and no own-your-diff session ever runs there. The teammate runs quizgate install on that box by hand. Walk the design through that box: what does install do to the team's hook, what state is the clone left in, and what would it take for pushes from that box to pass through the gate?",
+      "options": [],
+      "key_points": [
+        "install refuses to touch the team's hook and fails with the line to merge in, so the clone is left ungated: the seam for coexisting hooks is manual by design, trading that hole for never clobbering foreign tooling",
+        "gating that box takes the team merging 'quizgate check || exit 1' into their own hook plus quizgate being reachable there (the copy sync stages, or PATH)",
+        "with both in place the gate runs whoever owns the hook file, because enforcement is the quizgate check call, not own-your-diff's hook file"
+      ],
+      "attempts": []
+    }
+  ]
+}

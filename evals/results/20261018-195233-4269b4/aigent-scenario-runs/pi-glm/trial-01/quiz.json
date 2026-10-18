@@ -1,0 +1,160 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "639e1e1",
+  "head": "82697cc",
+  "target": "The hard-coded live weather test becomes a scenario file that a runner interprets into a self-contained result directory, judged by a check that separates engine invariants (bugs) from model behaviors (rates) — the contract multeval will grade — over a headless aigent run / aigent check shell.",
+  "altitude": "design",
+  "incidental": [
+    "test fixture plugins (clock, guard, units, weather shim) and the weather.json sample scenario",
+    "package.json bin and aigent npm script, and package-lock",
+    "the boundary test's file-listing tweak"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "The live weather test was one hard-coded TypeScript script. Why does this change replace it with a JSON scenario file that a runner interprets?",
+      "options": [
+        { "label": "So every prompt can run on a fresh session with its own system prompt", "correct": false },
+        { "label": "multeval can only hand aigent a single instruction string, so the script — steps and the behaviors judged on each prompt — must be data a driver can pass in", "correct": true },
+        { "label": "So the scenario can be edited without recompiling the engine's tests", "correct": false },
+        { "label": "A scenario file runs without spending a model call, which a test cannot", "correct": false }
+      ],
+      "key_points": [
+        "multeval drives aigent as a command with one instruction, so the script must be data, not code",
+        "the behaviors judged on a prompt sit beside that prompt in the same file, so one file describes the whole case"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "`aigent run` still holds the run log in memory, yet it grades the files it just wrote and prints that report. What does reading the files back protect?",
+      "options": [
+        { "label": "The in-memory log still holds raw secret values; only the write to disk scrubs them", "correct": false },
+        { "label": "The scenario on disk is re-validated by the read, catching a scenario file edited mid-run", "correct": false },
+        { "label": "The result directory is the contract a grader reads: every run proves the files alone produce the verdict, so the directory and the verdict can never drift apart", "correct": true },
+        { "label": "It catches a crash between writing and checking, so the report stays honest", "correct": false }
+      ],
+      "key_points": [
+        "the result directory, not the runner's memory, is the whole input to a verdict — it is the grader's contract",
+        "grading the files it just wrote makes every run a round-trip proof that the directory suffices, so files and verdict cannot drift"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "rationale",
+      "prompt": "Which of these hold for how a run is judged? Pick all that are true.",
+      "options": [
+        { "label": "One failing invariant means an engine bug, even when every behavior passed", "correct": true },
+        { "label": "An invariant skips when the run never exercised it, so it cannot fail by accident", "correct": false },
+        { "label": "A behavior whose answer misses its pattern fails the run, the way an invariant does", "correct": false },
+        { "label": "A behavior whose precondition never happened is left out of its rate rather than counted against the model", "correct": true }
+      ],
+      "key_points": [
+        "an invariant failure is an engine bug, and one is enough whatever the behaviors say",
+        "behaviors are bets measured as rates; they never gate a run or its exit code",
+        "invariants never skip — a run with nothing to check passes",
+        "a behavior with no chance to show is a skip, and skips leave the rate, so only trials that had the chance count"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "boundary",
+      "prompt": "A scenario's expectation names a skill that no plugin in the set it will run with provides. What happens when `aigent run` starts?",
+      "options": [
+        { "label": "The run starts, and the behavior fails when the model never loads the skill", "correct": false },
+        { "label": "The behavior skips, because the skill never existed to load", "correct": false },
+        { "label": "The scenario is refused before the first session opens, with the problem at its JSON path, so the typo costs no model call", "correct": true },
+        { "label": "The runner substitutes the closest matching skill and notes the gap in the report", "correct": false }
+      ],
+      "key_points": [
+        "every problem a scenario has is reported in one pass, each at its JSON path, so an author fixes the file in one round",
+        "names a scenario relies on are checked against the plugin set in effect at that step before the first session opens, so a misspelling spends no model call"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "The scrub writes a `[LEAKED:NAME]` mark where a raw secret value appeared, instead of cutting the value out — and it only runs after adjacent text deltas are joined into one event. Why is the scrub a mark rather than a deletion, and why must the deltas be joined first?",
+      "options": [],
+      "key_points": [
+        "the log and the files must never hold a raw secret, but a grader that does not know the key must still find the leak: the mark names what leaked, and the secret-free invariant fails on any mark anywhere in the run log, keys and scenario included",
+        "a secret can stream in pieces across several text deltas; joined first, the scrub sees whole strings and catches a value that no single delta contained"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "A run's last prompt times out and ends aborted, and one invariant has failed. Which of these hold? Pick all that are true.",
+      "options": [
+        { "label": "The exit code is 3, because stopping early outranks everything but bad input", "correct": false },
+        { "label": "The exit code is 1: an engine bug outranks an early stop", "correct": true },
+        { "label": "The result directory is still written, and the steps that ran are still judged", "correct": true },
+        { "label": "The behaviors on the timed-out prompt are judged as failures, since the model never answered", "correct": false }
+      ],
+      "key_points": [
+        "an invariant failure is the loudest trouble — it wins over the early stop",
+        "a run that stops early is still written and checked: the report comes from the files of what ran",
+        "behaviors on a prompt that ended aborted skip, and a skip is left out of the rate, not a failure"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "failure",
+      "prompt": "Suppose the run log had kept only the event stream and no transcript. What would the checks lose, and what does that say about why the log carries both?",
+      "options": [],
+      "key_points": [
+        "no listener can see creation-time records, because nobody can subscribe before the session is returned: plugins enabled at start would be invisible, and their tools would look like calls before an enable",
+        "a call rejected before it runs (a schema-rejected core__call_tool) leaves no tool event, only an error result in the transcript under the same id, so the recovery check would lose the rejection",
+        "the resume comparison reads the final transcript's beginning against the saved transcript it resumed from, and the events can show neither"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "single",
+      "category": "extension",
+      "prompt": "multeval arrives: it drives `aigent run` on a host work directory, then must grade what the run left behind, with no engine of its own. What does this change give it?",
+      "options": [
+        { "label": "The result directory plus `aigent check`: the same report over the same files the runner graded, with behavior ids like `use@1` as metric names", "correct": true },
+        { "label": "It imports the session API and replays the run from the saved transcript", "correct": false },
+        { "label": "It reads events.jsonl by itself, since every verdict comes from the events", "correct": false },
+        { "label": "It runs the scenario again and diffs the two reports", "correct": false }
+      ],
+      "key_points": [
+        "check reads only the run log, as pure functions over public types, so every caller — the live test, the CLI, the multeval grader — gets the same verdict from the same files",
+        "the report is the grader's data: behavior ids `${check}@${step}` are the metric names, and the exit code classifies the trouble without re-parsing anything"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q9",
+      "kind": "free",
+      "category": "extension",
+      "prompt": "A new model behavior must be measured: `plan-first`, meaning the model states a plan before its first tool call of a prompt. Where does it go, and what must exist before its numbers can be trusted?",
+      "options": [],
+      "key_points": [
+        "a new expectation in the scenario vocabulary, with its own parser and fields, so an author writes it beside the prompt it judges, and any name it relies on is refused before a run spends a call",
+        "a judge for it in the checks, owning its skip rule — what counts as having had no chance to show — and evidence that names the mistake",
+        "the typed case tables in the checks tests fail the build until the behavior has a passing and a failing case, and the failing case asserts its evidence",
+        "nothing else moves: the report gains `plan-first@<step>`, and the runner and the CLI are untouched"
+      ],
+      "attempts": []
+    }
+  ]
+}

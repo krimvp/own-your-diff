@@ -1,0 +1,132 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "1de1b85",
+  "head": "9fc4ffa",
+  "target": "Keep a secret the model streams across text-delta boundaries out of what listeners receive: the stream is now redacted as joined text, the way the transcript always was.",
+  "altitude": "mechanism",
+  "incidental": [
+    "hoisting the merged secrets map into a const so the same value feeds the engine and the hold's size",
+    "the fauxSession test helper taking faux-provider options (and its type import) so tests can pace the provider"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Before this change, the adapter redacted each text delta on its own before it reached listeners. A secret the model wrote out across two deltas reached a listener whole, while the transcript and the RunResult stayed clean. Why the difference?",
+      "options": [
+        { "label": "The stream path never ran redaction at all — only the transcript and RunResult paths did.", "correct": false },
+        { "label": "The provider splits text after the adapter has already redacted it, so the halves slip through in between.", "correct": false },
+        { "label": "Redaction only replaces whole secret values in the text it is given, and no single delta contained the whole secret — the transcript and the RunResult redact the joined text, so only the stream leaked.", "correct": true },
+        { "label": "Listeners received the raw transcript export, which keeps text blocks unredacted until the run ends.", "correct": false }
+      ],
+      "key_points": [
+        "redaction replaces whole secret values, and only in the text it is given — a fragment of a secret never matches",
+        "the secret existed only in the joined stream, and the adapter redacted each delta on its own, never the joined text",
+        "the transcript and the RunResult stayed clean because they redact the joined text on their own paths"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "invalidation",
+      "prompt": "During a single assistant message, what resets the text the hold-back is holding, and why does a secret split across two text blocks of that same message still get caught?",
+      "options": [
+        { "label": "Each text block flushes when it ends, and the redaction of the second block catches the whole secret.", "correct": false },
+        { "label": "Nothing but the message's end: pi emits no event between two text blocks of one message, so the halves stay in one buffer and are redacted as joined text.", "correct": true },
+        { "label": "Text blocks are separate assistant messages, so message_end fires between them and each block redacts whole.", "correct": false },
+        { "label": "The engine redacts each text block before pi streams it, so the seam never carries a fragment.", "correct": false }
+      ],
+      "key_points": [
+        "within a message, only the flush at message_end resets the held buffer — pushes accumulate into it",
+        "pi emits nothing between two text blocks of one message, so there is no seam event where a reset could or should happen",
+        "the halves accumulate in one buffer, so the text is redacted joined and the cut keeps covering the seam"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "flow",
+      "prompt": "Walk one text delta through the hold-back once enough text has arrived. Why is holding back the last `longest - 1` characters exactly enough — why can no secret survive in what has already been emitted, and why is nothing held longer than the risk requires?",
+      "key_points": [
+        "every push redacts the whole accumulated buffer as joined text, so any secret fully inside it is already replaced before the cut is taken",
+        "a secret that future deltas could still extend must begin within the last `longest - 1` characters; one that began earlier is already whole inside the buffer and thus replaced",
+        "a secret straddling the cut would have to be longer than the longest secret, so the emitted prefix never needs redoing",
+        "the held remainder is at most `longest - 1` characters — shorter than any secret — so nothing is held beyond what the risk requires"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "prompt": "Suppose a future pi upgrade stops emitting message_end when an assistant message ends aborted or errors (it still emits it when a message finishes normally). Which of these follow?",
+      "options": [
+        { "label": "The tail of an aborted reply never reaches listeners as that reply's text: only message_end flushes the buffer, so the held characters just sit there.", "correct": true },
+        { "label": "A secret split across two separate assistant messages would now reach listeners whole, because the buffer no longer resets between messages.", "correct": false },
+        { "label": "If a later assistant message in the same session streams text, the stranded tail is emitted as the front of that message's first text delta.", "correct": true },
+        { "label": "The transcript and the RunResult would begin showing secrets that listeners see, because they share the stream path.", "correct": false }
+      ],
+      "key_points": [
+        "only message_end flushes the buffer, so an aborted or errored reply's tail is stranded — listeners lose it as that reply's own text",
+        "the stranded tail is not gone forever: the next message's first push emits it, misattributed to the wrong message",
+        "secrecy survives the missing flush — the unreset buffer is what keeps the joined redaction spanning the seam, so a cross-message split is still caught; the break is delivery and attribution, not redaction",
+        "the transcript and the RunResult are untouched: they redact their own joined text"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "failure",
+      "prompt": "The cut lands between the two halves of a surrogate pair — an emoji the model streamed, say. Without the surrogate check in the hold-back, what does a host that writes each text delta straight to a terminal see?",
+      "options": [
+        { "label": "Two replacement characters: one delta ends with an unpaired high half, the next starts with the unpaired low half, and each prints as one.", "correct": true },
+        { "label": "Nothing wrong — the terminal's output buffer rejoins the halves and the emoji renders once the second delta lands.", "correct": false },
+        { "label": "The first delta prints a blank and the emoji renders normally when the second arrives, replacing it.", "correct": false },
+        { "label": "The stream stalls at the cut until the pair is complete, so nothing partial is ever printed.", "correct": false }
+      ],
+      "key_points": [
+        "the cut would end one delta with a lone high surrogate and begin the next with its low half",
+        "each unpaired half is invalid output on its own, so the terminal prints one replacement character for each — the emoji becomes two",
+        "the check avoids it by moving the cut back one character, so the pair leaves in a single delta"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "measurement",
+      "prompt": "Before this change, every eval run whose model streamed a secret across two text deltas scored a leak, and none do now. Walk through the two new tests: what does each arrange so its pass cannot be an accident, and what exactly does each pin down?",
+      "key_points": [
+        "the first test forces the split: the secret is longer than the faux provider's largest chunk (20 characters), so it can never arrive whole in one delta",
+        "it asserts the joined deltas equal the redacted whole text, and that no delta boundary falls inside a surrogate pair — the emoji tail arranges exactly that cut",
+        "the abort test paces the provider by timers so the abort lands mid-reply; it asserts the reply was truly cut short and the joined deltas equal what the transcript kept, pinning that the flush at message_end delivers the held tail even on an abort",
+        "the number moved because the eval runner joins deltas before scrubbing — per-delta redaction always leaked there; anything that re-broke the join (per-delta redaction again, a lost message_end, a cut stranding a surrogate) would move it back"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "multi",
+      "category": "invalidation",
+      "prompt": "Months later a host reports that a session streamed a whole API key to its UI with this change in place. The session was created with an empty secrets map, and the model had read the key out of a file at runtime. Which of these hold?",
+      "options": [
+        { "label": "The hold-back was protecting exactly what it was keyed to: an empty map means nothing is held back and nothing is redacted, so the stream passed the key through.", "correct": true },
+        { "label": "The bug this change fixed has regressed — per-delta redaction must be back.", "correct": false },
+        { "label": "That session's transcript shows the key unredacted too: stream and transcript share the same keyed redactor, so the gap is registration, not the stream path.", "correct": true },
+        { "label": "Had the key been registered in the secrets map at session start, the same hold-back would have covered the stream exactly as the redaction covers the transcript.", "correct": true }
+      ],
+      "key_points": [
+        "the hold is sized and the redactor keyed by the secrets map fixed at session start — an empty map makes the hold a pass-through",
+        "coverage is exactly the map: the transcript would show the key unredacted as well, so stream and transcript stay consistent and the gap is registration",
+        "the change has not regressed: registering the key at start would have covered both paths, and nothing about a runtime-read key ever reaches a redactor that never saw it"
+      ],
+      "attempts": []
+    }
+  ]
+}

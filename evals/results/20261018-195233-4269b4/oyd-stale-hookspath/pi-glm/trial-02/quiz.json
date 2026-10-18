@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "2873dad",
+  "head": "87757fc",
+  "target": "Session start repairs a clone whose local core.hooksPath names a missing directory — it unsets the config, then installs the pre-push hook — and the installer never writes into a directory that a live core.hooksPath names, such as husky's; it prints the line to add instead.",
+  "altitude": "mechanism",
+  "incidental": [
+    "scripts/selftest: five checks pin the stale-pointer repair, the keep-husky-alone behavior, and install's refusal under a live core.hooksPath"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "prompt": "Before this fix, a clone of an opted-in repo had local core.hooksPath=.githooks, and a pull just deleted the tracked .githooks directory. What happens on the next push from that clone?",
+      "options": [
+        { "label": "git falls back to .git/hooks, so the gate still runs", "correct": false },
+        { "label": "git refuses the push with an error about the missing hooks directory", "correct": false },
+        { "label": "no hooks run at all: the push succeeds, ungated and unremarked", "correct": true },
+        { "label": "every hook except pre-push still runs from .git/hooks", "correct": false }
+      ],
+      "key_points": [
+        "git looks up hooks through core.hooksPath and nowhere else: a missing directory means no hooks run, not a fallback to .git/hooks",
+        "the push just succeeds — no error, no gate, and nothing tells the author the clone is ungated",
+        "the installer resolves its hook path through the same config, so before the fix a session start would have written through the stale pointer and recreated the directory the repo had just deleted, instead of restoring the gate where git looks by default"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "invalidation",
+      "prompt": "Which core.hooksPath settings does the new session-start repair unset? Pick all that apply.",
+      "options": [
+        { "label": "a local one naming a directory that no longer exists", "correct": true },
+        { "label": "a local one naming husky's live .husky directory", "correct": false },
+        { "label": "a global one naming a directory that no longer exists", "correct": false },
+        { "label": "a local one naming a real directory that git does not track", "correct": false }
+      ],
+      "key_points": [
+        "the repair unsets only a local core.hooksPath whose named directory is missing: the pointer can only be stale, so clearing it loses nothing, and the hook is then installed where git looks by default",
+        "a pointer to a real directory is a live hook manager's; the config is kept and the gate prints the one line to add instead",
+        "the test is whether the named directory exists, not whether git tracks it",
+        "the repair only ever rewrites the clone's own local config; a user's global config is never touched by a session hook"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "failure",
+      "prompt": "The fix also makes the installer refuse whenever core.hooksPath is set, printing 'add this line to its pre-push hook' rather than writing the gate's hook into the directory it names. What breaks if the installer keeps writing there — for the user's setup, and for the gate's own reliability?",
+      "key_points": [
+        "the directory a live core.hooksPath names belongs to another hook manager: writing into it edits a setup the user owns, from a background session hook, without asking",
+        "the file would sit in a directory another tool may rewrite or reinstall over, so the gate could silently vanish again — the exact failure this fix repairs",
+        "refusing keeps the choice with the human, who wires the gate into that manager's pre-push: the gate integrates instead of injecting",
+        "the old code was inconsistent — it advised when a hook file already existed there but silently injected when none did; the new rule holds whether or not a file exists"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "flow",
+      "prompt": "Four fresh clones of an opted-in repo each start a session once, and sync runs in each. In which clones does own-your-diff's pre-push hook end up written into .git/hooks/pre-push? Pick all that apply.",
+      "options": [
+        { "label": "a clone with local core.hooksPath=.githooks, whose directory a pull just deleted", "correct": true },
+        { "label": "a clone with local core.hooksPath=.husky, a real husky directory", "correct": false },
+        { "label": "a clone with no core.hooksPath at all", "correct": true },
+        { "label": "a clone with a global core.hooksPath pointing at a real directory of shared hooks", "correct": false }
+      ],
+      "key_points": [
+        "the stale local pointer is unset first, so that clone is gated like any other",
+        "a clone with no core.hooksPath is the normal path: the marker is seen and the hook lands in .git/hooks",
+        "a live directory named by core.hooksPath — local or global — receives nothing: the config is kept and only the advice line is printed",
+        "the hook only ever lands where git's default hook resolution looks, or nowhere at all, and a global setting is never rewritten by the session hook"
+      ],
+      "attempts": []
+    }
+  ]
+}

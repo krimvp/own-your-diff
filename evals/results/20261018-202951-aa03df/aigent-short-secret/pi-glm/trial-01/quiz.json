@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "0864896",
+  "head": "902bb89",
+  "target": "runScenario refuses a secret or model key shorter than 8 characters as a scenario problem before the first session opens, so a short value can no longer reach the scrub, rewrite ordinary text and JSON keys, and end the run with exit 4 after the model calls were spent.",
+  "altitude": "mechanism",
+  "incidental": [
+    "docs/design/eval-scenarios.md: the fail-before-paying and verification lines record the new rule and the failure it prevents",
+    "test/run.test.ts: the existing refusal test adds a one-character secret and a seven-character key and expects their two problem places, still with no model call",
+    "test/cli.test.ts: the dead-endpoint run's key becomes long enough that only the existing directory can refuse it"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "A scenario runs with WEATHER_API_KEY set to a single character, before this fix. What does that value do to the run?",
+      "options": [
+        { "label": "The scrub rewrites the raw value wherever it occurs, JSON keys included, so an ordinary key like \"scenario\" becomes \"s[LEAKED:WEATHER_API_KEY]enario\"; the directory no longer parses, and the run fails with exit 4 after the model calls", "correct": true },
+        { "label": "The engine rejects the first prompt because the short secret never reaches the model", "correct": false },
+        { "label": "The run completes and the report only shows the value marked as a leak", "correct": false },
+        { "label": "The run refuses to start with a scenario problem and exits 2", "correct": false }
+      ],
+      "key_points": [
+        "the scrub replaces each raw value wherever it occurs in the log, JSON keys included, so a one-character value occurs inside ordinary keys and words",
+        "the rewritten run.json no longer parses, so the CLI fails when it reads its own directory back to grade it, and exits 4",
+        "the failure lands only after the model calls were spent; nothing up front refuses the value"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "The fix could instead have taught the scrub to live with short values, say by skipping JSON keys or skipping values under the floor. Why does it refuse the value at the environment check instead?",
+      "options": [
+        { "label": "Skipping short values would write them raw into the files, and skipping keys would leave key strings unmarked while a short value still corrupts ordinary strings; refusing the input keeps the scrub's replace-everywhere guarantee and turns the case into a scenario problem: exit 2 before the first session opens, nothing written, no model call", "correct": true },
+        { "label": "The scrub cannot tell a JSON key from an ordinary string, so skipping keys is not implementable", "correct": false },
+        { "label": "Short values are invalid as API keys anyway, so no legitimate run can ever carry one", "correct": false },
+        { "label": "The result directory is written before the scrub runs, so a scrub-side fix would come too late for the files on disk", "correct": false }
+      ],
+      "key_points": [
+        "the scrub's replace-everywhere rule, keys included, is what keeps raw secret values out of the files",
+        "both scrub-side alternatives break that guarantee or fail to fix the corruption: a skipped short value stays raw in the log, and a key-skipping scrub still lets a short value rewrite ordinary strings",
+        "refusing at the environment check surfaces the problem before the first session opens: exit 2, nothing written, no model call spent"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "invalidation",
+      "relevance": "important",
+      "prompt": "Which of these values does the environment check inside runScenario now report as a problem before the first session opens? Pick all that apply.",
+      "options": [
+        { "label": "The model key of an openai-compatible run, set to seven characters", "correct": true },
+        { "label": "A scenario secret whose value also occurs inside the system prompt", "correct": false },
+        { "label": "A scenario secret set to a single character", "correct": true },
+        { "label": "A secret set to exactly eight characters", "correct": false }
+      ],
+      "key_points": [
+        "set but shorter than 8 characters is its own problem, distinct from not set, reported by the same environment pass",
+        "the model key is held to the same rule as the scenario's secrets, for openai-compatible runs",
+        "the floor is strict: eight characters is allowed, only shorter than eight is refused",
+        "the rule judges length alone; where a value later occurs is the scrub's business, decided after the run"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "measurement",
+      "relevance": "important",
+      "prompt": "Next week a run sets WEATHER_API_KEY to an eight-character value that happens to occur inside an ordinary JSON key of the run log. Walk that value through the new check and then the scrub, say what aigent run writes and what it exits with, and explain why the fix does not stop this case.",
+      "key_points": [
+        "eight characters passes the check, which refuses only values shorter than eight, so the run starts and spends its model calls",
+        "the scrub still replaces the value wherever it occurs, keys included, so the ordinary JSON key is rewritten and run.json no longer parses",
+        "the corrupt directory is written, the CLI then fails reading it back to grade it, and exits 4 after paying: the failure this fix moved to exit 2 is back",
+        "the floor removes likely collisions, not all of them: it is a heuristic on length, and the gate cannot predict the run's text, so an unlucky long value still fails late"
+      ],
+      "attempts": []
+    }
+  ]
+}

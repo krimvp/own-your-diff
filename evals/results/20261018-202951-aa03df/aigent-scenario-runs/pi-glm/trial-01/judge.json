@@ -1,0 +1,49 @@
+{
+  "model": "glm-5.3",
+  "score": 0.8571428571428571,
+  "pass": false,
+  "verdicts": [
+    {
+      "criterion": 1,
+      "met": true,
+      "reason": "All nine questions test points inside the target: the runner, the result-directory contract, the invariant/behavior split, exit codes, and extending the scenario/check vocabulary.",
+      "text": "Every question in quiz.json tests a point about the target of the change: Scenarios become data files run by one runner that writes each run as a result directory, a check(run) judge separates engine invariants from model behavior rates, and an aigent CLI runs or checks a directory with exit codes that say what kind of trouble a run had."
+    },
+    {
+      "criterion": 2,
+      "met": true,
+      "reason": "Every question asks why/what-breaks/where at the design level; specific names (checks, events, CLI) appear only as instances, never as the hinge.",
+      "text": "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags"
+    },
+    {
+      "criterion": 3,
+      "met": true,
+      "reason": "No question's subject is the scenario/plugin fixtures, package.json script names, or the boundary-test edit.",
+      "text": "No question asks about these incidental parts of the change: the test fixtures under test/scenarios/plugins; package.json script names; the boundary test edit"
+    },
+    {
+      "criterion": 4,
+      "met": true,
+      "reason": "Every distractor is a plausible misreading (invariants skipping like behaviors, majority-gated behaviors, half-written or OS-cleaned directories, exit-code confusions), not filler.",
+      "text": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler"
+    },
+    {
+      "criterion": 5,
+      "met": false,
+      "reason": "q5's key_points require covering the fixture plugin echoing the secret \u2014 incidental test scaffolding, below that question's design altitude.",
+      "text": "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+    },
+    {
+      "criterion": 6,
+      "met": true,
+      "reason": "The two core questions (directory as shared contract, invariant/behavior split) come first, narrower mechanisms follow, and only the composite last question re-broadens.",
+      "text": "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last"
+    },
+    {
+      "criterion": 7,
+      "met": true,
+      "reason": "q9 applies write-and-check, exit 3, never-skipping invariants, and behavior skips to one new composite case (step-1 timeout with a rejected tool call).",
+      "text": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+    }
+  ]
+}

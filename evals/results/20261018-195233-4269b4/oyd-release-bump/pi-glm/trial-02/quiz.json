@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "branch": "chore/release",
+  "base": "850f36c",
+  "head": "ebe0443",
+  "target": "Release 0.2.0: bump the plugin version from 0.1.0 to 0.2.0 in both plugin manifests (.claude-plugin/plugin.json and .codex-plugin/plugin.json) together, so Claude Code and Codex installs pick up the current tree. Per AGENTS.md the two manifests must move in lockstep because both harnesses cache by this version.",
+  "altitude": "trivial",
+  "incidental": [],
+  "examinee": "human",
+  "questions": []
+}
