@@ -10,7 +10,7 @@ Give a fresh **examiner** subagent the range (`$(quizgate base)..HEAD`), the tas
 
 - Read the diff in full yourself. Do not trust the walkthrough.
 - Check every factual claim in the walkthrough against the diff. List each claim the diff contradicts or does not support, with `path:line` evidence.
-- Write 3 to 5 transfer questions at the altitude from step 2 of `SKILL.md`. Return the questions and the claim list. Keep your rubric to yourself.
+- Write 0 to 10 free-form transfer questions per step 4 of `SKILL.md`. Free-form only: a guessed pick proves nothing about an agent's understanding. Return the questions and the claim list. Keep your rubric to yourself.
 
 Done when the examiner has returned its questions and its claim list.
 

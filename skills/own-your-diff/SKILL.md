@@ -26,8 +26,8 @@ The target sets the altitude. A change can carry both kinds.
 
 - **Design altitude.** The default. The change introduces or reshapes an abstraction, a module boundary, a data shape, a protocol, a dependency, or how components talk. Cover the problem it solves, the shape chosen, how it fits the existing architecture, the alternatives and why they lost, the costs it adds, and what it makes easy or hard next.
 - **Mechanism altitude.** The target is one mechanism, for example LLM prompt-cache hits, retry and backoff, stream backpressure, or a bug's root cause. Go through that mechanism's ins and outs: inputs, state, invariants, what invalidates or breaks it, the root cause, why the fix works, and how it was measured. Stay above function names and signatures.
-- **Incidental.** Helpers, renames, plumbing, and test scaffolding that serve the target. Give each one line and no question.
-- **Trivial.** The whole change is a typo, formatting, a version bump, or a one-line config change. Write a short walkthrough and ask one question about intent and impact.
+- **Incidental.** Helpers, renames, plumbing, version bumps, and test scaffolding that serve the target. Give each one line and no question.
+- **Trivial.** The whole change is a typo, formatting, a version bump, or a one-line config change. Write a short walkthrough. The quiz usually has no questions.
 
 Done when every hunk in the diff belongs to the target or to the incidental list.
 
@@ -54,28 +54,38 @@ Pick the examinee:
 - **Human** whenever a human is in the session to answer. This is the default.
 - **Agent** only on an unattended run: a headless session, an autonomous or autopilot playbook, or the human said they are away. Follow [`references/agent-mode.md`](references/agent-mode.md) instead of the rest of this step. A slow human, or a human who declines the quiz, is not an unattended run.
 
-Write 3 to 5 questions for design or mechanism altitude, or 1 for trivial. For each question, list 2 to 4 key points a correct answer must cover. Keep this rubric to yourself until the quiz ends.
+Write between 0 and 10 questions. Ask one only where it makes sense: each question tests a point at the target's altitude that the author must own to stand behind the push. Incidental items get none. Most design changes need 3 to 6. A trivial change usually needs 0.
+
+For each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric. Keep the rubric to yourself until the quiz ends.
 
 Ask **transfer** questions. A transfer question makes the author apply the design to a case the walkthrough did not spell out:
 
 - Design: "Why this abstraction over <the rejected alternative>?" "What breaks if <assumption> stops holding?" "A new <requirement> arrives. Where does it go, and what changes?" "What does this boundary protect the rest of the system from?"
 - Mechanism: "Walk a request through <mechanism>. Where can it miss or fail?" "What invalidates <cache or state>?" "Why did <the number> move, and what would move it back?"
 
-Ask one question at a time in plain chat, open-ended. Wait for the author's answer in their own words. Never answer for them, and never offer options to pick from.
+Mix three kinds:
 
-Grade each answer against its key points:
+- **Single-select.** One correct option among 2 to 4. Lead the quiz with these. They frame a point quickly.
+- **Multi-select.** 3 or 4 options, any subset of them correct, for "which of these hold or break" cases. It passes only on the exact set.
+- **Free-form.** The author answers in their own words. Use it where the reasoning is the point.
 
-- **Pass.** It covers the core point with sound reasoning. Wording and depth beyond the point do not matter.
+End the quiz with a multi-select or a free-form question that applies several points to one new case. That is where the pieces come together. Every wrong option is a plausible misreading of the change, never filler. Put options in random order and mark none of them.
+
+Ask one question at a time and wait for the answer. Use the harness's structured-question tool when it has one: `AskUserQuestion` in Claude Code, `AskUser` in Droid, `request_user_input` in Codex where it is enabled. Where the tool has no multi-select, or there is no tool, ask in chat with lettered options and say whether to pick one or several. Never answer for the author.
+
+After each select question, say which options were right and why in one or two sentences, so a wrong pick turns into a gotcha the author remembers. Grade each answer against its key points:
+
+- **Pass.** It covers the core point with sound reasoning, or picks the right options. Wording and depth beyond the point do not matter.
 - **Vague.** Ask one follow-up probe on the missing point.
 - **Wrong or still vague.** Explain the gap in two or three sentences. Then ask a new question that targets the same point from another angle.
 
 A probe or retry stays at the altitude of the question it follows. It tests the same key point in a new case, never a finer detail of how that point is implemented. At design altitude, "the gate keys on diff content, not commits" is the point. How a partial squash hashes is a mechanism detail, so it is out of bounds.
 
-Done when every question is passed, or a point fails three times. On three failures, stop and record nothing. Tell the author which part to reread or go through with you. If the walkthrough was the problem, say the change may be too large or unclear, and suggest splitting it.
+Done when every question is passed, or a point fails three times. With no questions, done when the author confirms they read the walkthrough. On three failures, stop and record nothing. Tell the author which part to reread or go through with you. If the walkthrough was the problem, say the change may be too large or unclear, and suggest splitting it.
 
 ### 5. Record
 
-On a full pass, write the transcript to `$(quizgate dir)/<branch>-<short-sha>.quiz.md`. Include each question, the answers verbatim, your verdicts, and the rubric. Then run `quizgate record --by human`, or `--by agent` after agent mode.
+On a full pass, write the transcript to `$(quizgate dir)/<branch>-<short-sha>.quiz.md`. For each question, record its kind, the prompt, the options with the correct ones marked, the author's pick or answer verbatim, your verdict, and its key points. Then run `quizgate record --by human`, or `--by agent` after agent mode.
 
 Done when `quizgate pending` prints nothing. Push only if you were asked to push.
 
