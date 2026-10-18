@@ -7,3 +7,4 @@ One plugin tree for Claude Code, Factory Droid, and Codex. All three read `.clau
 - Bump `version` in `.claude-plugin/plugin.json` with every change that installs should pick up. Claude Code and Codex cache by it.
 - Hook scripts find the plugin root with `dirname "$0"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder inside hook processes, so they never read it from the environment.
 - Editing `hooks/hooks.json` changes its Codex trust hash. Say in the change that Codex users must rerun `scripts/codex-trust-hooks`.
+- This repo stays out of its own gate while the walkthrough and quiz are still changing, so there is no `.own-your-diff` here. Leave it out until the human opts this repo in.
