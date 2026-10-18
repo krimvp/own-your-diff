@@ -112,6 +112,19 @@ check ok "session start tells the agent the repo is opted in" grep -q "own-your-
 (cd "$T/clone" && commit z.txt z "clone change")
 check blocked "the clone blocks an unquizzed push" git -C "$T/clone" push -q
 
+git clone -q "$T/remote.git" "$T/stale"
+git -C "$T/stale" config core.hooksPath .githooks
+(cd "$T/stale" && "$ROOT/hooks/session-start" >"$T/ctx.stale")
+check ok "session start unsets a core.hooksPath that points nowhere" bash -c "! git -C $T/stale config core.hooksPath"
+check ok "and installs the hook in that clone" test -x "$T/stale/.git/hooks/pre-push"
+check ok "and tells the agent what it changed" grep -q "unset core.hooksPath=.githooks" "$T/ctx.stale"
+mkdir -p "$T/stale/.husky"
+git -C "$T/stale" config core.hooksPath .husky
+(cd "$T/stale" && "$ROOT/hooks/session-start" >/dev/null 2>&1)
+check ok "session start keeps a core.hooksPath that exists" bash -c "[[ \$(git -C $T/stale config core.hooksPath) == .husky ]]"
+check ok "and writes nothing into the directory it names" bash -c "[[ -z \$(ls -A $T/stale/.husky) ]]"
+check blocked "install refuses while core.hooksPath manages the hooks" bash -c "cd $T/stale && $gate install"
+
 git init -q "$T/foreign"
 printf '#!/bin/sh\nexit 0\n' >"$T/foreign/.git/hooks/pre-push"
 check blocked "install leaves a foreign pre-push hook alone" bash -c "cd $T/foreign && $gate install"

@@ -110,7 +110,12 @@ HOOK_TAG="# own-your-diff pre-push hook"
 hook_path() { echo "$(git rev-parse --path-format=absolute --git-path hooks)/pre-push"; }
 
 write_hook() {
-  local hook
+  local hook hooks_path
+  hooks_path=$(git config core.hooksPath) || true
+  if [[ -n "$hooks_path" ]]; then
+    echo "own-your-diff: core.hooksPath=$hooks_path manages this repo's hooks. Add this line to its pre-push hook: quizgate check || exit 1" >&2
+    return 1
+  fi
   hook=$(hook_path)
   grep -qF "$HOOK_TAG" "$hook" 2>/dev/null && return
   if [[ -e "$hook" ]]; then
@@ -137,11 +142,17 @@ cmd_install() {
 }
 
 cmd_sync() {
-  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top
+  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top hooks_path
   mkdir -p "$bin"
   cmp -s "$0" "$bin/quizgate" || install -m 755 "$0" "$bin/quizgate"
   top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
-  [[ -e "$top/.own-your-diff" ]] && write_hook >/dev/null || true
+  [[ -e "$top/.own-your-diff" ]] || return 0
+  hooks_path=$(git config --local core.hooksPath) || true
+  if [[ -n "$hooks_path" && ! -d "$(cd "$top" && realpath -m "$hooks_path")" ]]; then
+    git config --local --unset core.hooksPath
+    echo "own-your-diff: unset core.hooksPath=$hooks_path, which pointed at a missing directory"
+  fi
+  write_hook >/dev/null || true
 }
 
 case "${1:-}" in
