@@ -1,6 +1,6 @@
 {
   "name": "own-your-diff",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Explain the unpushed change in an HTML walkthrough, quiz the author, and block pushes of unquizzed commits.",
   "author": { "name": "krimvp" },
   "repository": "https://github.com/krimvp/own-your-diff",
