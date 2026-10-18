@@ -71,7 +71,15 @@ Pick the examinee:
 - **Human** whenever a human is in the session to answer. This is the default.
 - **Agent** only on an unattended run: a headless session, an autonomous or autopilot playbook, or the human said they are away. Follow [`references/agent-mode.md`](references/agent-mode.md) instead of the rest of this step. A slow human, or a human who declines the quiz, is not an unattended run.
 
-Count the points at the target's altitude that the author must own to stand behind the push, then write one question per point, 10 at most. Stop when the points run out. A small fix usually carries one or two, a trivial change none, and incidental items none.
+List every point at the target's altitude that the author must own to stand behind the push, from the whole diff, before you write a question. A point you meet late in the diff can still be the most important one. Rate each point's relevance:
+
+- **`core`.** What the change is for, and the boundary or contract it sets. An author who misses it cannot defend the push.
+- **`important`.** How the parts hold together: a failure mode, an invariant, where the next requirement goes.
+- **`useful`.** A detail worth knowing that the push does not stand on.
+
+Write one question per point, 10 at most, and drop the `useful` points first when there are more. Stop when the points run out. A small fix usually carries one or two, a trivial change none, and incidental items none.
+
+Ask outside in. Open with the `core` points, starting from what the change is for and its main boundary, then move inward to the mechanisms and details. Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.
 
 For each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric. Keep the rubric to yourself until the quiz ends.
 

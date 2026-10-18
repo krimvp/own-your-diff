@@ -148,11 +148,11 @@ import copy, json, re, sys
 out, doc = sys.argv[1], open(sys.argv[2]).read()
 open(f"{out}/doc-example.json", "w").write(re.search(r"```json\n(.*?)```", doc, re.S).group(1))
 opt = lambda label, ok: {"label": label, "correct": ok}
-single = {"id": "q1", "kind": "single", "category": "rationale", "prompt": "p",
+single = {"id": "q1", "kind": "single", "category": "rationale", "relevance": "core", "prompt": "p",
           "options": [opt("a", True), opt("b", False)], "key_points": ["k"]}
-multi = {"id": "q2", "kind": "multi", "category": "failure", "prompt": "p",
+multi = {"id": "q2", "kind": "multi", "category": "failure", "relevance": "useful", "prompt": "p",
          "options": [opt("a", True), opt("b", True), opt("c", False)], "key_points": ["k"]}
-free = {"id": "q3", "kind": "free", "category": "extension", "prompt": "p", "key_points": ["k"]}
+free = {"id": "q3", "kind": "free", "category": "extension", "relevance": "important", "prompt": "p", "key_points": ["k"]}
 def quiz(questions, examinee="human", **top):
     return {"version": 1, "branch": "b", "base": "a1", "head": "b2", "target": "t",
             "altitude": "design", "incidental": [], "examinee": examinee,
@@ -171,6 +171,9 @@ cases = {
     "plan-opens-free": quiz([free, single]),
     "plan-ends-single": quiz([single, dict(single, id="q4")]),
     "plan-trivia": quiz([trivia]),
+    "plan-useful-first": quiz([dict(single, relevance="useful"), dict(free, relevance="core"), multi]),
+    "plan-core-closes": quiz([single, dict(free, relevance="useful"), dict(multi, relevance="core")]),
+    "plan-no-relevance": quiz([{k: v for k, v in free.items() if k != "relevance"}]),
     "plan-agent-single": quiz([single], examinee="agent"),
     "plan-with-attempts": quiz([answered(free, "pass")]),
     "done-ends-vague": quiz([answered(free, "wrong", "vague")], outcome="passed"),
@@ -191,6 +194,9 @@ check ok "quizlint refuses a single with two correct options" refuses plan-two-r
 check ok "quizlint refuses a quiz that opens with free" refuses plan-opens-free "opens with a single" --plan
 check ok "quizlint refuses a quiz that ends with single" refuses plan-ends-single "ends with a multi or a free" --plan
 check ok "quizlint refuses an unknown category" refuses plan-trivia "category is one of" --plan
+check ok "quizlint refuses a useful question before a core one" refuses plan-useful-first "most to least relevant" --plan
+check ok "quizlint lets the closing question be more relevant than the one before" "$lint" --plan "$T/quiz/plan-core-closes.json"
+check ok "quizlint refuses a question without a relevance" refuses plan-no-relevance "relevance is one of" --plan
 check ok "quizlint refuses select questions for an agent examinee" refuses plan-agent-single "free questions only" --plan
 check ok "quizlint refuses attempts in a plan" refuses plan-with-attempts "no attempts yet" --plan
 check ok "quizlint refuses a passed quiz whose last attempt is not a pass" refuses done-ends-vague "ends every question on a pass"
