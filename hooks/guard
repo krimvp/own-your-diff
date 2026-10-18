@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# PreToolUse guard for shell tools. Bypassing the pre-push hook is the human's
+# call, so an agent's command that skips or disables it is denied.
+input=$(cat)
+cmd=$(grep -o '"command"[[:space:]]*:[[:space:]]*"\([^"\\]\|\\.\)*"' <<<"$input" | head -n1)
+
+reason=""
+if [[ "$cmd" =~ git && "$cmd" =~ push && "$cmd" =~ --no-verify ]]; then
+  reason="git push --no-verify skips the own-your-diff gate. Run the own-your-diff skill and pass the quiz instead. Only the human may push with --no-verify."
+elif [[ "$cmd" =~ core\.hooks[Pp]ath && ! "$cmd" =~ --get ]]; then
+  reason="Changing core.hooksPath can disable the own-your-diff pre-push hook. Ask the human to make that change."
+fi
+
+[[ -z "$reason" ]] && exit 0
+printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Behavior tests for the push gate, through real `git push` into a bare remote.
+# Behavior tests for the plugin: the push gate through real `git push` into a
+# bare remote, the snippet renderer, and the harness hooks.
 set -euo pipefail
 
-SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-REPO_ROOT="$(cd "$SKILL_DIR/../../.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 T="$(mktemp -d)"
 trap 'rm -rf "$T"' EXIT
 pass=0 fail=0
@@ -19,21 +19,34 @@ check() { # description expected-exit command...
   fi
 }
 
+export HOME="$T/home" QUIZGATE_BIN="$T/home/.local/bin"
+PATH="$QUIZGATE_BIN:$(tr : '\n' <<<"$PATH" | while read -r d; do [[ -x "$d/quizgate" ]] || printf '%s:' "$d"; done)"
+export GIT_CONFIG_GLOBAL="$T/gitconfig" GIT_CONFIG_NOSYSTEM=1
+git config --global user.email t@example.com
+git config --global user.name t
+git config --global init.defaultBranch main
+gate="$ROOT/skills/own-your-diff/scripts/quizgate"
+snip="$ROOT/skills/own-your-diff/scripts/snippet"
+
 git init -q --bare "$T/remote.git"
-git init -q -b main "$T/work"
+git init -q "$T/work"
 cd "$T/work"
-git config user.email t@example.com
-git config user.name t
-mkdir -p .agents/skills .githooks
-cp -r "$SKILL_DIR" .agents/skills/
-cp "$REPO_ROOT/.githooks/pre-push" .githooks/
 git remote add origin "$T/remote.git"
-gate=.agents/skills/own-your-diff/scripts/quizgate
 commit() { echo "$2" >"$1"; git add -A; git commit -qm "$3"; }
 
 commit a.txt one "root commit"
 check ok "push with no hook installed" git push -q -u origin main
 "$gate" install >/dev/null
+check ok "install writes the opt-in marker" test -f .own-your-diff
+check ok "install writes the pre-push hook" test -x "$(git rev-parse --git-path hooks)/pre-push"
+git add .own-your-diff && git commit -qm "opt in"
+check blocked "push is blocked while quizgate is not installed" git push -q
+cp "$T/out" "$T/out.missing"
+check ok "block message says how to install" grep -q "quizgate is not installed" "$T/out.missing"
+"$gate" sync
+check ok "sync puts quizgate in QUIZGATE_BIN" cmp -s "$gate" "$QUIZGATE_BIN/quizgate"
+"$gate" record --by human >/dev/null
+check ok "quizzed opt-in commit pushes" git push -q
 
 commit a.txt two "change a"
 check blocked "unquizzed commit is blocked" git push -q
@@ -80,7 +93,6 @@ check ok "deleting a remote branch is never blocked" git push -q origin --delete
 check blocked "record names who passed" "$gate" record
 check ok "ledger keeps who passed" grep -q $'\thuman$' "$(git rev-parse --git-common-dir)/own-your-diff/ledger"
 
-snip=.agents/skills/own-your-diff/scripts/snippet
 seq 1 20 >s.txt
 git add s.txt && git commit -qm "twenty lines" && "$gate" record --by agent >/dev/null && git push -q
 awk 'NR == 1 { $0 = "<b>&" } NR == 20 { $0 = "last" } 1' s.txt >s.new && mv s.new s.txt
@@ -91,6 +103,30 @@ printf '<p>\n  <!-- snippet diff s.txt -->\n</p>\n' >page.html
 "$snip" expand page.html && cp page.html page.first && "$snip" expand page.html
 check ok "expand fills the directive" grep -q '<!-- snippet diff s.txt --><figure class="ed">' page.html
 check ok "expand is idempotent" cmp -s page.html page.first
+
+git clone -q "$T/remote.git" "$T/clone"
+check ok "a fresh clone has no hook" bash -c "! test -e $T/clone/.git/hooks/pre-push"
+(cd "$T/clone" && "$ROOT/hooks/session-start" >"$T/ctx")
+check ok "session start installs the hook in an opted-in clone" test -x "$T/clone/.git/hooks/pre-push"
+check ok "session start tells the agent the repo is opted in" grep -q "own-your-diff skill" "$T/ctx"
+(cd "$T/clone" && commit z.txt z "clone change")
+check blocked "the clone blocks an unquizzed push" git -C "$T/clone" push -q
+
+git init -q "$T/foreign"
+printf '#!/bin/sh\nexit 0\n' >"$T/foreign/.git/hooks/pre-push"
+check blocked "install leaves a foreign pre-push hook alone" bash -c "cd $T/foreign && $gate install"
+check ok "the foreign hook is unchanged" bash -c "! grep -q own-your-diff $T/foreign/.git/hooks/pre-push"
+git init -q "$T/plain"
+check ok "session start says nothing outside opted-in repos" bash -c "cd $T/plain && [[ -z \$($ROOT/hooks/session-start) ]]"
+
+guard() { printf '{"tool_name":"%s","tool_input":{"command":"%s"}}' "$1" "$2" | "$ROOT/hooks/guard"; }
+denies() { guard "$1" "$2" | grep -q '"permissionDecision":"deny"'; }
+check ok "guard denies git push --no-verify from Bash" denies Bash "git push --no-verify origin main"
+check ok "guard denies git push --no-verify from Execute" denies Execute "cd x && git push -u origin f --no-verify"
+check ok "guard denies a core.hooksPath override" denies Bash "git -c core.hooksPath=/dev/null push"
+check ok "guard allows a plain push" bash -c "[[ -z \$(guard Bash 'git push -u origin main') ]]"
+check ok "guard allows commit --no-verify" bash -c "[[ -z \$(guard Bash 'git commit --no-verify -m x') ]]"
+check ok "guard allows reading core.hooksPath" bash -c "[[ -z \$(guard Bash 'git config --get core.hooksPath') ]]"
 
 echo "$pass passed, $fail failed"
 [[ $fail == 0 ]]

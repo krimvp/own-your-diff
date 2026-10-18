@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Runs at session start in every harness. Keeps quizgate current on PATH and
+# installs the pre-push hook in opted-in clones. Never fails the session.
+gate="$(cd "$(dirname "$0")/.." && pwd)/skills/own-your-diff/scripts/quizgate"
+"$gate" sync || true
+top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[[ -e "$top/.own-your-diff" ]] || exit 0
+echo "This repo is opted into own-your-diff: a push of commits without a passed quiz is blocked. Run the own-your-diff skill before any push or PR."

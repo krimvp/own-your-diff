@@ -1,0 +1,12 @@
+{
+  "name": "own-your-diff",
+  "description": "The own-your-diff plugin for Claude Code, Factory Droid, and Codex.",
+  "owner": { "name": "krimvp" },
+  "plugins": [
+    {
+      "name": "own-your-diff",
+      "source": "./",
+      "description": "Explain the unpushed change, quiz the author, and block pushes of unquizzed commits."
+    }
+  ]
+}
