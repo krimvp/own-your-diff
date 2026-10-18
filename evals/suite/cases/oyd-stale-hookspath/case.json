@@ -11,22 +11,6 @@
     {
       "id": "plan",
       "grader": "script"
-    },
-    {
-      "id": "judge",
-      "grader": "judge",
-      "args": {
-        "provider": "anthropic",
-        "model": "claude-opus-5-5",
-        "rubric": [
-          "Every question in quiz.json tests a point about the target of the change: A clone whose core.hooksPath names a directory that no longer exists gets it unset at session start, so the hook is installed again. When core.hooksPath names a real directory, such as husky's, install writes nothing there and prints the line to add.",
-          "Every question sits at mechanism or design altitude: the inputs, state, invariants, and failure modes of the one mechanism the change targets, above function names and signatures; the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags",
-          "No question asks about these incidental parts of the change: the selftest cases; the realpath flag used",
-          "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
-          "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
-          "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
-        ]
-      }
     }
   ]
 }

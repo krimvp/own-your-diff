@@ -12,7 +12,8 @@ usage() {
   cat <<'USAGE'
 usage: evals/eval <command>
   prove          run fixed good and bad quiz plans through the checks, no model, no cost
-  run [SPEC]     run a spec (default evals/run.json) into evals/runs
+  run [SPEC]     run a spec (default evals/run-ollama.json) into evals/runs, then judge it
+  judge RUN      judge the quiz plans of a run against each case's rubric
   compare REF    run the skill at REF against the working tree's skill
   report RUN     print the report of a run
   build          regenerate evals/suite and evals/oracle from evals/cases.json
@@ -23,7 +24,6 @@ USAGE
 latest_run() { ls -td evals/runs/*/ | head -n1; }
 
 cmd_prove() {
-  evals/build --no-judge --out evals/.build/offline >/dev/null
   multeval run evals/run-oracle.json --out evals/runs >/dev/null
   python3 evals/prove.py "$(latest_run)"
 }
@@ -31,15 +31,18 @@ cmd_prove() {
 case "${1:-}" in
   prove) cmd_prove ;;
   run)
-    spec=${2:-evals/run.json}
+    spec=${2:-evals/run-ollama.json}
     python3 evals/preflight.py "$spec"
-    multeval run "$spec" --out evals/runs ;;
+    multeval run "$spec" --out evals/runs
+    python3 evals/judge.py "$(latest_run)" ;;
+  judge) python3 evals/judge.py "${2:?usage: evals/eval judge RUN}" ;;
   compare)
     ref=${2:?usage: evals/eval compare REF}
     rm -rf evals/.build/base && mkdir -p evals/.build/base
     git archive "$ref" skills/own-your-diff | tar -x -C evals/.build/base --strip-components=1
     python3 evals/preflight.py evals/run-compare.json
-    multeval run evals/run-compare.json --out evals/runs ;;
+    multeval run evals/run-compare.json --out evals/runs
+    python3 evals/judge.py "$(latest_run)" ;;
   report) multeval report "${2:?usage: evals/eval report RUN}" ;;
   build) evals/build ;;
   lock) uv pip compile evals/requirements.txt -o evals/requirements.lock.txt ;;

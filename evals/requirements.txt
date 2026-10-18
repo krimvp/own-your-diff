@@ -8,3 +8,4 @@ multeval-judge @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plug
 multeval-judge-anthropic @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-judge-anthropic
 multeval-judge-openai @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-judge-openai
 multeval-proxy @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-proxy
+multeval-pi @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-pi

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Build the multeval suite and the oracle skills from evals/cases.json.
 
-usage: evals/build [--repo NAME=PATH ...] [--out DIR] [--no-judge]
-                   [--judge-provider NAME] [--judge-model ID]
+usage: evals/build [--repo NAME=PATH ...] [--out DIR] [--multeval-judge PROVIDER:MODEL]
 
 Each case freezes a real change: the repo's tree at `base` becomes one root
 commit pushed to a bare origin, and the commits up to `head` are replayed on a
@@ -144,9 +143,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", action="append", default=[], metavar="NAME=PATH")
     ap.add_argument("--out", type=Path, default=EVALS / "suite")
-    ap.add_argument("--no-judge", action="store_true")
-    ap.add_argument("--judge-provider", default="anthropic")
-    ap.add_argument("--judge-model", default="claude-opus-5-5")
+    ap.add_argument("--multeval-judge", metavar="PROVIDER:MODEL",
+                    help="also grade with multeval's judge, for an endpoint that enforces JSON schemas")
     args = ap.parse_args()
 
     table = json.loads((EVALS / "cases.json").read_text())
@@ -181,11 +179,13 @@ def main():
         shutil.copy(SKILL / "scripts" / "quizlint", check / "quizlint")
         expect = {k: case[k] for k in ("min", "max", "altitude")}
         (check / "expect.json").write_text(json.dumps(expect, indent=2) + "\n")
+        (check / "rubric.json").write_text(json.dumps(rubric(case), indent=2) + "\n")
 
         checks = [{"id": "plan", "grader": "script"}]
-        if not args.no_judge:
+        if args.multeval_judge:
+            provider, model = args.multeval_judge.split(":", 1)
             checks.append({"id": "judge", "grader": "judge", "args": {
-                "provider": args.judge_provider, "model": args.judge_model, "rubric": rubric(case)}})
+                "provider": provider, "model": model, "rubric": rubric(case)}})
         tags = [case["repo"], *case["altitude"], "no-questions" if case["max"] == 0 else "questions"]
         (root / "case.json").write_text(json.dumps(
             {"instruction": INSTRUCTION, "tags": tags, "timeout_s": 1200, "checks": checks}, indent=2) + "\n")

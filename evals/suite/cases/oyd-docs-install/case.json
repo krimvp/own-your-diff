@@ -10,21 +10,6 @@
     {
       "id": "plan",
       "grader": "script"
-    },
-    {
-      "id": "judge",
-      "grader": "judge",
-      "args": {
-        "provider": "anthropic",
-        "model": "claude-opus-5-5",
-        "rubric": [
-          "Every question in quiz.json tests a point about the target of the change: Add a README and AGENTS.md that explain install, opt-in, and updates.",
-          "Every question sits at trivial altitude: the intent and impact of the change, if anything",
-          "No question asks about these incidental parts of the change: the README wording; the CLAUDE.md symlink",
-          "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
-          "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
-        ]
-      }
     }
   ]
 }

@@ -1,0 +1,8 @@
+[
+  "Every question in quiz.json tests a point about the target of the change: check(run) judges a run from its log alone: five engine invariants that every trial must keep, where one failure is a bug, and nine model behaviors measured as rates that skip when their precondition never happened. Cost is reported and never judged.",
+  "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags",
+  "No question asks about these incidental parts of the change: the names of individual checks; the TypeScript types of the case tables; the evidence strings",
+  "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+  "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+  "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+]

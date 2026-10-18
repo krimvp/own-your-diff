@@ -1,5 +1,5 @@
 {
-  "suite": "evals/.build/offline",
+  "suite": "evals/suite",
   "loader": "native",
   "trials": 1,
   "workers": 4,

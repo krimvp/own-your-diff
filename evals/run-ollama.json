@@ -1,0 +1,35 @@
+{
+  "suite": "evals/suite",
+  "loader": "native",
+  "trials": 1,
+  "workers": 3,
+  "budget_usd": 5.0,
+  "graders": [
+    {
+      "grader": "trace",
+      "args": {
+        "skill": "own-your-diff"
+      }
+    }
+  ],
+  "subjects": [
+    {
+      "id": "pi-glm",
+      "harness": "pi",
+      "model": "ollamacloud/glm-5.3",
+      "config": {
+        "provider": {
+          "baseUrl": "https://ollama.com/v1",
+          "api": "openai-completions",
+          "apiKey": "$OLLAMA_API_KEY"
+        }
+      },
+      "skills": [
+        {
+          "name": "own-your-diff",
+          "path": "skills/own-your-diff"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+[
+  "Every question in quiz.json tests a point about the target of the change: Bump the plugin version to 0.2.0 in both manifests.",
+  "Every question sits at trivial altitude: the intent and impact of the change, if anything",
+  "No question asks about these incidental parts of the change: the version number",
+  "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+  "Each question's key_points state what a correct answer must cover, at the same altitude as the question"
+]

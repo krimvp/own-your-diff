@@ -1,0 +1,8 @@
+[
+  "Every question in quiz.json tests a point about the target of the change: The text stream holds back the last (longest secret - 1) characters across the whole assistant message, so a secret split across text deltas or text blocks never reaches a listener whole. It flushes at message_end and never cuts a surrogate pair.",
+  "Every question sits at mechanism altitude: the inputs, state, invariants, and failure modes of the one mechanism the change targets, above function names and signatures",
+  "No question asks about these incidental parts of the change: the test helper names; the variable names in pi.ts",
+  "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+  "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+  "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+]

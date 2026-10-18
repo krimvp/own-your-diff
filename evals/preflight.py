@@ -23,8 +23,15 @@ def missing(options):
 
 spec = json.loads(Path(sys.argv[1]).read_text())
 problems = []
+def subject_needs(subject):
+    if subject["harness"] == "pi":
+        key = subject.get("config", {}).get("provider", {}).get("apiKey", "")
+        return [[key[1:]]] if key.startswith("$") else [[]]
+    return NEEDS.get(subject["harness"], [[]])
+
+
 for subject in spec["subjects"]:
-    need = missing(NEEDS.get(subject["harness"], [[]]))
+    need = missing(subject_needs(subject))
     if need:
         problems.append(f"subject {subject['id']} ({subject['harness']}) needs {need}")
 providers = set()
@@ -36,5 +43,8 @@ for provider in sorted(providers):
     need = missing(JUDGE.get(provider, [[]]))
     if need:
         problems.append(f"the {provider} judge needs {need}")
+need = missing([["OPENAI_API_KEY", "OPENAI_BASE_URL"]])
+if need:
+    problems.append(f"evals/judge.py needs {need}")
 if problems:
     sys.exit("evals/eval: not starting a paid run.\n  " + "\n  ".join(problems) + "\nPut the keys in evals/.env (see evals/README.md).")

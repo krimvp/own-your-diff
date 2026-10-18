@@ -1,0 +1,8 @@
+[
+  "Every question in quiz.json tests a point about the target of the change: runScenario refuses a secret or model key shorter than 8 characters as a scenario problem, because the scrub rewrites every occurrence of a raw secret, JSON keys included, and a 1-character key broke the result directory after model calls were spent.",
+  "Every question sits at mechanism or design or trivial altitude: the inputs, state, invariants, and failure modes of the one mechanism the change targets, above function names and signatures; the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags; the intent and impact of the change, if anything",
+  "No question asks about these incidental parts of the change: the design doc wording; the test expectations",
+  "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+  "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+  "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+]

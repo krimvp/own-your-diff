@@ -10,22 +10,6 @@
     {
       "id": "plan",
       "grader": "script"
-    },
-    {
-      "id": "judge",
-      "grader": "judge",
-      "args": {
-        "provider": "anthropic",
-        "model": "claude-opus-5-5",
-        "rubric": [
-          "Every question in quiz.json tests a point about the target of the change: A repo opts into the push gate with a tracked .own-your-diff marker. quizgate install writes the pre-push hook into the clone's own hooks directory instead of pointing core.hooksPath at a tracked .githooks dir, and quizgate sync keeps a copy of quizgate on PATH and installs the hook in opted-in clones that lack it.",
-          "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags",
-          "No question asks about these incidental parts of the change: the selftest file moving to the repo root; the usage text of quizgate; the wording edits in SKILL.md and agent-mode.md",
-          "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
-          "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
-          "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
-        ]
-      }
     }
   ]
 }
