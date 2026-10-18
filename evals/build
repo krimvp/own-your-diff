@@ -105,6 +105,7 @@ def rubric(case):
         f"Every question sits at {alt} altitude: " + "; ".join(ALTITUDE[a] for a in case["altitude"]),
         "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
         "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+        "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last",
     ]
     if case["incidental"]:
         items.insert(2, "No question asks about these incidental parts of the change: " + "; ".join(case["incidental"]))
@@ -115,7 +116,7 @@ def rubric(case):
 
 def oracle_quiz(case, count):
     def question(n, kind):
-        q = {"id": f"q{n}", "kind": kind, "category": "rationale", "prompt": f"Question {n}",
+        q = {"id": f"q{n}", "kind": kind, "category": "rationale", "relevance": "core", "prompt": f"Question {n}",
              "key_points": ["the point"]}
         if kind == "single":
             q["options"] = [{"label": "right", "correct": True}, {"label": "wrong", "correct": False}]

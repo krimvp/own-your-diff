@@ -17,6 +17,7 @@
       "id": "q1",
       "kind": "single",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 1",
       "key_points": [
         "the point"
@@ -36,6 +37,7 @@
       "id": "q2",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 2",
       "key_points": [
         "the point"
@@ -45,6 +47,7 @@
       "id": "q3",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 3",
       "key_points": [
         "the point"

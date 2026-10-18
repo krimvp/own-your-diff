@@ -16,6 +16,7 @@
       "id": "q1",
       "kind": "single",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 1",
       "key_points": [
         "the point"
@@ -35,6 +36,7 @@
       "id": "q2",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 2",
       "key_points": [
         "the point"
@@ -44,6 +46,7 @@
       "id": "q3",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 3",
       "key_points": [
         "the point"
@@ -53,6 +56,7 @@
       "id": "q4",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 4",
       "key_points": [
         "the point"
@@ -62,6 +66,7 @@
       "id": "q5",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 5",
       "key_points": [
         "the point"
@@ -71,6 +76,7 @@
       "id": "q6",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 6",
       "key_points": [
         "the point"
@@ -80,6 +86,7 @@
       "id": "q7",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 7",
       "key_points": [
         "the point"
@@ -89,6 +96,7 @@
       "id": "q8",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 8",
       "key_points": [
         "the point"
@@ -98,6 +106,7 @@
       "id": "q9",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 9",
       "key_points": [
         "the point"
@@ -107,6 +116,7 @@
       "id": "q10",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 10",
       "key_points": [
         "the point"
@@ -116,6 +126,7 @@
       "id": "q11",
       "kind": "free",
       "category": "rationale",
+      "relevance": "core",
       "prompt": "Question 11",
       "key_points": [
         "the point"

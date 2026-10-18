@@ -11,9 +11,10 @@ ALTITUDES = {"design", "mechanism", "trivial"}
 KINDS = {"single", "multi", "free"}
 CATEGORIES = {"rationale", "failure", "extension", "boundary", "flow", "invalidation", "measurement"}
 VERDICTS = {"pass", "vague", "wrong"}
+RELEVANCE = {"core": 0, "important": 1, "useful": 2}
 TOP_KEYS = {"version", "branch", "base", "head", "target", "altitude", "incidental",
             "examinee", "questions", "outcome", "findings"}
-QUESTION_KEYS = {"id", "kind", "category", "prompt", "options", "key_points", "attempts"}
+QUESTION_KEYS = {"id", "kind", "category", "relevance", "prompt", "options", "key_points", "attempts"}
 ATTEMPT_KEYS = {"prompt", "kind", "options", "answer", "verdict", "feedback", "round"}
 MAX_QUESTIONS = 10
 
@@ -91,6 +92,8 @@ def lint(quiz, plan):
             problems.append(f"{where}: an agent examinee gets free questions only")
         if q.get("category") not in CATEGORIES:
             problems.append(f"{where}: category is one of {sorted(CATEGORIES)}")
+        if q.get("relevance") not in RELEVANCE:
+            problems.append(f"{where}: relevance is one of {sorted(RELEVANCE, key=RELEVANCE.get)}")
         if not text(q.get("prompt")):
             problems.append(f"{where}: prompt is a non-empty string")
         check_options(where, kind, q.get("options"), problems)
@@ -117,6 +120,10 @@ def lint(quiz, plan):
                 problems.append(f"{at}: answer is the text or the picked labels")
             if a.get("verdict") not in VERDICTS:
                 problems.append(f"{at}: verdict is one of {sorted(VERDICTS)}")
+
+    ranks = [RELEVANCE.get(q.get("relevance")) for q in questions[:-1] if isinstance(q, dict)]
+    if None not in ranks and ranks != sorted(ranks):
+        problems.append("the questions run from most to least relevant, except the last")
 
     if examinee == "human" and len(questions) >= 2:
         kinds = [q.get("kind") for q in questions if isinstance(q, dict)]

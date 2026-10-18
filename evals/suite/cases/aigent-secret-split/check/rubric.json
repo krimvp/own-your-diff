@@ -4,5 +4,6 @@
   "No question asks about these incidental parts of the change: the test helper names; the variable names in pi.ts",
   "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
   "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+  "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last",
   "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
 ]
