@@ -33,6 +33,7 @@ The target sets the altitude. A change can carry both kinds.
 - **Mechanism altitude.** The target is one mechanism, for example LLM prompt-cache hits, retry and backoff, stream backpressure, or a bug's root cause. Go through that mechanism's ins and outs: inputs, state, invariants, what invalidates or breaks it, the root cause, why the fix works, and how it was measured. Stay above function names and signatures.
 - **Incidental.** Helpers, renames, plumbing, version bumps, and test scaffolding that serve the target. Give each one line and no question.
 - **Trivial.** The whole change is a typo, formatting, a version bump, or a one-line config change. Write a short walkthrough. The quiz usually has no questions.
+- **Docs.** The change only documents or explains behavior the code already has. Treat it as trivial: the author owned that design when it was built. A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.
 
 Done when every hunk in the diff belongs to the target or to the incidental list.
 
@@ -70,7 +71,7 @@ Pick the examinee:
 - **Human** whenever a human is in the session to answer. This is the default.
 - **Agent** only on an unattended run: a headless session, an autonomous or autopilot playbook, or the human said they are away. Follow [`references/agent-mode.md`](references/agent-mode.md) instead of the rest of this step. A slow human, or a human who declines the quiz, is not an unattended run.
 
-Write between 0 and 10 questions. Ask one only where it makes sense: each question tests a point at the target's altitude that the author must own to stand behind the push. Incidental items get none. Most design changes need 3 to 6. A trivial change usually needs 0.
+Count the points at the target's altitude that the author must own to stand behind the push, then write one question per point, 10 at most. Stop when the points run out. A small fix usually carries one or two, a trivial change none, and incidental items none.
 
 For each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric. Keep the rubric to yourself until the quiz ends.
 
