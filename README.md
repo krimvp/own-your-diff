@@ -58,6 +58,10 @@ own-your-diff/skills/own-your-diff/scripts/quizgate sync
 
 The git hook does not depend on any harness. It runs `quizgate` from `PATH` or `~/.local/bin`, and blocks with an install hint when it finds neither.
 
+## Quiz evals
+
+`evals/` measures the questions the skill writes, on real past changes, through [multeval](https://github.com/krimvp/multeval). See [`evals/README.md`](evals/README.md).
+
 ## Updating
 
 Rerun `install.sh`. It refreshes each marketplace, updates the plugin, and re-trusts the Codex hooks. Restart open sessions to load the new version.
