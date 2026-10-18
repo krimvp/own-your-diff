@@ -1,0 +1,81 @@
+From a2e3f05af4eeec0879d6303bc547399aeffa53ae Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 17:23:11 +0200
+Subject: [PATCH] fix: repair a stale core.hooksPath and leave hook managers
+ alone
+
+A clone that pulled the removal of a tracked .githooks dir kept
+core.hooksPath pointing at nothing, so it had no gate. Session start now
+unsets a core.hooksPath that names a missing directory, then installs
+the hook. When core.hooksPath names a real directory, such as husky's,
+install writes nothing there and prints the line to add.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB
+---
+ scripts/selftest                      | 13 +++++++++++++
+ skills/own-your-diff/scripts/quizgate | 17 ++++++++++++++---
+ 2 files changed, 27 insertions(+), 3 deletions(-)
+
+diff --git a/scripts/selftest b/scripts/selftest
+index 2d54fed..42c568f 100755
+--- a/scripts/selftest
++++ b/scripts/selftest
+@@ -112,6 +112,19 @@ check ok "session start tells the agent the repo is opted in" grep -q "own-your-
+ (cd "$T/clone" && commit z.txt z "clone change")
+ check blocked "the clone blocks an unquizzed push" git -C "$T/clone" push -q
+ 
++git clone -q "$T/remote.git" "$T/stale"
++git -C "$T/stale" config core.hooksPath .githooks
++(cd "$T/stale" && "$ROOT/hooks/session-start" >"$T/ctx.stale")
++check ok "session start unsets a core.hooksPath that points nowhere" bash -c "! git -C $T/stale config core.hooksPath"
++check ok "and installs the hook in that clone" test -x "$T/stale/.git/hooks/pre-push"
++check ok "and tells the agent what it changed" grep -q "unset core.hooksPath=.githooks" "$T/ctx.stale"
++mkdir -p "$T/stale/.husky"
++git -C "$T/stale" config core.hooksPath .husky
++(cd "$T/stale" && "$ROOT/hooks/session-start" >/dev/null 2>&1)
++check ok "session start keeps a core.hooksPath that exists" bash -c "[[ \$(git -C $T/stale config core.hooksPath) == .husky ]]"
++check ok "and writes nothing into the directory it names" bash -c "[[ -z \$(ls -A $T/stale/.husky) ]]"
++check blocked "install refuses while core.hooksPath manages the hooks" bash -c "cd $T/stale && $gate install"
++
+ git init -q "$T/foreign"
+ printf '#!/bin/sh\nexit 0\n' >"$T/foreign/.git/hooks/pre-push"
+ check blocked "install leaves a foreign pre-push hook alone" bash -c "cd $T/foreign && $gate install"
+diff --git a/skills/own-your-diff/scripts/quizgate b/skills/own-your-diff/scripts/quizgate
+index 704f35a..6513275 100755
+--- a/skills/own-your-diff/scripts/quizgate
++++ b/skills/own-your-diff/scripts/quizgate
+@@ -110,7 +110,12 @@ HOOK_TAG="# own-your-diff pre-push hook"
+ hook_path() { echo "$(git rev-parse --path-format=absolute --git-path hooks)/pre-push"; }
+ 
+ write_hook() {
+-  local hook
++  local hook hooks_path
++  hooks_path=$(git config core.hooksPath) || true
++  if [[ -n "$hooks_path" ]]; then
++    echo "own-your-diff: core.hooksPath=$hooks_path manages this repo's hooks. Add this line to its pre-push hook: quizgate check || exit 1" >&2
++    return 1
++  fi
+   hook=$(hook_path)
+   grep -qF "$HOOK_TAG" "$hook" 2>/dev/null && return
+   if [[ -e "$hook" ]]; then
+@@ -137,11 +142,17 @@ cmd_install() {
+ }
+ 
+ cmd_sync() {
+-  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top
++  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top hooks_path
+   mkdir -p "$bin"
+   cmp -s "$0" "$bin/quizgate" || install -m 755 "$0" "$bin/quizgate"
+   top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+-  [[ -e "$top/.own-your-diff" ]] && write_hook >/dev/null || true
++  [[ -e "$top/.own-your-diff" ]] || return 0
++  hooks_path=$(git config --local core.hooksPath) || true
++  if [[ -n "$hooks_path" && ! -d "$(cd "$top" && realpath -m "$hooks_path")" ]]; then
++    git config --local --unset core.hooksPath
++    echo "own-your-diff: unset core.hooksPath=$hooks_path, which pointed at a missing directory"
++  fi
++  write_hook >/dev/null || true
+ }
+ 
+ case "${1:-}" in

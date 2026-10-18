@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "ee61c0a^",
+  "head": "68ee990",
+  "target": "Scenarios become data files run by one runner that writes each run as a result directory, a check(run) judge separates engine invariants from model behavior rates, and an aigent CLI runs or checks a directory with exit codes that say what kind of trouble a run had.",
+  "altitude": "design",
+  "incidental": [
+    "the test fixtures under test/scenarios/plugins",
+    "package.json script names",
+    "the boundary test edit"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Question 1",
+      "key_points": [
+        "the point"
+      ],
+      "options": [
+        {
+          "label": "right",
+          "correct": true
+        },
+        {
+          "label": "wrong",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 2",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 3",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 4",
+      "key_points": [
+        "the point"
+      ]
+    }
+  ]
+}

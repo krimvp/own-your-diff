@@ -1,0 +1,38 @@
+{
+  "suite": "evals/.build/offline",
+  "loader": "native",
+  "trials": 1,
+  "workers": 4,
+  "subjects": [
+    {
+      "id": "oracle-good",
+      "harness": "command",
+      "model": "none",
+      "config": {
+        "command": "cp /opt/multeval/skills/oyd-oracle-good/quizzes/$(cat /etc/oyd-case).json quiz.json",
+        "version": "0"
+      },
+      "skills": [
+        {
+          "name": "oyd-oracle-good",
+          "path": "evals/oracle/oyd-oracle-good"
+        }
+      ]
+    },
+    {
+      "id": "oracle-bad",
+      "harness": "command",
+      "model": "none",
+      "config": {
+        "command": "cp /opt/multeval/skills/oyd-oracle-bad/quizzes/$(cat /etc/oyd-case).json quiz.json",
+        "version": "0"
+      },
+      "skills": [
+        {
+          "name": "oyd-oracle-bad",
+          "path": "evals/oracle/oyd-oracle-bad"
+        }
+      ]
+    }
+  ]
+}

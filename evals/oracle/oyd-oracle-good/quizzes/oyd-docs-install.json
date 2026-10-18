@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "a5f4dbc",
+  "head": "0fbb0cf",
+  "target": "Add a README and AGENTS.md that explain install, opt-in, and updates.",
+  "altitude": "trivial",
+  "incidental": [
+    "the README wording",
+    "the CLAUDE.md symlink"
+  ],
+  "examinee": "human",
+  "questions": []
+}

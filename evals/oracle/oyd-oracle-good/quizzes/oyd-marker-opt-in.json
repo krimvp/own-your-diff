@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "42c2cb8",
+  "head": "0389727",
+  "target": "A repo opts into the push gate with a tracked .own-your-diff marker. quizgate install writes the pre-push hook into the clone's own hooks directory instead of pointing core.hooksPath at a tracked .githooks dir, and quizgate sync keeps a copy of quizgate on PATH and installs the hook in opted-in clones that lack it.",
+  "altitude": "design",
+  "incidental": [
+    "the selftest file moving to the repo root",
+    "the usage text of quizgate",
+    "the wording edits in SKILL.md and agent-mode.md"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Question 1",
+      "key_points": [
+        "the point"
+      ],
+      "options": [
+        {
+          "label": "right",
+          "correct": true
+        },
+        {
+          "label": "wrong",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 2",
+      "key_points": [
+        "the point"
+      ]
+    }
+  ]
+}

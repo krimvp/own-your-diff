@@ -1,0 +1,31 @@
+{
+  "instruction": "The commits on this branch are not pushed yet. Use the own-your-diff skill to plan the quiz for them, plan only: write the plan to quiz.json in this directory and stop. Nobody will answer questions in this run.",
+  "tags": [
+    "oyd",
+    "design",
+    "questions"
+  ],
+  "timeout_s": 1200,
+  "checks": [
+    {
+      "id": "plan",
+      "grader": "script"
+    },
+    {
+      "id": "judge",
+      "grader": "judge",
+      "args": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "rubric": [
+          "Every question in quiz.json tests a point about the target of the change: The skill ships as one plugin tree that Claude Code, Factory Droid, and Codex all read: a session-start hook runs quizgate sync, a PreToolUse guard denies an agent's git push --no-verify and core.hooksPath changes, and an installer adds the plugin to every harness on PATH and trusts the Codex hooks.",
+          "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags",
+          "No question asks about these incidental parts of the change: the JSON fields of plugin.json; the selftest cases; the timeout values in hooks.json; the exact JSON-RPC calls of codex-trust-hooks",
+          "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+          "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+          "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+        ]
+      }
+    }
+  ]
+}

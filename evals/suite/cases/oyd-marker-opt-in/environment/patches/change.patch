@@ -1,0 +1,120 @@
+From 03897274b84adf84ae8a50c2ef5e2ef2d26c660d Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 16:28:16 +0200
+Subject: [PATCH] feat: opt a repo in with a tracked .own-your-diff file
+
+quizgate install now writes the pre-push hook into the clone's hooks dir
+and a .own-your-diff marker to commit, instead of pointing core.hooksPath
+at a .githooks dir the repo had to carry. quizgate sync keeps a copy on
+PATH for the hook and installs the hook in opted-in clones that lack it.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB
+---
+ .../scripts => scripts}/selftest              |  0
+ skills/own-your-diff/SKILL.md                 |  3 +-
+ skills/own-your-diff/references/agent-mode.md |  2 +-
+ skills/own-your-diff/scripts/quizgate         | 43 +++++++++++++++++--
+ 4 files changed, 42 insertions(+), 6 deletions(-)
+ rename {skills/own-your-diff/scripts => scripts}/selftest (100%)
+
+diff --git a/skills/own-your-diff/scripts/selftest b/scripts/selftest
+similarity index 100%
+rename from skills/own-your-diff/scripts/selftest
+rename to scripts/selftest
+diff --git a/skills/own-your-diff/SKILL.md b/skills/own-your-diff/SKILL.md
+index 3e68ee0..fa02039 100644
+--- a/skills/own-your-diff/SKILL.md
++++ b/skills/own-your-diff/SKILL.md
+@@ -9,9 +9,8 @@ The author pushes only work they can explain. You write a walkthrough, the autho
+ 
+ Tools are in `scripts/`. Run each with no arguments for its commands.
+ 
+-- `quizgate` is the gate. The pre-push hook calls `quizgate check`. In a fresh clone, run `quizgate install` once.
++- `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.
+ - `snippet` renders real git content as editor-style HTML blocks.
+-- `selftest` runs both through real `git push`. Run it after you change either one.
+ 
+ ## Steps
+ 
+diff --git a/skills/own-your-diff/references/agent-mode.md b/skills/own-your-diff/references/agent-mode.md
+index b848fdd..6659c41 100644
+--- a/skills/own-your-diff/references/agent-mode.md
++++ b/skills/own-your-diff/references/agent-mode.md
+@@ -2,7 +2,7 @@
+ 
+ On an unattended run, the authoring agent is the examinee. Asking yourself questions proves nothing, so two fresh subagents take the examiner's seat. Neither one has seen your context. The quiz now works as **verification**: it catches places where what you say you built differs from what the diff does, and design gaps that only show up when you apply the design to a new case.
+ 
+-Spawn both as `poteto-agent` (see the Subagents and Harness sections of `poteto-mode`). Use a model family different from yours when one is available. Pass file paths, not summaries.
++Spawn each one fresh, with none of your context. Under pstack, spawn them as `poteto-agent` (see the Subagents and Harness sections of `poteto-mode`). Use a model family different from yours when one is available. Pass file paths, not summaries.
+ 
+ ## 1. Examine
+ 
+diff --git a/skills/own-your-diff/scripts/quizgate b/skills/own-your-diff/scripts/quizgate
+index daa6844..704f35a 100755
+--- a/skills/own-your-diff/scripts/quizgate
++++ b/skills/own-your-diff/scripts/quizgate
+@@ -17,7 +17,9 @@ usage: quizgate <command>
+              mark every pending commit, and their combined diff, as quizzed
+   open FILE  open an explainer in the browser
+   check      pre-push hook entry point; reads pushed refs on stdin
+-  install    point core.hooksPath at the repo's .githooks
++  install    opt this repo in: write .own-your-diff and the pre-push hook
++  sync       copy quizgate to $QUIZGATE_BIN (default ~/.local/bin), and
++             install the hook in an opted-in repo that lacks it
+ EOF
+ }
+ 
+@@ -103,9 +105,43 @@ cmd_check() {
+   exit 1
+ }
+ 
++HOOK_TAG="# own-your-diff pre-push hook"
++
++hook_path() { echo "$(git rev-parse --path-format=absolute --git-path hooks)/pre-push"; }
++
++write_hook() {
++  local hook
++  hook=$(hook_path)
++  grep -qF "$HOOK_TAG" "$hook" 2>/dev/null && return
++  if [[ -e "$hook" ]]; then
++    echo "own-your-diff: $hook already exists. Add this line to it: quizgate check || exit 1" >&2
++    return 1
++  fi
++  mkdir -p "$(dirname "$hook")"
++  cat >"$hook" <<'HOOK'
++#!/bin/sh
++# own-your-diff pre-push hook
++gate=$(command -v quizgate || echo "$HOME/.local/bin/quizgate")
++[ -x "$gate" ] || { echo "own-your-diff: push blocked. quizgate is not installed, see https://github.com/krimvp/own-your-diff" >&2; exit 1; }
++exec "$gate" check
++HOOK
++  chmod +x "$hook"
++  echo "installed $hook"
++}
++
+ cmd_install() {
+-  git config core.hooksPath .githooks
+-  echo "core.hooksPath=.githooks"
++  local marker
++  marker="$(git rev-parse --show-toplevel)/.own-your-diff"
++  [[ -e "$marker" ]] || { echo "Pushes from this repo need a passed own-your-diff quiz." >"$marker"; echo "wrote $marker, commit it"; }
++  write_hook
++}
++
++cmd_sync() {
++  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top
++  mkdir -p "$bin"
++  cmp -s "$0" "$bin/quizgate" || install -m 755 "$0" "$bin/quizgate"
++  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
++  [[ -e "$top/.own-your-diff" ]] && write_hook >/dev/null || true
+ }
+ 
+ case "${1:-}" in
+@@ -116,5 +152,6 @@ case "${1:-}" in
+   open) shift; cmd_open "$@" ;;
+   check) cmd_check ;;
+   install) cmd_install ;;
++  sync) cmd_sync ;;
+   *) usage; exit 2 ;;
+ esac

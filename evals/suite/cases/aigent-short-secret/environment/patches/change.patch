@@ -1,0 +1,127 @@
+From b0230dad4d07d38015c2da9017a169a26049e7ec Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 16:56:10 +0200
+Subject: [PATCH] fix: refuse a secret or model key shorter than 8 characters
+
+The scrub replaces each raw secret value wherever it occurs in the run log,
+JSON keys included. A 1-character WEATHER_API_KEY rewrote keys such as
+"scenario" into "s[LEAKED:WEATHER_API_KEY]enario", the result directory no
+longer parsed, and `aigent run` exited 4 after spending model calls.
+runScenario now reports such a value as a scenario problem, so the CLI
+exits 2 before the first session opens.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01NrPUJ99oxaEND1KwMyA3iB
+---
+ docs/design/eval-scenarios.md | 4 ++--
+ src/eval/run.ts               | 9 +++++++--
+ test/cli.test.ts              | 2 +-
+ test/run.test.ts              | 8 +++++---
+ 4 files changed, 15 insertions(+), 8 deletions(-)
+
+diff --git a/docs/design/eval-scenarios.md b/docs/design/eval-scenarios.md
+index 858cd9a..d74fa28 100644
+--- a/docs/design/eval-scenarios.md
++++ b/docs/design/eval-scenarios.md
+@@ -153,7 +153,7 @@ Imports run one way. `run.ts` imports `scenario.ts`, and `checks.ts` imports bot
+ 2. **Behavior checks in the user's vocabulary.** `Expectation` is a union keyed by `check`. `scenario.ts` parses it through a table mapped over the check names, and `checks.ts` judges it through an exhaustive switch, so a check without either fails the build. Each behavior owns its precondition and so its skip rule. `discover` skips when the plugin was already enabled, `use` when the model never enabled the tool's plugin, `dispatch-recover` in native mode or without a rejected call, `skill` when the skill's plugin was never enabled, and `denial` without a matching denial. Any behavior skips on a step the run never reached. Preconditions on the script are parse errors. A `host-enable` expectation without an enable step of the tool's plugin since the previous prompt is a `ScenarioError`, and so is a `resume` expectation without a resume step.
+ 3. **Invariants read the transcript and the events together.** Events miss creation records and schema errors. The transcript cannot tell a call that ran from one rejected before the gates without reading error wording. `check` parses both once. Each session's starting enabled set comes from the transcript before its first step, and order within a session comes from its events.
+ 4. **The CLI grades its own files.** `aigent run` writes the directory, reads it back with `readRun` and checks what it read. Every run proves the files are enough to grade it, not only a test.
+-5. **Fail before paying.** `runScenario` loads every plugin set the scenario uses, and checks every referenced plugin, tool and skill name against the set in effect at its step, before the first session opens. An unset secret or a misspelled tool exits 2. Without the check, the run would spend model calls and come back full of failing behaviors.
++5. **Fail before paying.** `runScenario` loads every plugin set the scenario uses, and checks every referenced plugin, tool and skill name against the set in effect at its step, before the first session opens. An unset secret, a secret or model key shorter than 8 characters, or a misspelled tool exits 2. The scrub replaces a raw value wherever it occurs, keys included, so a 1-character key rewrote JSON keys of `run.json` (`s[LEAKED:WEATHER_API_KEY]enario`) and the run failed with exit 4. Without the check, the run would spend model calls and come back full of failing behaviors.
+ 6. **A step that throws is recorded.** A step can throw mid-run. A resume whose plugin set rejects the saved records is the common case. The log then records `failure`, the directory is still written, `complete` is false, and behaviors on the steps that never ran skip with the failure as their reason.
+ 7. **Atomic output that refuses an existing directory.** `writeRun` writes a sibling temp directory and renames it into place. A crashed run leaves only a `<dir>.partial-*` sibling. A second run into the same directory exits 2 before any model call.
+ 8. **Negative controls at the owning boundary.** A behavior's failing run is a real faux run with a wrong script. No model script can make a correct engine break an invariant, so an invariant's failing run is a recorded run with one fault, named for the engine bug it stands for, such as "a denial never reaches the record log". `secret-free` is the exception. The runner's scrub does its detection, so its fault goes in at the `Session` the runner reads, through a decorator that undoes redaction. Both case tables are typed by the check names with `satisfies`, so a check added without a passing and a failing case does not compile. Each failing case asserts the evidence that names its mistake, so it cannot fail by accident, and every behavior case asserts that no invariant broke, so a model mistake never shows up as an engine bug.
+@@ -214,7 +214,7 @@ Building it changed five things.
+ 
+ ## Verification
+ 
+-- `test/run.test.ts` shows that a bad scenario reports every problem at its place, and that a run refuses unset secrets and unknown names before any model call. It shows that a thrown step ends the run and is recorded, and that a reply streamed in many deltas is one text event. It shows that a result directory reads back as exactly the run that was written, and that `writeRun` refuses an existing directory and leaves nothing beside it.
++- `test/run.test.ts` shows that a bad scenario reports every problem at its place, and that a run refuses unset or short secrets and unknown names before any model call. It shows that a thrown step ends the run and is recorded, and that a reply streamed in many deltas is one text event. It shows that a result directory reads back as exactly the run that was written, and that `writeRun` refuses an existing directory and leaves nothing beside it.
+ - `test/checks.test.ts` runs a passing and a failing faux run for every behavior and every invariant, and checks each failure against its evidence. One more run shows behaviors that skip because they had no chance.
+ - `test/cli.test.ts` shows that `aigent check` prints the report `check` makes in memory, exits 0, 1 or 3 by what the run went through, and exits 2 on a directory with no run. It also shows that `aigent run` refuses an existing directory before it calls a model.
+ - `test/pi.test.ts` shows that a listener that joins text deltas never sees a secret and gets the whole text, and that an abort mid-reply still delivers every character the transcript kept.
+diff --git a/src/eval/run.ts b/src/eval/run.ts
+index 397af7f..7404795 100644
+--- a/src/eval/run.ts
++++ b/src/eval/run.ts
+@@ -61,14 +61,16 @@ export type StepLog =
+ 
+ /**
+  * Runs every step on sessions from `options.open`. Throws ScenarioError before the first session opens when a
+- * secret or the model key is unset, a plugin set does not load, or the scenario names a plugin, tool or skill its
+- * set lacks. A provider error, an abort or a throwing step is not a throw: it ends the run, and the log says where.
++ * secret or the model key is unset or shorter than MIN_SECRET_LENGTH, a plugin set does not load, or the scenario
++ * names a plugin, tool or skill its set lacks. A provider error, an abort or a throwing step is not a throw: it ends
++ * the run, and the log says where.
+  */
+ export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunLog> {
+   const problems: string[] = []
+   const env = (name: string): readonly [string, string] => {
+     const value = process.env[name] ?? ''
+     if (!value) problems.push(`${name}: not set in the environment`)
++    else if (value.length < MIN_SECRET_LENGTH) problems.push(`${name}: shorter than ${MIN_SECRET_LENGTH} characters`)
+     return [name, value]
+   }
+   const secrets = Object.fromEntries((scenario.secrets ?? []).map(env))
+@@ -142,6 +144,9 @@ export async function runScenario(scenario: Scenario, options: RunOptions): Prom
+   return scrub(run, scrubbed)
+ }
+ 
++/** The scrub replaces a raw value wherever it occurs in the log, JSON keys included, so a short one rewrites ordinary text. */
++const MIN_SECRET_LENGTH = 8
++
+ /** The secret names whose raw values a string held before the scrub marked them. Read by `secret-free`. */
+ export function leaksIn(text: string): readonly string[] {
+   return [...text.matchAll(/\[LEAKED:([^\]]+)\]/g)].map((m) => m[1]!)
+diff --git a/test/cli.test.ts b/test/cli.test.ts
+index ed18259..46226f6 100644
+--- a/test/cli.test.ts
++++ b/test/cli.test.ts
+@@ -57,7 +57,7 @@ test('aigent check prints the report check makes in memory, and exits by what th
+ test('aigent run refuses an existing result directory before it calls a model', async () => {
+   const dir = await mkdtemp(join(tmpdir(), 'aigent-cli-'))
+   // Everything else is in order, so only the directory can stop it; past that check the dead endpoint would fail later, as exit 4.
+-  const child = aigent(['run', join(root, 'weather.json'), '--out', dir, '--model', 'm', '--base-url', 'http://127.0.0.1:9'], { OLLAMA_API_KEY: 'unused' })
++  const child = aigent(['run', join(root, 'weather.json'), '--out', dir, '--model', 'm', '--base-url', 'http://127.0.0.1:9'], { OLLAMA_API_KEY: 'sk-unused-key' })
+ 
+   assert.equal(child.status, 2, child.stderr)
+   assert.ok(child.stderr.includes(dir), 'the refusal names the directory')
+diff --git a/test/run.test.ts b/test/run.test.ts
+index 327814f..59a74e8 100644
+--- a/test/run.test.ts
++++ b/test/run.test.ts
+@@ -57,6 +57,8 @@ test('a scenario is rejected with every problem in it, each at its place', () =>
+ })
+ 
+ test('a run refuses a scenario its plugins or environment cannot satisfy, before any model call', async () => {
++  process.env.AIGENT_TEST_SHORT = 's'
++  process.env.AIGENT_TEST_SHORT_KEY = 'sk-1234'
+   const model = fauxModel([reply('never sent')])
+   const bad = scenario(
+     [
+@@ -64,13 +66,13 @@ test('a run refuses a scenario its plugins or environment cannot satisfy, before
+       { kind: 'prompt', text: 'Hi', expect: [{ check: 'use', tool: 'weather__get_wether' }, { check: 'skill', skill: 'weather__forcasting', loaded: true }] },
+       { kind: 'resume', plugins: ['plugins/missing'] },
+     ],
+-    { secrets: ['AIGENT_TEST_UNSET'], enabled: ['wether'] },
++    { secrets: ['AIGENT_TEST_UNSET', 'AIGENT_TEST_SHORT'], enabled: ['wether'] },
+   )
+ 
+   const error = await runScenario(bad, {
+     root,
+     open: model.open,
+-    model: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:9', id: 'm', apiKeyEnv: 'AIGENT_TEST_UNSET_KEY' },
++    model: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:9', id: 'm', apiKeyEnv: 'AIGENT_TEST_SHORT_KEY' },
+     toolMode: 'native',
+     promptTimeoutMs: 5_000,
+   }).then(
+@@ -79,7 +81,7 @@ test('a run refuses a scenario its plugins or environment cannot satisfy, before
+   )
+ 
+   assert.ok(error instanceof ScenarioError)
+-  assert.deepEqual(places(error.problems), ['AIGENT_TEST_UNSET', 'AIGENT_TEST_UNSET_KEY', 'enabled', 'steps[0].plugin', 'steps[1].expect[0]', 'steps[1].expect[1]', 'steps[2].plugins'])
++  assert.deepEqual(places(error.problems), ['AIGENT_TEST_SHORT', 'AIGENT_TEST_SHORT_KEY', 'AIGENT_TEST_UNSET', 'enabled', 'steps[0].plugin', 'steps[1].expect[0]', 'steps[1].expect[1]', 'steps[2].plugins'])
+   assert.equal(model.pending(), 1, 'no model call was made')
+ })
+ 

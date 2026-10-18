@@ -1,0 +1,164 @@
+From 79d8fea02fdd996ca45552062dc63485a77597ac Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 13:40:22 +0200
+Subject: [PATCH] fix: keep a secret split across text deltas out of what
+ listeners see
+
+The adapter redacted each text delta on its own, so a secret the model
+wrote out across two deltas reached a listener whole once it joined
+them, even though the transcript and the RunResult stayed clean. The eval
+runner joins deltas before it scrubs, so every such run would score a
+leak.
+
+The stream now holds back the last `longest secret - 1` characters until
+more text arrives or the assistant message ends. The hold spans the whole
+message, not one text block: pi emits nothing between two text blocks of
+one message, so a listener would rejoin a secret split across blocks too.
+pi ends every assistant message with message_end, whether it finished,
+errored or was aborted, so flushing there loses nothing. A cut never
+separates the halves of a surrogate pair, which a host writing deltas to
+a terminal would print as two replacement characters.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01NrPUJ99oxaEND1KwMyA3iB
+---
+ src/pi.ts       | 33 +++++++++++++++++++++++++++++----
+ test/pi.test.ts | 47 +++++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 74 insertions(+), 6 deletions(-)
+
+diff --git a/src/pi.ts b/src/pi.ts
+index 7247e64..9dc0e90 100644
+--- a/src/pi.ts
++++ b/src/pi.ts
+@@ -54,12 +54,13 @@ export async function startSession(options: SessionOptions, resolved: ResolvedMo
+     }
+   }
+ 
++  const secrets = { ...options.secrets, ...resolved.secrets }
+   const engine: Engine = await createEngine({
+     catalog: parseCatalog(options.plugins),
+     toolMode: options.toolMode ?? 'native',
+     start: resumed ? { kind: 'resume', records: resumed.records } : { kind: 'fresh', systemPrompt: options.systemPrompt ?? '' },
+     enabled: options.enabled ?? [],
+-    secrets: { ...options.secrets, ...resolved.secrets },
++    secrets,
+     maxTurns: options.maxTurns ?? 25,
+     hookTimeoutMs: options.hookTimeoutMs ?? 10_000,
+     validate: piValidate,
+@@ -93,10 +94,11 @@ export async function startSession(options: SessionOptions, resolved: ResolvedMo
+       return (await engine.endTurn(toTurn(turn.message))) === 'stop' ? { action: 'end' } : undefined
+     },
+   })
++  const text = holdBack(Math.max(0, ...Object.values(secrets).map((v) => v.length)), engine.redact, (delta) => dispatch({ type: 'text', delta }))
+   agent.subscribe((event) => {
+-    if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
+-      dispatch({ type: 'text', delta: event.assistantMessageEvent.delta })
+-    }
++    if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') text.push(event.assistantMessageEvent.delta)
++    // pi ends every assistant message this way, whether it finished, errored or was aborted.
++    else if (event.type === 'message_end') text.flush()
+   })
+ 
+   const flush = (): void => {
+@@ -266,6 +268,29 @@ function exportMessage(message: AgentMessage, redact: (text: string) => string):
+   }
+ }
+ 
++/**
++ * Redacting each delta alone lets a listener rejoin a secret split across deltas. Any secret that could still be
++ * completing starts within the last `longest - 1` characters, so those wait for more text or the message's end.
++ */
++function holdBack(longest: number, redact: (text: string) => string, emit: (delta: string) => void) {
++  let held = ''
++  return {
++    push(delta: string): void {
++      held = redact(held + delta)
++      let cut = held.length - Math.max(0, longest - 1)
++      // Never strand half of a surrogate pair at the end of a delta.
++      if (cut > 0 && /[\uD800-\uDBFF]/.test(held[cut - 1]!)) cut -= 1
++      if (cut <= 0) return
++      emit(held.slice(0, cut))
++      held = held.slice(cut)
++    },
++    flush(): void {
++      if (held) emit(held)
++      held = ''
++    },
++  }
++}
++
+ /** Deep-redacts strings in our own JSON-shaped values. Image data is left alone. */
+ function redactJson<T>(value: T, redact: (text: string) => string): T {
+   if (typeof value === 'string') return redact(value) as T
+diff --git a/test/pi.test.ts b/test/pi.test.ts
+index 6dd4d13..84e4d9e 100644
+--- a/test/pi.test.ts
++++ b/test/pi.test.ts
+@@ -10,6 +10,7 @@ import {
+   getCurrentTools,
+   type AssistantMessage,
+   type Message,
++  type RegisterFauxProviderOptions,
+   type TranscriptContext,
+ } from '@earendil-works/pi-ai'
+ import { createModels } from '@earendil-works/pi-ai/models'
+@@ -21,8 +22,8 @@ import { makeWeather, units } from './fixtures/plugins.ts'
+ type Step = (context: TranscriptContext, signal: AbortSignal | undefined) => AssistantMessage | Promise<AssistantMessage>
+ 
+ /** A session on the faux model. `requests` holds a copy of every context the model received. */
+-async function fauxSession(options: SessionOptions, steps: readonly Step[]): Promise<{ session: Session; requests: TranscriptContext[]; callCount: () => number }> {
+-  const faux = fauxProvider()
++async function fauxSession(options: SessionOptions, steps: readonly Step[], provider: RegisterFauxProviderOptions = {}): Promise<{ session: Session; requests: TranscriptContext[]; callCount: () => number }> {
++  const faux = fauxProvider(provider)
+   const models = createModels()
+   models.setProvider(faux.provider)
+   const requests: TranscriptContext[] = []
+@@ -117,6 +118,48 @@ test('a host enable saved in an idle transcript reaches the first user message a
+   assert.equal(second.calls.onEnable, 0)
+ })
+ 
++test('streamed deltas never rejoin a split secret or split a character, and the text arrives whole', async () => {
++  // Longer than the faux provider's largest chunk (20 characters), so every run splits it across deltas.
++  const key = 'sk-station-0123456789abcdef'
++  // The last cut falls 26 characters before the end, between the two halves of an emoji.
++  const rain = `${'🌧'.repeat(20)}!`
++  const { session } = await fauxSession({ model: { kind: 'builtin', provider: 'faux', id: 'faux-1' }, systemPrompt: 'Test.', plugins: [], secrets: { STATION_KEY: key } }, [
++    reply(`The station key is ${key}, keep it safe. ${rain}`),
++  ])
++  const deltas: string[] = []
++  session.subscribe((e) => {
++    if (e.type === 'text') deltas.push(e.delta)
++  })
++
++  await session.prompt('Hi')
++
++  assert.equal(deltas.join(''), `The station key is [REDACTED:STATION_KEY], keep it safe. ${rain}`)
++  assert.deepEqual(deltas.filter((d) => /^[\uDC00-\uDFFF]|[\uD800-\uDBFF]$/.test(d)), [], 'no delta ends or starts inside a surrogate pair')
++})
++
++test('an abort mid-reply still delivers every character the transcript kept', async () => {
++  const key = 'sk-station-0123456789abcdef'
++  const text = `The station key is ${key}, keep it safe.`
++  const controller = new AbortController()
++  // Paced by timers, so the abort lands before the provider streams the rest of the reply.
++  const { session } = await fauxSession({ model: { kind: 'builtin', provider: 'faux', id: 'faux-1' }, systemPrompt: 'Test.', plugins: [], secrets: { STATION_KEY: key } }, [reply(text)], { tokensPerSecond: 1_000_000 })
++  const deltas: string[] = []
++  session.subscribe((e) => {
++    if (e.type !== 'text') return
++    deltas.push(e.delta)
++    controller.abort()
++  })
++
++  assert.equal((await session.prompt('Hi', { signal: controller.signal })).stop, 'aborted')
++
++  const kept = session.transcript().messages.flatMap((m) => {
++    const message = m as { role?: string; content?: { type: string; text?: string }[] }
++    return message.role === 'assistant' ? (message.content ?? []).flatMap((c) => (c.type === 'text' ? [c.text ?? ''] : [])) : []
++  })
++  assert.ok(kept.join('').length < text.length, 'the abort cut the reply short')
++  assert.equal(deltas.join(''), kept.join(''), 'the held-back tail reached listeners')
++})
++
+ test('a provider error ends the run with a redacted error result', async () => {
+   const key = 'sk-provider-0123456789'
+   const { session } = await fauxSession({ model: { kind: 'builtin', provider: 'faux', id: 'faux-1' }, systemPrompt: 'Test.', plugins: [], secrets: { PROVIDER_KEY: key } }, [

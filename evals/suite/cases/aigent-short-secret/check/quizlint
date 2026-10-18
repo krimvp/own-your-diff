@@ -1,0 +1,164 @@
+#!/usr/bin/env python3
+"""Check a quiz file against the shape in references/quiz-file.md.
+
+usage: quizlint [--plan] FILE
+  --plan   the quiz has not run yet: no attempts and no outcome
+"""
+import json
+import sys
+
+ALTITUDES = {"design", "mechanism", "trivial"}
+KINDS = {"single", "multi", "free"}
+CATEGORIES = {"rationale", "failure", "extension", "boundary", "flow", "invalidation", "measurement"}
+VERDICTS = {"pass", "vague", "wrong"}
+TOP_KEYS = {"version", "branch", "base", "head", "target", "altitude", "incidental",
+            "examinee", "questions", "outcome", "findings"}
+QUESTION_KEYS = {"id", "kind", "category", "prompt", "options", "key_points", "attempts"}
+ATTEMPT_KEYS = {"prompt", "kind", "options", "answer", "verdict", "feedback", "round"}
+MAX_QUESTIONS = 10
+
+
+def text(value):
+    return isinstance(value, str) and value.strip() != ""
+
+
+def check_options(where, kind, options, problems):
+    if kind == "free":
+        if options:
+            problems.append(f"{where}: a free question has no options")
+        return
+    low, high = (2, 4) if kind == "single" else (3, 4)
+    if not isinstance(options, list) or not low <= len(options) <= high:
+        problems.append(f"{where}: a {kind} question has {low} to {high} options")
+        return
+    labels = [o.get("label") for o in options if isinstance(o, dict)]
+    if len(labels) != len(options) or not all(text(label) for label in labels):
+        problems.append(f"{where}: every option is {{\"label\": text, \"correct\": bool}}")
+        return
+    if len(set(labels)) != len(labels):
+        problems.append(f"{where}: option labels repeat")
+    correct = [o for o in options if o.get("correct") is True]
+    if any(not isinstance(o.get("correct"), bool) for o in options):
+        problems.append(f"{where}: every option says whether it is correct")
+    if kind == "single" and len(correct) != 1:
+        problems.append(f"{where}: a single question has exactly one correct option, not {len(correct)}")
+    if kind == "multi" and not correct:
+        problems.append(f"{where}: a multi question has at least one correct option")
+
+
+def lint(quiz, plan):
+    problems = []
+    if not isinstance(quiz, dict):
+        return ["the quiz file holds one JSON object"]
+    for key in sorted(set(quiz) - TOP_KEYS):
+        problems.append(f"unknown key {key!r}")
+    if quiz.get("version") != 1:
+        problems.append("version is 1")
+    for key in ("branch", "base", "head", "target"):
+        if not text(quiz.get(key)):
+            problems.append(f"{key} is a non-empty string")
+    if quiz.get("altitude") not in ALTITUDES:
+        problems.append(f"altitude is one of {sorted(ALTITUDES)}")
+    incidental = quiz.get("incidental", [])
+    if not isinstance(incidental, list) or not all(text(i) for i in incidental):
+        problems.append("incidental is a list of strings")
+    examinee = quiz.get("examinee")
+    if examinee not in {"human", "agent"}:
+        problems.append("examinee is human or agent")
+
+    questions = quiz.get("questions")
+    if not isinstance(questions, list):
+        return problems + ["questions is a list"]
+    if len(questions) > MAX_QUESTIONS:
+        problems.append(f"{len(questions)} questions, more than {MAX_QUESTIONS}")
+    ids = set()
+    for n, q in enumerate(questions, 1):
+        where = f"question {n}"
+        if not isinstance(q, dict):
+            problems.append(f"{where}: is an object")
+            continue
+        for key in sorted(set(q) - QUESTION_KEYS):
+            problems.append(f"{where}: unknown key {key!r}")
+        qid = q.get("id")
+        if not text(qid) or qid in ids:
+            problems.append(f"{where}: id is a unique non-empty string")
+        ids.add(qid)
+        kind = q.get("kind")
+        if kind not in KINDS:
+            problems.append(f"{where}: kind is one of {sorted(KINDS)}")
+            continue
+        if examinee == "agent" and kind != "free":
+            problems.append(f"{where}: an agent examinee gets free questions only")
+        if q.get("category") not in CATEGORIES:
+            problems.append(f"{where}: category is one of {sorted(CATEGORIES)}")
+        if not text(q.get("prompt")):
+            problems.append(f"{where}: prompt is a non-empty string")
+        check_options(where, kind, q.get("options"), problems)
+        points = q.get("key_points")
+        if not isinstance(points, list) or not points or not all(text(p) for p in points):
+            problems.append(f"{where}: key_points is a non-empty list of strings")
+        attempts = q.get("attempts")
+        if plan:
+            if attempts:
+                problems.append(f"{where}: a plan has no attempts yet")
+            continue
+        if not isinstance(attempts, list) or not attempts:
+            problems.append(f"{where}: has at least one attempt")
+            continue
+        for m, a in enumerate(attempts, 1):
+            at = f"{where} attempt {m}"
+            if not isinstance(a, dict):
+                problems.append(f"{at}: is an object")
+                continue
+            for key in sorted(set(a) - ATTEMPT_KEYS):
+                problems.append(f"{at}: unknown key {key!r}")
+            answer = a.get("answer")
+            if not (text(answer) or (isinstance(answer, list) and all(text(x) for x in answer))):
+                problems.append(f"{at}: answer is the text or the picked labels")
+            if a.get("verdict") not in VERDICTS:
+                problems.append(f"{at}: verdict is one of {sorted(VERDICTS)}")
+
+    if examinee == "human" and len(questions) >= 2:
+        kinds = [q.get("kind") for q in questions if isinstance(q, dict)]
+        if kinds[0] != "single":
+            problems.append("the quiz opens with a single question")
+        if kinds[-1] not in {"multi", "free"}:
+            problems.append("the quiz ends with a multi or a free question")
+
+    outcome = quiz.get("outcome")
+    if plan:
+        if outcome is not None:
+            problems.append("a plan has no outcome yet")
+    elif outcome not in {"passed", "failed"}:
+        problems.append("outcome is passed or failed")
+    elif outcome == "passed":
+        for n, q in enumerate(questions, 1):
+            attempts = q.get("attempts") if isinstance(q, dict) else None
+            if isinstance(attempts, list) and attempts and isinstance(attempts[-1], dict) \
+                    and attempts[-1].get("verdict") != "pass":
+                problems.append(f"question {n}: a passed quiz ends every question on a pass")
+    return problems
+
+
+def main(argv):
+    plan = "--plan" in argv
+    files = [a for a in argv if a != "--plan"]
+    if len(files) != 1:
+        sys.exit(__doc__.strip())
+    try:
+        with open(files[0]) as f:
+            quiz = json.load(f)
+    except (OSError, json.JSONDecodeError) as error:
+        sys.exit(f"quizlint: {files[0]}: {error}")
+    problems = lint(quiz, plan)
+    if problems:
+        print("\n".join(f"quizlint: {p}" for p in problems))
+        return 1
+    questions = quiz["questions"]
+    kinds = ",".join(q["kind"] for q in questions) or "none"
+    print(f"ok: {len(questions)} question(s), kinds {kinds}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

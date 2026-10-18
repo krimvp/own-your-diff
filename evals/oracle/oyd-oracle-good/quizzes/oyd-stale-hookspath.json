@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "4411927",
+  "head": "a2e3f05",
+  "target": "A clone whose core.hooksPath names a directory that no longer exists gets it unset at session start, so the hook is installed again. When core.hooksPath names a real directory, such as husky's, install writes nothing there and prints the line to add.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the selftest cases",
+    "the realpath flag used"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 1",
+      "key_points": [
+        "the point"
+      ]
+    }
+  ]
+}

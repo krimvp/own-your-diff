@@ -1,0 +1,336 @@
+From 6c3aa9ea9a4304a6ecf5e6a7a8d3ac7806f1496f Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 16:28:16 +0200
+Subject: [PATCH 1/2] feat: ship as one plugin for Claude Code, Droid, and
+ Codex
+
+All three harnesses read .claude-plugin/ and hooks/hooks.json. The
+session-start hook runs quizgate sync. The PreToolUse guard denies an
+agent's git push --no-verify and core.hooksPath changes. The selftest
+moves to the repo root and covers the hooks.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB
+---
+ .claude-plugin/marketplace.json | 12 +++++++
+ .claude-plugin/plugin.json      |  7 ++++
+ hooks/guard                     | 15 +++++++++
+ hooks/hooks.json                | 19 +++++++++++
+ hooks/session-start             |  8 +++++
+ scripts/selftest                | 58 ++++++++++++++++++++++++++-------
+ 6 files changed, 108 insertions(+), 11 deletions(-)
+ create mode 100644 .claude-plugin/marketplace.json
+ create mode 100644 .claude-plugin/plugin.json
+ create mode 100755 hooks/guard
+ create mode 100644 hooks/hooks.json
+ create mode 100755 hooks/session-start
+
+diff --git a/.claude-plugin/marketplace.json b/.claude-plugin/marketplace.json
+new file mode 100644
+index 0000000..4a59a0d
+--- /dev/null
++++ b/.claude-plugin/marketplace.json
+@@ -0,0 +1,12 @@
++{
++  "name": "own-your-diff",
++  "description": "The own-your-diff plugin for Claude Code, Factory Droid, and Codex.",
++  "owner": { "name": "krimvp" },
++  "plugins": [
++    {
++      "name": "own-your-diff",
++      "source": "./",
++      "description": "Explain the unpushed change, quiz the author, and block pushes of unquizzed commits."
++    }
++  ]
++}
+diff --git a/.claude-plugin/plugin.json b/.claude-plugin/plugin.json
+new file mode 100644
+index 0000000..3e9e0b0
+--- /dev/null
++++ b/.claude-plugin/plugin.json
+@@ -0,0 +1,7 @@
++{
++  "name": "own-your-diff",
++  "version": "0.1.0",
++  "description": "Explain the unpushed change in an HTML walkthrough, quiz the author, and block pushes of unquizzed commits.",
++  "author": { "name": "krimvp" },
++  "repository": "https://github.com/krimvp/own-your-diff"
++}
+diff --git a/hooks/guard b/hooks/guard
+new file mode 100755
+index 0000000..edaa459
+--- /dev/null
++++ b/hooks/guard
+@@ -0,0 +1,15 @@
++#!/usr/bin/env bash
++# PreToolUse guard for shell tools. Bypassing the pre-push hook is the human's
++# call, so an agent's command that skips or disables it is denied.
++input=$(cat)
++cmd=$(grep -o '"command"[[:space:]]*:[[:space:]]*"\([^"\\]\|\\.\)*"' <<<"$input" | head -n1)
++
++reason=""
++if [[ "$cmd" =~ git && "$cmd" =~ push && "$cmd" =~ --no-verify ]]; then
++  reason="git push --no-verify skips the own-your-diff gate. Run the own-your-diff skill and pass the quiz instead. Only the human may push with --no-verify."
++elif [[ "$cmd" =~ core\.hooks[Pp]ath && ! "$cmd" =~ --get ]]; then
++  reason="Changing core.hooksPath can disable the own-your-diff pre-push hook. Ask the human to make that change."
++fi
++
++[[ -z "$reason" ]] && exit 0
++printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$reason"
+diff --git a/hooks/hooks.json b/hooks/hooks.json
+new file mode 100644
+index 0000000..55c4a49
+--- /dev/null
++++ b/hooks/hooks.json
+@@ -0,0 +1,19 @@
++{
++  "hooks": {
++    "SessionStart": [
++      {
++        "hooks": [
++          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\"", "timeout": 10 }
++        ]
++      }
++    ],
++    "PreToolUse": [
++      {
++        "matcher": "Bash|Execute",
++        "hooks": [
++          { "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/hooks/guard\"", "timeout": 10 }
++        ]
++      }
++    ]
++  }
++}
+diff --git a/hooks/session-start b/hooks/session-start
+new file mode 100755
+index 0000000..cea68df
+--- /dev/null
++++ b/hooks/session-start
+@@ -0,0 +1,8 @@
++#!/usr/bin/env bash
++# Runs at session start in every harness. Keeps quizgate current on PATH and
++# installs the pre-push hook in opted-in clones. Never fails the session.
++gate="$(cd "$(dirname "$0")/.." && pwd)/skills/own-your-diff/scripts/quizgate"
++"$gate" sync || true
++top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
++[[ -e "$top/.own-your-diff" ]] || exit 0
++echo "This repo is opted into own-your-diff: a push of commits without a passed quiz is blocked. Run the own-your-diff skill before any push or PR."
+diff --git a/scripts/selftest b/scripts/selftest
+index f89c0fc..0e6f186 100755
+--- a/scripts/selftest
++++ b/scripts/selftest
+@@ -1,9 +1,9 @@
+ #!/usr/bin/env bash
+-# Behavior tests for the push gate, through real `git push` into a bare remote.
++# Behavior tests for the plugin: the push gate through real `git push` into a
++# bare remote, the snippet renderer, and the harness hooks.
+ set -euo pipefail
+ 
+-SKILL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+-REPO_ROOT="$(cd "$SKILL_DIR/../../.." && pwd)"
++ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ T="$(mktemp -d)"
+ trap 'rm -rf "$T"' EXIT
+ pass=0 fail=0
+@@ -19,21 +19,34 @@ check() { # description expected-exit command...
+   fi
+ }
+ 
++export HOME="$T/home" QUIZGATE_BIN="$T/home/.local/bin"
++PATH="$QUIZGATE_BIN:$(tr : '\n' <<<"$PATH" | while read -r d; do [[ -x "$d/quizgate" ]] || printf '%s:' "$d"; done)"
++export GIT_CONFIG_GLOBAL="$T/gitconfig" GIT_CONFIG_NOSYSTEM=1
++git config --global user.email t@example.com
++git config --global user.name t
++git config --global init.defaultBranch main
++gate="$ROOT/skills/own-your-diff/scripts/quizgate"
++snip="$ROOT/skills/own-your-diff/scripts/snippet"
++
+ git init -q --bare "$T/remote.git"
+-git init -q -b main "$T/work"
++git init -q "$T/work"
+ cd "$T/work"
+-git config user.email t@example.com
+-git config user.name t
+-mkdir -p .agents/skills .githooks
+-cp -r "$SKILL_DIR" .agents/skills/
+-cp "$REPO_ROOT/.githooks/pre-push" .githooks/
+ git remote add origin "$T/remote.git"
+-gate=.agents/skills/own-your-diff/scripts/quizgate
+ commit() { echo "$2" >"$1"; git add -A; git commit -qm "$3"; }
+ 
+ commit a.txt one "root commit"
+ check ok "push with no hook installed" git push -q -u origin main
+ "$gate" install >/dev/null
++check ok "install writes the opt-in marker" test -f .own-your-diff
++check ok "install writes the pre-push hook" test -x "$(git rev-parse --git-path hooks)/pre-push"
++git add .own-your-diff && git commit -qm "opt in"
++check blocked "push is blocked while quizgate is not installed" git push -q
++cp "$T/out" "$T/out.missing"
++check ok "block message says how to install" grep -q "quizgate is not installed" "$T/out.missing"
++"$gate" sync
++check ok "sync puts quizgate in QUIZGATE_BIN" cmp -s "$gate" "$QUIZGATE_BIN/quizgate"
++"$gate" record --by human >/dev/null
++check ok "quizzed opt-in commit pushes" git push -q
+ 
+ commit a.txt two "change a"
+ check blocked "unquizzed commit is blocked" git push -q
+@@ -80,7 +93,6 @@ check ok "deleting a remote branch is never blocked" git push -q origin --delete
+ check blocked "record names who passed" "$gate" record
+ check ok "ledger keeps who passed" grep -q $'\thuman$' "$(git rev-parse --git-common-dir)/own-your-diff/ledger"
+ 
+-snip=.agents/skills/own-your-diff/scripts/snippet
+ seq 1 20 >s.txt
+ git add s.txt && git commit -qm "twenty lines" && "$gate" record --by agent >/dev/null && git push -q
+ awk 'NR == 1 { $0 = "<b>&" } NR == 20 { $0 = "last" } 1' s.txt >s.new && mv s.new s.txt
+@@ -92,5 +104,29 @@ printf '<p>\n  <!-- snippet diff s.txt -->\n</p>\n' >page.html
+ check ok "expand fills the directive" grep -q '<!-- snippet diff s.txt --><figure class="ed">' page.html
+ check ok "expand is idempotent" cmp -s page.html page.first
+ 
++git clone -q "$T/remote.git" "$T/clone"
++check ok "a fresh clone has no hook" bash -c "! test -e $T/clone/.git/hooks/pre-push"
++(cd "$T/clone" && "$ROOT/hooks/session-start" >"$T/ctx")
++check ok "session start installs the hook in an opted-in clone" test -x "$T/clone/.git/hooks/pre-push"
++check ok "session start tells the agent the repo is opted in" grep -q "own-your-diff skill" "$T/ctx"
++(cd "$T/clone" && commit z.txt z "clone change")
++check blocked "the clone blocks an unquizzed push" git -C "$T/clone" push -q
++
++git init -q "$T/foreign"
++printf '#!/bin/sh\nexit 0\n' >"$T/foreign/.git/hooks/pre-push"
++check blocked "install leaves a foreign pre-push hook alone" bash -c "cd $T/foreign && $gate install"
++check ok "the foreign hook is unchanged" bash -c "! grep -q own-your-diff $T/foreign/.git/hooks/pre-push"
++git init -q "$T/plain"
++check ok "session start says nothing outside opted-in repos" bash -c "cd $T/plain && [[ -z \$($ROOT/hooks/session-start) ]]"
++
++guard() { printf '{"tool_name":"%s","tool_input":{"command":"%s"}}' "$1" "$2" | "$ROOT/hooks/guard"; }
++denies() { guard "$1" "$2" | grep -q '"permissionDecision":"deny"'; }
++check ok "guard denies git push --no-verify from Bash" denies Bash "git push --no-verify origin main"
++check ok "guard denies git push --no-verify from Execute" denies Execute "cd x && git push -u origin f --no-verify"
++check ok "guard denies a core.hooksPath override" denies Bash "git -c core.hooksPath=/dev/null push"
++check ok "guard allows a plain push" bash -c "[[ -z \$(guard Bash 'git push -u origin main') ]]"
++check ok "guard allows commit --no-verify" bash -c "[[ -z \$(guard Bash 'git commit --no-verify -m x') ]]"
++check ok "guard allows reading core.hooksPath" bash -c "[[ -z \$(guard Bash 'git config --get core.hooksPath') ]]"
++
+ echo "$pass passed, $fail failed"
+ [[ $fail == 0 ]]
+
+From a5f4dbcb77e27e414ca0a858aabd9411aa6bc462 Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 16:28:16 +0200
+Subject: [PATCH 2/2] feat: install into every harness on PATH
+
+Codex skips plugin hooks until their hash is trusted, so the installer
+writes the trust entries through codex app-server.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB
+---
+ install.sh                | 37 +++++++++++++++++++++++++++
+ scripts/codex-trust-hooks | 54 +++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 91 insertions(+)
+ create mode 100755 install.sh
+ create mode 100755 scripts/codex-trust-hooks
+
+diff --git a/install.sh b/install.sh
+new file mode 100755
+index 0000000..00e9f03
+--- /dev/null
++++ b/install.sh
+@@ -0,0 +1,37 @@
++#!/usr/bin/env bash
++# Install the own-your-diff plugin into each harness named, or each one on PATH.
++# OWN_YOUR_DIFF_SOURCE overrides the marketplace (a local clone path works).
++set -euo pipefail
++
++HERE="$(cd "$(dirname "$0")" && pwd)"
++SOURCE=${OWN_YOUR_DIFF_SOURCE:-krimvp/own-your-diff}
++ID=own-your-diff@own-your-diff
++
++claude_install() {
++  claude plugin marketplace add "$SOURCE" || claude plugin marketplace update own-your-diff
++  claude plugin install "$ID" --scope user
++}
++
++droid_install() {
++  droid plugin marketplace add "$SOURCE" || droid plugin marketplace update own-your-diff
++  droid plugin install "$ID" --scope user
++}
++
++codex_install() {
++  codex plugin marketplace add "$SOURCE" || codex plugin marketplace upgrade own-your-diff
++  codex plugin add "$ID"
++  "$HERE/scripts/codex-trust-hooks"
++}
++
++harnesses=("$@")
++if ((${#harnesses[@]} == 0)); then
++  for h in claude droid codex; do command -v "$h" >/dev/null && harnesses+=("$h"); done
++fi
++for h in "${harnesses[@]}"; do
++  case "$h" in
++    claude | droid | codex) echo "== $h"; "${h}_install" ;;
++    *) echo "unknown harness: $h (claude, droid, codex)" >&2; exit 2 ;;
++  esac
++done
++"$HERE/skills/own-your-diff/scripts/quizgate" sync
++echo "quizgate is in ${QUIZGATE_BIN:-$HOME/.local/bin}. Opt a repo in with: quizgate install"
+diff --git a/scripts/codex-trust-hooks b/scripts/codex-trust-hooks
+new file mode 100755
+index 0000000..2115896
+--- /dev/null
++++ b/scripts/codex-trust-hooks
+@@ -0,0 +1,54 @@
++#!/usr/bin/env python3
++"""Trust the own-your-diff plugin hooks in Codex.
++
++Codex skips plugin hooks until their definition hash is trusted. This writes
++the same hooks.state entries the Codex TUI writes when you approve them.
++"""
++import json
++import os
++import subprocess
++import sys
++
++PLUGIN = "own-your-diff@own-your-diff"
++
++proc = subprocess.Popen(
++    ["codex", "app-server"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
++)
++
++
++def call(msg_id, method, params=None):
++    msg = {"jsonrpc": "2.0", "method": method}
++    if params is not None:
++        msg["params"] = params
++    if msg_id is not None:
++        msg["id"] = msg_id
++    proc.stdin.write(json.dumps(msg) + "\n")
++    proc.stdin.flush()
++    if msg_id is None:
++        return None
++    for line in proc.stdout:
++        reply = json.loads(line)
++        if reply.get("id") == msg_id:
++            if "error" in reply:
++                sys.exit(f"codex app-server {method}: {reply['error']}")
++            return reply["result"]
++    sys.exit(f"codex app-server closed before answering {method}")
++
++
++try:
++    call(1, "initialize", {"clientInfo": {"name": "own-your-diff", "version": "0"}})
++    call(None, "initialized")
++    listed = call(2, "hooks/list", {"cwds": [os.getcwd()]})
++    hooks = [h for entry in listed["data"] for h in entry["hooks"] if h.get("pluginId") == PLUGIN]
++    if not hooks:
++        sys.exit(f"no hooks found for {PLUGIN}; is the plugin installed?")
++    pending = {h["key"]: {"trusted_hash": h["currentHash"]} for h in hooks if h["trustStatus"] != "trusted"}
++    if pending:
++        call(3, "config/batchWrite", {
++            "edits": [{"keyPath": "hooks.state", "value": pending, "mergeStrategy": "upsert"}],
++            "reloadUserConfig": True,
++        })
++    print(f"trusted {len(pending)} of {len(hooks)} {PLUGIN} hook(s) in Codex")
++finally:
++    proc.stdin.close()
++    proc.terminate()

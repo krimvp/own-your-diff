@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "branch": "chore/release",
+  "base": "c84bedf",
+  "head": "906a0bd",
+  "target": "Bump the plugin version to 0.2.0 in both manifests.",
+  "altitude": "trivial",
+  "incidental": [
+    "the version number"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 1",
+      "key_points": [
+        "the point"
+      ]
+    }
+  ]
+}

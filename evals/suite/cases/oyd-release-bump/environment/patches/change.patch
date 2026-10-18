@@ -1,0 +1,36 @@
+From 906a0bd151c74dd82895b468c0b601549af24047 Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 17:23:11 +0200
+Subject: [PATCH] chore: release 0.2.0
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB
+---
+ .claude-plugin/plugin.json | 2 +-
+ .codex-plugin/plugin.json  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/.claude-plugin/plugin.json b/.claude-plugin/plugin.json
+index 3e9e0b0..106dcb9 100644
+--- a/.claude-plugin/plugin.json
++++ b/.claude-plugin/plugin.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "own-your-diff",
+-  "version": "0.1.0",
++  "version": "0.2.0",
+   "description": "Explain the unpushed change in an HTML walkthrough, quiz the author, and block pushes of unquizzed commits.",
+   "author": { "name": "krimvp" },
+   "repository": "https://github.com/krimvp/own-your-diff"
+diff --git a/.codex-plugin/plugin.json b/.codex-plugin/plugin.json
+index 87cc83e..b0f7247 100644
+--- a/.codex-plugin/plugin.json
++++ b/.codex-plugin/plugin.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "own-your-diff",
+-  "version": "0.1.0",
++  "version": "0.2.0",
+   "description": "Explain the unpushed change in an HTML walkthrough, quiz the author, and block pushes of unquizzed commits.",
+   "author": { "name": "krimvp" },
+   "repository": "https://github.com/krimvp/own-your-diff",

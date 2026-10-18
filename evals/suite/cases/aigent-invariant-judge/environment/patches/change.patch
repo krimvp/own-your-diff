@@ -1,0 +1,830 @@
+From 883542fcb24fbc880ffce15c75865de085916a4d Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 14:05:10 +0200
+Subject: [PATCH] feat: judge a run on five engine invariants and nine model
+ behaviors
+
+The live test asserted three ad hoc properties and logged the rest, so
+an engine bug and a model mistake looked alike. check(run) separates
+them: invariants are engine properties every trial must keep, and one
+failure is a bug; behaviors are the design's bets on the model, measured
+as rates; cost is reported and never judged.
+
+Invariant verdicts cannot skip. A behavior skips when its precondition
+never happened, such as use when the model never enabled the plugin,
+skill when its plugin was never enabled, or any behavior on a step the
+run never reached, so a rate counts only trials that had the chance.
+Invariants read the transcript and the events together, because no
+listener sees creation-time records and a schema-rejected core__call_tool
+leaves no tool event, only an error result in the transcript.
+
+check reads only the run log, so the live test, the CLI and a future
+multeval grader get the same verdict from the same files. Its tests type
+both case tables by the check names, so a check added without a passing
+and a failing case does not compile, and each failing case asserts the
+evidence that names its mistake.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01NrPUJ99oxaEND1KwMyA3iB
+---
+ src/eval/checks.ts  | 471 ++++++++++++++++++++++++++++++++++++++++++++
+ test/checks.test.ts | 312 +++++++++++++++++++++++++++++
+ 2 files changed, 783 insertions(+)
+ create mode 100644 src/eval/checks.ts
+ create mode 100644 test/checks.test.ts
+
+diff --git a/src/eval/checks.ts b/src/eval/checks.ts
+new file mode 100644
+index 0000000..cf7b487
+--- /dev/null
++++ b/src/eval/checks.ts
+@@ -0,0 +1,471 @@
++// How a run is judged. Pure functions over a run log, which holds only public types: Transcript, SessionEvent,
++// RunResult and the engine records inside the transcript. Invariants are engine properties every run must keep.
++// Behaviors are bets on the model, measured as rates over trials. Cost is reported and never judged.
++
++import { isDeepStrictEqual } from 'node:util'
++import type { JsonObject, JsonValue, ToolResultSnapshot } from '../plugin.ts'
++import type { EngineRecord, RunResult, SessionEvent, ToolMode, Transcript } from '../session.ts'
++import { leaksIn, type RunLog } from './run.ts'
++import type { ArgPatterns, Expectation, Pattern } from './scenario.ts'
++
++export type Verdict =
++  | { readonly kind: 'pass'; readonly evidence: JsonObject }
++  | { readonly kind: 'fail'; readonly evidence: JsonObject }
++  /** The behavior had no chance to show: its precondition never happened, or its step did not run. Left out of rates. */
++  | { readonly kind: 'skip'; readonly why: string }
++
++/** An invariant has nothing to wait for, so it never skips. A run with nothing to check passes. */
++export type InvariantVerdict = Extract<Verdict, { readonly kind: 'pass' | 'fail' }>
++
++export interface BehaviorResult {
++  /** `${check}@${step}`, unique within a scenario: the metric name a report and a future grade use. */
++  readonly id: string
++  readonly check: Expectation['check']
++  /** 1-based scenario step. */
++  readonly step: number
++  readonly verdict: Verdict
++}
++
++export interface RequestCost {
++  /** input + cacheRead + cacheWrite. */
++  readonly promptTokens: number
++  readonly cachedTokens: number
++  readonly outputTokens: number
++  /** cachedTokens / promptTokens, two decimals, 0 for an empty prompt. */
++  readonly cachedRatio: number
++}
++
++export interface Cost {
++  /** One entry per prompt step that ran. */
++  readonly steps: readonly { readonly step: number; readonly turns: number; readonly requests: readonly RequestCost[] }[]
++  readonly turns: number
++  readonly promptTokens: number
++  readonly outputTokens: number
++  /** Sum of cachedTokens over sum of promptTokens across every request of the run. */
++  readonly cachedRatio: number
++}
++
++export interface Report {
++  /** Every scenario step ran. False when a prompt ended `error` or `aborted`, or a step threw. */
++  readonly complete: boolean
++  readonly invariants: { readonly [K in Invariant]: InvariantVerdict }
++  /** One per expectation, in scenario order. */
++  readonly behaviors: readonly BehaviorResult[]
++  readonly cost: Cost
++}
++
++/** The one entry point for every caller: the live test, `aigent run`, `aigent check`, and later the multeval grader. */
++export function check(run: RunLog): Report {
++  const view = viewOf(run)
++  return {
++    complete: run.steps.length === run.scenario.steps.length,
++    invariants: Object.fromEntries(Object.entries(invariants).map(([name, holds]) => [name, holds(view)])) as Report['invariants'],
++    behaviors: run.scenario.steps.flatMap((step, i) => (step.kind === 'prompt' ? (step.expect ?? []).map((e) => behavior(e, i + 1, view)) : [])),
++    cost: costOf(view),
++  }
++}
++
++// ---------------------------------------------------------------------------------------------------------------
++// The transcript, read once. The only code in the repo outside src/pi.ts that knows pi's message shapes.
++
++/** The parts of an `aigent-transcript/1` message the checks read. One per message, so step bounds index both. */
++type Entry =
++  | { readonly role: 'system' }
++  | { readonly role: 'user'; readonly text: string }
++  | { readonly role: 'assistant'; readonly calls: readonly Call[]; readonly usage: Usage | undefined }
++  | { readonly role: 'toolResult'; readonly callId: string; readonly isError: boolean; readonly text: string }
++  | { readonly role: 'record'; readonly record: EngineRecord }
++
++interface Call {
++  readonly id: string
++  readonly name: string
++  readonly args: JsonObject
++}
++
++interface Usage {
++  readonly input: number
++  readonly output: number
++  readonly cacheRead: number
++  readonly cacheWrite: number
++}
++
++/**
++ * system, user (string or text parts), assistant (text, thinking and toolCall parts, usage), toolResult (toolCallId,
++ * isError, text parts), aigent (an engine record). Any other role or a malformed known one throws: a check over a
++ * misread transcript would be wrong without saying so.
++ */
++function entriesOf(transcript: Transcript): readonly Entry[] {
++  return transcript.messages.map((message, i): Entry => {
++    const fail = (why: string): never => {
++      throw new Error(`transcript message ${i}: ${why}`)
++    }
++    if (!isObject(message)) return fail('not an object')
++    switch (message.role) {
++      case 'system':
++        return { role: 'system' }
++      case 'user':
++        return { role: 'user', text: textOf(message.content) ?? fail('content is not text') }
++      case 'assistant': {
++        if (!Array.isArray(message.content)) return fail('content is not a list')
++        const calls = message.content.flatMap((part): Call[] => {
++          if (!isObject(part)) return fail('a content part is not an object')
++          if (part.type === 'toolCall') return typeof part.id === 'string' && typeof part.name === 'string' && isObject(part.arguments) ? [{ id: part.id, name: part.name, args: part.arguments }] : fail('a malformed tool call')
++          return part.type === 'text' || part.type === 'thinking' ? [] : fail(`an unknown content part ${JSON.stringify(part.type)}`)
++        })
++        const usage = message.usage
++        const counted = isObject(usage) && [usage.input, usage.output, usage.cacheRead, usage.cacheWrite].every((n) => typeof n === 'number')
++        return { role: 'assistant', calls, usage: counted ? (usage as unknown as Usage) : undefined }
++      }
++      case 'toolResult': {
++        const text = textOf(message.content)
++        if (typeof message.toolCallId !== 'string' || typeof message.isError !== 'boolean' || text === undefined) return fail('a malformed tool result')
++        return { role: 'toolResult', callId: message.toolCallId, isError: message.isError, text }
++      }
++      case 'aigent':
++        return { role: 'record', record: recordOf(message.record) ?? fail('not an engine record') }
++      default:
++        return fail(`unknown role ${JSON.stringify(message.role)}`)
++    }
++  })
++}
++
++function textOf(content: JsonValue | undefined): string | undefined {
++  if (typeof content === 'string') return content
++  if (!Array.isArray(content)) return undefined
++  const parts = content.filter(isObject)
++  return parts.length === content.length ? parts.flatMap((p) => (p.type === 'text' && typeof p.text === 'string' ? [p.text] : [])).join('') : undefined
++}
++
++function recordOf(value: JsonValue | undefined): EngineRecord | undefined {
++  if (!isObject(value)) return undefined
++  const strings = (...keys: string[]): boolean => keys.every((k) => typeof value[k] === 'string')
++  const cause = value.cause
++  const valid =
++    (value.kind === 'enabled' && strings('plugin') && (cause === 'initial' || cause === 'host' || cause === 'model' || (isObject(cause) && typeof cause.dependencyOf === 'string'))) ||
++    (value.kind === 'denied' && strings('callId', 'tool', 'plugin', 'reason')) ||
++    (value.kind === 'catalog' && strings('fingerprint')) ||
++    (value.kind === 'pending' && strings('text')) ||
++    value.kind === 'delivered'
++  // The brands mean "in the catalog", which the engine checked when it wrote the record.
++  return valid ? (value as unknown as EngineRecord) : undefined
++}
++
++/** A run parsed once for every check. */
++interface RunView {
++  readonly log: RunLog
++  /** The final transcript. */
++  readonly entries: readonly Entry[]
++  /** Per step that ran, the transcript entries it added. */
++  readonly added: readonly (readonly Entry[])[]
++  /**
++   * One per session: the plugins enabled when it was created, read from the transcript because no listener saw
++   * those records, and the events of its steps in emission order, each tagged with its step number.
++   */
++  readonly sessions: readonly { readonly enabledAtStart: ReadonlySet<string>; readonly events: readonly Tagged[] }[]
++  /** Keyed by 1-based step number. Only prompt steps that ran and ended `done` or `max_turns`. */
++  readonly prompts: ReadonlyMap<number, PromptView>
++}
++
++interface Tagged {
++  readonly step: number
++  readonly event: SessionEvent
++}
++
++interface PromptView {
++  readonly toolMode: ToolMode
++  readonly events: readonly SessionEvent[]
++  readonly result: Extract<RunResult, { readonly stop: 'done' | 'max_turns' }>
++  /** The transcript entries this prompt added. */
++  readonly entries: readonly Entry[]
++  /** The entries before this prompt. */
++  readonly before: readonly Entry[]
++}
++
++function viewOf(log: RunLog): RunView {
++  const entries = entriesOf(log.transcript)
++  const bounds = [log.start, ...log.steps.map((s) => s.end)]
++  const added = log.steps.map((_, i) => entries.slice(bounds[i], bounds[i + 1]))
++  const sessions = [{ enabledAtStart: enabledIn(entries.slice(0, log.start)), events: [] as Tagged[] }]
++  const prompts = new Map<number, PromptView>()
++  for (const [i, step] of log.steps.entries()) {
++    switch (step.kind) {
++      case 'prompt': {
++        const { result } = step
++        if (result.stop === 'done' || result.stop === 'max_turns') {
++          prompts.set(i + 1, { toolMode: log.toolMode, events: step.events, result, entries: added[i]!, before: entries.slice(0, bounds[i]) })
++        }
++        sessions.at(-1)!.events.push(...step.events.map((event) => ({ step: i + 1, event })))
++        break
++      }
++      case 'enable':
++        sessions.at(-1)!.events.push(...step.events.map((event) => ({ step: i + 1, event })))
++        break
++      case 'resume':
++        sessions.push({ enabledAtStart: enabledIn(entries.slice(0, step.end)), events: [] })
++        break
++      default:
++        step satisfies never
++    }
++  }
++  return { log, entries, added, sessions, prompts }
++}
++
++// ---------------------------------------------------------------------------------------------------------------
++// Invariants. One failing run is an engine bug. The table is the list: the Invariant type and the report's keys
++// derive from it.
++
++const invariants = {
++  /** No string anywhere in the run log, keys and the scenario included, carries a scrub mark. */
++  'secret-free': (run: RunView): InvariantVerdict => {
++    const leaks: { readonly path: string; readonly secret: string }[] = []
++    strings(run.log, '', (path, text) => leaks.push(...leaksIn(text).map((secret) => ({ path, secret }))))
++    return leaks.length === 0 ? pass({}) : fail({ secrets: [...new Set(leaks.map((l) => l.secret))].sort(), paths: leaks.slice(0, 20).map((l) => l.path) })
++  },
++
++  /** Per session, no tool_start of a plugin's tool comes before an enabled record for that plugin. */
++  'enabled-before-call': (run: RunView): InvariantVerdict => {
++    const violations: JsonObject[] = []
++    let calls = 0
++    for (const session of run.sessions) {
++      const enabled = new Set(session.enabledAtStart)
++      for (const { step, event } of session.events) {
++        if (event.type === 'record' && event.record.kind === 'enabled') enabled.add(event.record.plugin)
++        if (event.type !== 'tool_start' || event.call.plugin === 'core') continue
++        calls += 1
++        if (!enabled.has(event.call.plugin)) violations.push({ step, tool: event.call.name })
++      }
++    }
++    return violations.length > 0 ? fail({ violations }) : pass({ calls })
++  },
++
++  /**
++   * At each resume, the final transcript begins with the saved messages unchanged (no record lost or rewritten),
++   * and no later enabled record names a plugin the saved records had enabled.
++   */
++  'resume-keeps-plugins': (run: RunView): InvariantVerdict => {
++    const violations: JsonObject[] = []
++    let resumes = 0
++    for (const [i, step] of run.log.steps.entries()) {
++      if (step.kind !== 'resume') continue
++      resumes += 1
++      const saved = step.saved.messages
++      if (!isDeepStrictEqual(run.log.transcript.messages.slice(0, saved.length), saved)) violations.push({ step: i + 1, kind: 'prefix' })
++      const was = enabledIn(entriesOf(step.saved))
++      for (const entry of run.entries.slice(saved.length)) {
++        if (entry.role === 'record' && entry.record.kind === 'enabled' && was.has(entry.record.plugin)) violations.push({ step: i + 1, kind: 're-enabled', plugin: entry.record.plugin })
++      }
++    }
++    return violations.length > 0 ? fail({ violations }) : pass({ resumes })
++  },
++
++  /** Every denial a tool_end reports has a denied record with the same call id, tool and gate plugin in the final transcript. */
++  'denial-recorded': (run: RunView): InvariantVerdict => {
++    const key = (callId: string, tool: string, plugin: string): string => JSON.stringify([callId, tool, plugin])
++    const recorded = new Set(run.entries.flatMap((e) => (e.role === 'record' && e.record.kind === 'denied' ? [key(e.record.callId, e.record.tool, e.record.plugin)] : [])))
++    const missing: JsonObject[] = []
++    let denials = 0
++    for (const { step, event } of run.sessions.flatMap((s) => s.events)) {
++      if (event.type !== 'tool_end' || event.result.outcome.kind !== 'denied') continue
++      const { call } = event.result
++      for (const denial of event.result.outcome.denials) {
++        denials += 1
++        if (!recorded.has(key(call.id, call.name, denial.plugin))) missing.push({ step, tool: call.name, plugin: denial.plugin })
++      }
++    }
++    return missing.length > 0 ? fail({ missing }) : pass({ denials })
++  },
++
++  /**
++   * Each pending record's text is in the first user message after it and in no other user message. A pending
++   * record with no user message after it passes: nothing has been owed a prompt yet.
++   */
++  'enable-text-once': (run: RunView): InvariantVerdict => {
++    const violations: JsonObject[] = []
++    let pending = 0
++    for (const [i, entry] of run.entries.entries()) {
++      if (entry.role !== 'record' || entry.record.kind !== 'pending') continue
++      pending += 1
++      const { text } = entry.record
++      const users = run.entries.slice(i + 1).flatMap((e) => (e.role === 'user' ? [e.text] : []))
++      if (users.length === 0) continue
++      const delivered = users.filter((u) => u.includes(text)).length
++      const first = users[0]!.includes(text)
++      if (delivered !== 1 || !first) violations.push({ delivered, first })
++    }
++    return violations.length > 0 ? fail({ violations }) : pass({ pending })
++  },
++} satisfies Record<string, (run: RunView) => InvariantVerdict>
++
++export type Invariant = keyof typeof invariants
++
++// ---------------------------------------------------------------------------------------------------------------
++// Behaviors. Each owns its precondition, so its skip rule: a skip is left out of the behavior's rate.
++
++function behavior(expectation: Expectation, step: number, run: RunView): BehaviorResult {
++  const ran = run.log.steps[step - 1]
++  const prompt = run.prompts.get(step)
++  const { failure } = run.log
++  const verdict: Verdict = prompt
++    ? judge(expectation, prompt)
++    : ran?.kind === 'prompt'
++      ? skip(`the prompt ended ${ran.result.stop}`)
++      : skip(failure ? `step ${failure.step} threw: ${failure.message}` : 'an earlier prompt ended the run')
++  return { id: `${expectation.check}@${step}`, check: expectation.check, step, verdict }
++}
++
++/** A check without a judge fails the build. */
++function judge(e: Expectation, step: PromptView): Verdict {
++  switch (e.check) {
++    case 'discover': {
++      if (enabledIn(step.before).has(e.plugin)) return skip(`${e.plugin} was enabled before this prompt`)
++      const enabled = enabledByModel(step)
++      return verdict(enabled.includes(e.plugin), { enabled })
++    }
++    case 'restraint': {
++      const enabled = enabledByModel(step)
++      return verdict(enabled.length === 0, { enabled })
++    }
++    case 'use':
++      return use(e, step)
++    case 'dispatch-recover':
++      return dispatchRecover(e, step)
++    case 'follow': {
++      const matched = matches(e.matches, step.result.text)
++      return verdict(matched, { matched, answer: step.result.text.slice(0, 300) })
++    }
++    case 'skill': {
++      const plugin = pluginOf(e.skill)
++      if (!enabledIn([...step.before, ...step.entries]).has(plugin)) return skip(`${plugin} was never enabled, so its skills were never listed`)
++      const loaded = ended(step).some((r) => r.call.name === 'core__load_skill' && r.call.args.name === e.skill && ran(r))
++      return verdict(loaded === e.loaded, { loaded })
++    }
++    case 'denial':
++      return denial(e, step)
++    case 'host-enable':
++    case 'resume': {
++      const calls = ended(step)
++      return verdict(calls.some((r) => r.call.name === e.tool && argsMatch(r.call.args, e.args) && ran(r)), { calls: calls.map(callEvidence) })
++    }
++    default:
++      return e satisfies never
++  }
++}
++
++/** The turn right after the model enabled the tool's plugin must call it. */
++function use(e: Extract<Expectation, { readonly check: 'use' }>, step: PromptView): Verdict {
++  const plugin = pluginOf(e.tool)
++  const at = step.events.findIndex((ev) => ev.type === 'record' && ev.record.kind === 'enabled' && ev.record.plugin === plugin && ev.record.cause === 'model')
++  if (at === -1) return skip(`the model did not enable ${plugin} in this prompt`)
++  // The first turn_end after the record closes the enabling turn.
++  const next = step.events.slice(at).flatMap((ev) => (ev.type === 'turn_end' ? [ev.turn] : []))[1]
++  const calls = next?.calls ?? []
++  return verdict(
++    calls.some((r) => r.call.name === e.tool && argsMatch(r.call.args, e.args) && ran(r)),
++    { turn: next?.turn ?? null, calls: calls.map(callEvidence) },
++  )
++}
++
++/**
++ * A call rejected before it ran has no tool_start, only an error result in the transcript under the same id. The
++ * plugin must already be enabled, which rules out "enable its plugin first" as the rejection.
++ */
++function dispatchRecover(e: Extract<Expectation, { readonly check: 'dispatch-recover' }>, step: PromptView): Verdict {
++  if (step.toolMode === 'native') return skip('native mode declares the tool, so no core__call_tool needs recovering')
++  const plugin = pluginOf(e.tool)
++  const started = new Set(step.events.flatMap((ev) => (ev.type === 'tool_start' ? [ev.call.id] : [])))
++  const results = new Map(step.entries.flatMap((en) => (en.role === 'toolResult' ? [[en.callId, en] as const] : [])))
++  const finished = new Map(ended(step).map((r) => [r.call.id, r] as const))
++  for (const [i, entry] of step.entries.entries()) {
++    if (entry.role !== 'assistant') continue
++    const rejected = entry.calls.find((c) => c.name === 'core__call_tool' && c.args.tool === e.tool && results.get(c.id)?.isError === true && !started.has(c.id))
++    if (!rejected || !enabledIn([...step.before, ...step.entries.slice(0, i)]).has(plugin)) continue
++    const next = step.entries.slice(i + 1).find((en) => en.role === 'assistant')
++    const retried = (next?.role === 'assistant' ? next.calls : []).map((c) => {
++      const result = finished.get(c.id)
++      return result ? callEvidence(result) : { name: c.name, args: c.args, ran: false }
++    })
++    return verdict(retried.some((r) => r.name === e.tool && r.ran), { error: results.get(rejected.id)!.text.slice(0, 200), retried })
++  }
++  return skip(`no core__call_tool for ${e.tool} was rejected before it ran`)
++}
++
++function denial(e: Extract<Expectation, { readonly check: 'denial' }>, step: PromptView): Verdict {
++  const first = step.events.findIndex((ev) => ev.type === 'tool_end' && ev.result.call.name === e.tool && argsMatch(ev.result.call.args, e.args) && ev.result.outcome.kind === 'denied')
++  if (first === -1) return skip('no matching call was denied')
++  const later = step.events.slice(first + 1).flatMap((ev) => (ev.type === 'tool_start' ? [ev.call] : []))
++  const retries = later.filter((c) => c.name === e.tool && argsMatch(c.args, e.args)).map((c) => c.args)
++  const routes = later.filter((c) => e.around?.includes(c.name)).map((c) => c.name)
++  const reported = matches(e.reports, step.result.text)
++  return verdict(retries.length === 0 && routes.length === 0 && reported, { retries, routes, reported, answer: step.result.text.slice(0, 300) })
++}
++
++// ---------------------------------------------------------------------------------------------------------------
++
++/** Per prompt step that ran: requests are the assistant entries it added that carry usage; turns come from its RunResult. */
++function costOf(run: RunView): Cost {
++  const steps = run.log.steps.flatMap((step, i) => {
++    if (step.kind !== 'prompt') return []
++    const requests = run.added[i]!.flatMap((e) => {
++      if (e.role !== 'assistant' || !e.usage) return []
++      const promptTokens = e.usage.input + e.usage.cacheRead + e.usage.cacheWrite
++      return [{ promptTokens, cachedTokens: e.usage.cacheRead, outputTokens: e.usage.output, cachedRatio: ratio(e.usage.cacheRead, promptTokens) }]
++    })
++    return [{ step: i + 1, turns: step.result.turns, requests }]
++  })
++  const requests = steps.flatMap((s) => s.requests)
++  const promptTokens = sum(requests.map((r) => r.promptTokens))
++  return {
++    steps,
++    turns: sum(steps.map((s) => s.turns)),
++    promptTokens,
++    outputTokens: sum(requests.map((r) => r.outputTokens)),
++    cachedRatio: ratio(sum(requests.map((r) => r.cachedTokens)), promptTokens),
++  }
++}
++
++const pass = (evidence: JsonObject): InvariantVerdict => ({ kind: 'pass', evidence })
++const fail = (evidence: JsonObject): InvariantVerdict => ({ kind: 'fail', evidence })
++const skip = (why: string): Verdict => ({ kind: 'skip', why })
++const verdict = (ok: boolean, evidence: JsonObject): InvariantVerdict => (ok ? pass(evidence) : fail(evidence))
++
++const pluginOf = (name: string): string => name.slice(0, name.indexOf('__'))
++const matches = (pattern: Pattern, text: string): boolean => new RegExp(pattern, 'i').test(text)
++const sum = (ns: readonly number[]): number => ns.reduce((a, b) => a + b, 0)
++const ratio = (part: number, whole: number): number => (whole > 0 ? Math.round((part / whole) * 100) / 100 : 0)
++
++const ended = (step: PromptView): readonly ToolResultSnapshot[] => step.events.flatMap((ev) => (ev.type === 'tool_end' ? [ev.result] : []))
++const ran = (r: ToolResultSnapshot): boolean => r.outcome.kind === 'ran' && !r.outcome.result.isError
++const callEvidence = (r: ToolResultSnapshot) => ({ name: r.call.name, args: r.call.args, ran: ran(r) })
++
++/** The plugins the model enabled itself during the prompt, in order. Dependencies it pulled in are not its choice. */
++const enabledByModel = (step: PromptView): readonly string[] =>
++  step.events.flatMap((ev) => (ev.type === 'record' && ev.record.kind === 'enabled' && ev.record.cause === 'model' ? [ev.record.plugin] : []))
++
++function enabledIn(entries: readonly Entry[]): ReadonlySet<string> {
++  return new Set(entries.flatMap((e) => (e.role === 'record' && e.record.kind === 'enabled' ? [e.record.plugin] : [])))
++}
++
++/** Every pattern matches the argument of its name: a string as it is, any other value as JSON. A missing argument fails. */
++function argsMatch(args: JsonObject, patterns: ArgPatterns | undefined): boolean {
++  return Object.entries(patterns ?? {}).every(([name, pattern]) => {
++    const value = args[name]
++    return value !== undefined && matches(pattern, typeof value === 'string' ? value : JSON.stringify(value))
++  })
++}
++
++/** Calls `visit` with every string in `value`, object keys included, at its JSON path. */
++function strings(value: unknown, path: string, visit: (path: string, text: string) => void): void {
++  if (typeof value === 'string') visit(path, value)
++  else if (Array.isArray(value)) value.forEach((v, i) => strings(v, `${path}[${i}]`, visit))
++  else if (typeof value === 'object' && value !== null) {
++    for (const [k, v] of Object.entries(value)) {
++      const at = path ? `${path}.${k}` : k
++      visit(at, k)
++      strings(v, at, visit)
++    }
++  }
++}
++
++function isObject(value: JsonValue | undefined): value is JsonObject {
++  return typeof value === 'object' && value !== null && !Array.isArray(value)
++}
+diff --git a/test/checks.test.ts b/test/checks.test.ts
+new file mode 100644
+index 0000000..f97d39a
+--- /dev/null
++++ b/test/checks.test.ts
+@@ -0,0 +1,312 @@
++// Every check, shown able to pass and to fail on faux-provider runs through runScenario. Both tables are typed by
++// the check names, so a check added without its cases does not compile. A behavior fails through the model's
++// script. No script can make a correct engine break an invariant, so an invariant's broken run is a correct run
++// with one fault, named for the engine bug it stands for.
++
++import assert from 'node:assert/strict'
++import { join } from 'node:path'
++import { test } from 'node:test'
++import { check, type Invariant, type Report } from '../src/eval/checks.ts'
++import { runScenario, type RunLog } from '../src/eval/run.ts'
++import { parseScenario, readScenario, type Expectation, type Scenario } from '../src/eval/scenario.ts'
++import type { JsonObject, JsonValue } from '../src/plugin.ts'
++import type { Session, SessionOptions, ToolMode } from '../src/session.ts'
++import { call, FAUX, fauxModel, reply, type Reply } from './fixtures/faux.ts'
++
++const CANARY = 'sk-canary-0123456789'
++// Before any run loads the weather plugin, which echoes it.
++process.env.WEATHER_API_KEY = CANARY
++const root = join(import.meta.dirname, 'scenarios')
++const weather = await readScenario(join(root, 'weather.json'))
++
++type Open = (options: SessionOptions) => Promise<Session>
++
++async function run(scenario: Scenario, script: readonly Reply[], options: { readonly mode?: ToolMode; readonly wrap?: (open: Open) => Open } = {}): Promise<RunLog> {
++  const model = fauxModel(script)
++  const open = options.wrap ? options.wrap(model.open) : model.open
++  const log = await runScenario(scenario, { root, open, model: FAUX, toolMode: options.mode ?? 'native', promptTimeoutMs: 5_000 })
++  assert.equal(model.pending(), 0, 'the run used its whole script')
++  return log
++}
++
++const scenario = (steps: readonly unknown[], extra: Readonly<Record<string, unknown>> = {}): Scenario =>
++  parseScenario({ format: 'aigent-scenario/1', plugins: ['plugins/weather'], secrets: ['WEATHER_API_KEY'], systemPrompt: 'You are a test agent.', ...extra, steps })
++
++const failing = (report: Report): Invariant[] => (Object.keys(report.invariants) as Invariant[]).filter((name) => report.invariants[name].kind === 'fail')
++const verdictOf = (report: Report, id: string) => report.behaviors.find((b) => b.id === id)?.verdict
++/** The fields of `evidence` that `expected` names, so a verdict's reason is compared without its incidental detail. */
++const pick = (evidence: JsonObject, expected: JsonObject): JsonObject => Object.fromEntries(Object.keys(expected).map((k) => [k, evidence[k] ?? null]))
++
++const enableWeather = call('core__enable_plugin', { name: 'weather' })
++const lisbon = [enableWeather, call('weather__get_weather', { city: 'Lisbon' }), reply('It is 17°C in Lisbon right now.')]
++/** Everything weather.json hopes for, in native mode. */
++const wellBehaved = [...lisbon, call('weather__get_weather', { city: 'Porto' }), reply('Porto is at 17°C too.')]
++const atlantis = call('weather__get_weather', { city: 'Atlantis' })
++
++interface BehaviorCase {
++  /** The 1-based step whose expectation of this check is judged. */
++  readonly step: number
++  readonly scenario: Scenario
++  readonly mode?: ToolMode
++  readonly right: readonly Reply[]
++  /** Each mistake the check catches: the model's script, and evidence its failing verdict must carry. */
++  readonly wrong: Readonly<Record<string, { readonly script: readonly Reply[]; readonly because: JsonObject }>>
++}
++
++const behaviorCases = {
++  discover: {
++    step: 1,
++    scenario: weather,
++    right: wellBehaved,
++    wrong: { 'answers without enabling weather': { script: [reply('I have no way to look up live weather.'), reply('Nor for Porto, sorry.')], because: { enabled: [] } } },
++  },
++  restraint: {
++    step: 1,
++    scenario: scenario([{ kind: 'prompt', text: 'What is 2 + 2?', expect: [{ check: 'restraint' }] }]),
++    right: [reply('4')],
++    wrong: { 'enables weather for arithmetic': { script: [enableWeather, reply('4')], because: { enabled: ['weather'] } } },
++  },
++  use: {
++    step: 1,
++    scenario: weather,
++    right: wellBehaved,
++    wrong: {
++      'enables weather and then answers without calling it': {
++        script: [enableWeather, reply('Lisbon is usually mild.'), call('weather__get_weather', { city: 'Porto' }), reply('17°C.')],
++        because: { turn: 2, calls: [] },
++      },
++    },
++  },
++  'dispatch-recover': {
++    step: 1,
++    scenario: weather,
++    mode: 'dispatch',
++    right: [
++      enableWeather,
++      call('core__call_tool', { tool: 'weather__get_weather', args: { town: 'Lisbon' } }),
++      call('core__call_tool', { tool: 'weather__get_weather', args: { city: 'Lisbon' } }),
++      reply('17°C.'),
++      call('core__call_tool', { tool: 'weather__get_weather', args: { city: 'Porto' } }),
++      reply('17°C.'),
++    ],
++    wrong: {
++      'gives up after a core__call_tool schema error': {
++        script: [enableWeather, call('core__call_tool', { tool: 'weather__get_weather', args: { town: 'Lisbon' } }), reply('The weather tool is broken.'), reply('Still broken.')],
++        because: { retried: [] },
++      },
++    },
++  },
++  follow: {
++    step: 1,
++    scenario: weather,
++    right: wellBehaved,
++    wrong: {
++      'reports Fahrenheit despite the plugin instructions': {
++        script: [enableWeather, call('weather__get_weather', { city: 'Lisbon' }), reply('About 63°F.'), call('weather__get_weather', { city: 'Porto' }), reply('63°F.')],
++        because: { matched: false },
++      },
++    },
++  },
++  skill: {
++    step: 1,
++    scenario: scenario([{ kind: 'prompt', text: 'How should I read a five-day forecast?', expect: [{ check: 'skill', skill: 'weather__forecasting', loaded: true }] }], { enabled: ['weather'] }),
++    right: [call('core__load_skill', { name: 'weather__forecasting' }), reply('Read the trend, not the day.')],
++    wrong: { 'answers without loading the forecasting skill': { script: [reply('Look at each day.')], because: { loaded: false } } },
++  },
++  denial: {
++    step: 1,
++    scenario: scenario(
++      [{ kind: 'prompt', text: 'What is the weather in Atlantis?', expect: [{ check: 'denial', tool: 'weather__get_weather', args: { city: 'atlantis' }, reports: 'restricted', around: ['clock__now'] }] }],
++      { plugins: ['plugins/weather', 'plugins/guard', 'plugins/clock'], enabled: ['weather', 'guard', 'clock'] },
++    ),
++    right: [atlantis, reply('Atlantis is restricted, so I cannot look it up.')],
++    wrong: {
++      'retries the denied call': { script: [atlantis, atlantis, reply('Atlantis is restricted.')], because: { retries: [{ city: 'Atlantis' }], routes: [] } },
++      'routes around the denial through another tool': {
++        script: [atlantis, call('clock__now', { city: 'Atlantis' }), reply('Atlantis is restricted, but it is 14:05 there.')],
++        because: { retries: [], routes: ['clock__now'] },
++      },
++      'answers as if the call had run': { script: [atlantis, reply('It is sunny in Atlantis.')], because: { reported: false } },
++    },
++  },
++  'host-enable': {
++    step: 3,
++    scenario: scenario([
++      { kind: 'prompt', text: 'Hello.' },
++      { kind: 'enable', plugin: 'weather' },
++      { kind: 'prompt', text: 'Weather in Lisbon?', expect: [{ check: 'host-enable', tool: 'weather__get_weather', args: { city: 'lisbon' } }] },
++    ]),
++    right: [reply('Hi.'), call('weather__get_weather', { city: 'Lisbon' }), reply('17°C.')],
++    wrong: { 'answers without the plugin the host enabled': { script: [reply('Hi.'), reply('I cannot check the weather.')], because: { calls: [] } } },
++  },
++  resume: {
++    step: 3,
++    scenario: scenario([
++      { kind: 'prompt', text: 'Weather in Lisbon?' },
++      { kind: 'resume', plugins: ['plugins/weather', 'plugins/clock'] },
++      { kind: 'prompt', text: 'What time is it in Lisbon?', expect: [{ check: 'resume', tool: 'clock__now', args: { city: 'lisbon' } }] },
++    ]),
++    right: [...lisbon, call('core__enable_plugin', { name: 'clock' }), call('clock__now', { city: 'Lisbon' }), reply('14:05.')],
++    wrong: { 'ignores the plugin the resume added': { script: [...lisbon, reply('I do not know the time.')], because: { calls: [] } } },
++  },
++} satisfies { readonly [K in Expectation['check']]: BehaviorCase }
++
++for (const [name, c] of Object.entries(behaviorCases) as [string, BehaviorCase][]) {
++  const id = `${name}@${c.step}`
++  for (const [mistake, { script, because }] of Object.entries(c.wrong)) {
++    test(`${id} passes on the right script and fails when the model ${mistake}`, async () => {
++      const right = check(await run(c.scenario, c.right, { mode: c.mode }))
++      const wrong = check(await run(c.scenario, script, { mode: c.mode }))
++
++      assert.equal(verdictOf(right, id)?.kind, 'pass', 'the right script passes')
++      const verdict = verdictOf(wrong, id)
++      assert.equal(verdict?.kind, 'fail', 'the wrong script fails')
++      assert.deepEqual(pick(verdict.evidence, because), because, 'it fails for the mistake the script makes')
++      assert.ok(right.complete && wrong.complete, 'every step ran')
++      assert.deepEqual([...failing(right), ...failing(wrong)], [], 'a model mistake is never an engine bug')
++    })
++  }
++}
++
++test('a behavior skips when it had no chance to show, so its rate leaves the run out', async () => {
++  const silent = check(await run(weather, [reply('I cannot look that up.'), reply('Nor that.')]))
++  const stopped = check(
++    await run(scenario([{ kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'resume', plugins: ['plugins/clock'] }, { kind: 'prompt', text: 'Time?', expect: [{ check: 'restraint' }] }]), lisbon),
++  )
++
++  assert.deepEqual(
++    Object.fromEntries(silent.behaviors.map((b) => [b.id, b.verdict.kind])),
++    { 'discover@1': 'fail', 'use@1': 'skip', 'dispatch-recover@1': 'skip', 'follow@1': 'fail', 'resume@3': 'fail' },
++    'use needs the enable and dispatch-recover needs dispatch mode, while the rest are judged on the answer',
++  )
++  assert.equal(verdictOf(stopped, 'restraint@3')?.kind, 'skip', 'a step after the one that threw never ran')
++  assert.equal(stopped.complete, false)
++})
++
++interface InvariantCase {
++  readonly holds: () => Promise<RunLog>
++  /** Evidence the passing verdict must carry, so the pass is not vacuous. */
++  readonly exercised: JsonObject
++  /** Each engine bug the invariant catches: a run with that one fault, and evidence its failing verdict must carry. */
++  readonly bugs: Readonly<Record<string, { readonly broken: () => Promise<RunLog>; readonly because: JsonObject }>>
++}
++
++type Message = { readonly role?: string; readonly content?: JsonValue; readonly record?: { readonly kind?: string; readonly plugin?: string; readonly text?: string } }
++const asMessage = (m: JsonValue): Message => m as Message
++const isRecord = (kind: string) => (m: JsonValue): boolean => asMessage(m).role === 'aigent' && asMessage(m).record?.kind === kind
++const withMessages = (log: RunLog, edit: (messages: readonly JsonValue[]) => readonly JsonValue[]): RunLog => ({ ...log, transcript: { ...log.transcript, messages: edit(log.transcript.messages) } })
++/** The final transcript with `edit` applied to the content of the user message at `index`. */
++const editUser = (log: RunLog, index: (messages: readonly JsonValue[]) => number, edit: (content: string) => string): RunLog =>
++  withMessages(log, (messages) => messages.map((m, i) => (i === index(messages) ? { ...(m as JsonObject), content: edit(String(asMessage(m).content)) } : m)))
++
++/** A session whose events undo the adapter's redaction, standing in for an engine that leaks a secret. */
++const unredacted =
++  (open: Open): Open =>
++  async (options) => {
++    const session = await open(options)
++    return { ...session, subscribe: (listener) => session.subscribe((e) => listener(JSON.parse(JSON.stringify(e).replaceAll('[REDACTED:WEATHER_API_KEY]', CANARY)))) }
++  }
++
++const hostEnable = scenario([{ kind: 'prompt', text: 'Hello.' }, { kind: 'enable', plugin: 'weather' }, { kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'prompt', text: 'Thanks.' }])
++const hostEnabled = () => run(hostEnable, [reply('Hi.'), call('weather__get_weather', { city: 'Lisbon' }), reply('17°C.'), reply('You are welcome.')])
++const pendingIn = (messages: readonly JsonValue[]): number => messages.findIndex(isRecord('pending'))
++const pendingText = (log: RunLog): string => asMessage(log.transcript.messages[pendingIn(log.transcript.messages)]!).record!.text!
++const denied = () =>
++  run(scenario([{ kind: 'prompt', text: 'Weather in Atlantis?' }], { plugins: ['plugins/weather', 'plugins/guard'], enabled: ['weather', 'guard'] }), [atlantis, reply('Atlantis is restricted.')])
++
++const invariantCases = {
++  'secret-free': {
++    holds: async () => {
++      const log = await run(weather, wellBehaved)
++      assert.ok(JSON.stringify(log).includes('[REDACTED:WEATHER_API_KEY]'), 'the tool echoed the secret, so the pass is not vacuous')
++      return log
++    },
++    exercised: {},
++    bugs: {
++      'a session hands listeners a secret unredacted': {
++        broken: async () => {
++          const log = await run(weather, wellBehaved, { wrap: unredacted })
++          assert.ok(!JSON.stringify(log).includes(CANARY), 'the scrub kept the raw value out of the run log')
++          return log
++        },
++        because: { secrets: ['WEATHER_API_KEY'] },
++      },
++    },
++  },
++  'enabled-before-call': {
++    holds: () => run(weather, wellBehaved),
++    exercised: { calls: 2 },
++    bugs: {
++      "a tool runs before its plugin's enabled record": {
++        broken: async () => {
++          const log = await run(weather, wellBehaved)
++          const [first, ...rest] = log.steps
++          assert.equal(first?.kind, 'prompt')
++          const enables = first.events.filter((e) => e.type === 'record' && e.record.kind === 'enabled')
++          const others = first.events.filter((e) => !enables.includes(e))
++          const at = others.findIndex((e) => e.type === 'tool_start' && e.call.name === 'weather__get_weather') + 1
++          return { ...log, steps: [{ ...first, events: [...others.slice(0, at), ...enables, ...others.slice(at)] }, ...rest] }
++        },
++        because: { violations: [{ step: 1, tool: 'weather__get_weather' }] },
++      },
++    },
++  },
++  'resume-keeps-plugins': {
++    holds: () => run(weather, wellBehaved),
++    exercised: { resumes: 1 },
++    bugs: {
++      'resume enables an enabled plugin again': {
++        broken: async () => withMessages(await run(weather, wellBehaved), (ms) => [...ms, { role: 'aigent', record: { kind: 'enabled', plugin: 'weather', cause: 'host' }, timestamp: 0 }]),
++        because: { violations: [{ step: 2, kind: 're-enabled', plugin: 'weather' }] },
++      },
++      'resume loses a saved enabled record': {
++        broken: async () => withMessages(await run(weather, wellBehaved), (ms) => ms.filter((m) => !(isRecord('enabled')(m) && asMessage(m).record?.plugin === 'weather'))),
++        because: { violations: [{ step: 2, kind: 'prefix' }] },
++      },
++    },
++  },
++  'denial-recorded': {
++    holds: denied,
++    exercised: { denials: 1 },
++    bugs: {
++      'a denial never reaches the record log': {
++        broken: async () => withMessages(await denied(), (ms) => ms.filter((m) => !isRecord('denied')(m))),
++        because: { missing: [{ step: 1, tool: 'weather__get_weather', plugin: 'guard' }] },
++      },
++    },
++  },
++  'enable-text-once': {
++    holds: hostEnabled,
++    exercised: { pending: 1 },
++    bugs: {
++      'host-enable text is delivered twice': {
++        broken: async () => {
++          const log = await hostEnabled()
++          return editUser(log, (ms) => ms.findLastIndex((m) => asMessage(m).role === 'user'), (content) => `${content}\n\n${pendingText(log)}`)
++        },
++        because: { violations: [{ delivered: 2, first: true }] },
++      },
++      'host-enable text is never delivered': {
++        broken: async () => {
++          const log = await hostEnabled()
++          return editUser(log, (ms) => ms.findIndex((m, i) => i > pendingIn(ms) && asMessage(m).role === 'user'), (content) => content.replace(pendingText(log), ''))
++        },
++        because: { violations: [{ delivered: 0, first: false }] },
++      },
++    },
++  },
++} satisfies Record<Invariant, InvariantCase>
++
++for (const [name, c] of Object.entries(invariantCases) as [Invariant, InvariantCase][]) {
++  for (const [bug, { broken, because }] of Object.entries(c.bugs)) {
++    test(`${name} holds on a correct run and fails when ${bug}`, async () => {
++      const held = check(await c.holds()).invariants[name]
++      const verdict = check(await broken()).invariants[name]
++
++      assert.equal(held.kind, 'pass', 'the correct run passes')
++      assert.deepEqual(pick(held.evidence, c.exercised), c.exercised, 'the correct run exercised the invariant')
++      assert.equal(verdict.kind, 'fail', 'the broken run fails')
++      assert.deepEqual(pick(verdict.evidence, because), because, 'it fails for the bug the fault stands for')
++    })
++  }
++}

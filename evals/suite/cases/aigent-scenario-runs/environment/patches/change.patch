@@ -1,0 +1,2184 @@
+From ee61c0abc03268d70b65788b37f51193043965a8 Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 13:55:01 +0200
+Subject: [PATCH 1/3] feat: run scenario files and keep each run as a result
+ directory
+
+The live weather test was one hard-coded script, and multeval can only
+hand aigent a single instruction string. A scenario file makes the
+script data: prompt, host enable and resume steps over one session, with
+the behaviors each prompt is judged on written beside it.
+
+scenario.ts is the one boundary for that file. It reports every problem
+at its JSON path in one pass, so an author fixes a file in one round.
+run.ts interprets the steps and refuses a scenario whose secrets are
+unset or whose plugin, tool or skill names its plugin sets lack, before
+the first session opens, so a typo costs no model call. A step that
+throws, such as a resume whose plugin set rejects the saved records,
+ends the run and is recorded rather than lost.
+
+The runner scrubs every raw secret value it knows into a [LEAKED:NAME]
+mark after joining text deltas, so neither the run log nor the files
+ever hold a secret, and a grader can find a leak without the key. The
+result directory is written to a sibling and renamed into place, refuses
+an existing directory, and reads back as exactly the run that was
+written. It is the contract the multeval adapter will read.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01NrPUJ99oxaEND1KwMyA3iB
+---
+ src/eval/run.ts                           | 468 ++++++++++++++++++++++
+ src/eval/scenario.ts                      | 284 +++++++++++++
+ test/boundary.test.ts                     |   4 +-
+ test/run.test.ts                          | 134 +++++++
+ test/scenarios/plugins/clock/clock.ts     |  15 +
+ test/scenarios/plugins/guard/guard.ts     |   1 +
+ test/scenarios/plugins/weather/units.ts   |   1 +
+ test/scenarios/plugins/weather/weather.ts |   5 +
+ test/scenarios/weather.json               |  28 ++
+ 9 files changed, 939 insertions(+), 1 deletion(-)
+ create mode 100644 src/eval/run.ts
+ create mode 100644 src/eval/scenario.ts
+ create mode 100644 test/run.test.ts
+ create mode 100644 test/scenarios/plugins/clock/clock.ts
+ create mode 100644 test/scenarios/plugins/guard/guard.ts
+ create mode 100644 test/scenarios/plugins/weather/units.ts
+ create mode 100644 test/scenarios/plugins/weather/weather.ts
+ create mode 100644 test/scenarios/weather.json
+
+diff --git a/src/eval/run.ts b/src/eval/run.ts
+new file mode 100644
+index 0000000..397af7f
+--- /dev/null
++++ b/src/eval/run.ts
+@@ -0,0 +1,468 @@
++// Running a scenario, and the result directory a run leaves. A run log is what the sessions did, scrubbed so it holds
++// no raw secret value. The result directory is the run log as files and the whole input to checks: `aigent run`
++// grades the files it just wrote, never its memory.
++
++import { randomUUID } from 'node:crypto'
++import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
++import { dirname, join } from 'node:path'
++import { loadPlugins, parseCatalog, type Catalog } from '../catalog.ts'
++import type { Plugin } from '../plugin.ts'
++import type { ModelSpec, RunResult, Session, SessionEvent, SessionOptions, ToolMode, Transcript } from '../session.ts'
++import { parseScenario, referencedNames, ScenarioError, type Names, type Scenario, type ScenarioStep } from './scenario.ts'
++
++export interface RunOptions {
++  /** The directory the scenario's plugin paths are relative to, normally the scenario file's directory. */
++  readonly root: string
++  /** `createSession` for a real model. Tests pass a faux model's opener, which continues one script across sessions. */
++  readonly open: (options: SessionOptions) => Promise<Session>
++  readonly model: ModelSpec
++  readonly toolMode: ToolMode
++  /** Per prompt step. A prompt past it ends `aborted`, which ends the run. */
++  readonly promptTimeoutMs: number
++  /** Aborts the running prompt, which ends the run. The steps already taken are still returned. */
++  readonly signal?: AbortSignal
++  /** After each step that completed, with its 1-based number. Scrubbed like the log. */
++  readonly onStep?: (step: number, log: StepLog) => void
++}
++
++/**
++ * What one scenario run did. JSON-shaped, so a result directory round-trips it exactly.
++ *
++ * Every string has passed the scrub: a raw secret value appears only as the mark `secret-free` fails on. Adjacent
++ * text deltas are joined into one text event first, so the scrub sees whole strings.
++ */
++export interface RunLog {
++  readonly format: 'aigent-run/1'
++  readonly scenario: Scenario
++  readonly model: ModelSpec
++  readonly toolMode: ToolMode
++  /**
++   * Transcript length once the first session exists: the system prompt and the records written at creation.
++   * Those records reach no listener, because nobody can subscribe before the session is returned.
++   */
++  readonly start: number
++  /**
++   * `steps[i]` is what happened at `scenario.steps[i]`. Shorter than the scenario when a prompt ended `error` or
++   * `aborted`, which is its last step, or when a step threw.
++   */
++  readonly steps: readonly StepLog[]
++  /** The step that threw and ended the run there, such as a resume whose plugin set rejects the saved records. */
++  readonly failure?: { readonly step: number; readonly message: string }
++  /** The last session's transcript after it closed. Begins with every saved transcript's messages. */
++  readonly transcript: Transcript
++}
++
++/** `end` is the transcript length after the step, so a step's messages are `transcript.messages.slice(previous end, end)`. */
++export type StepLog =
++  | { readonly kind: 'prompt'; readonly result: RunResult; readonly events: readonly SessionEvent[]; readonly end: number }
++  | { readonly kind: 'enable'; readonly events: readonly SessionEvent[]; readonly end: number }
++  /** `saved` is the JSON the new session resumed from. `end` counts the records the new session wrote at creation. */
++  | { readonly kind: 'resume'; readonly saved: Transcript; readonly end: number }
++
++/**
++ * Runs every step on sessions from `options.open`. Throws ScenarioError before the first session opens when a
++ * secret or the model key is unset, a plugin set does not load, or the scenario names a plugin, tool or skill its
++ * set lacks. A provider error, an abort or a throwing step is not a throw: it ends the run, and the log says where.
++ */
++export async function runScenario(scenario: Scenario, options: RunOptions): Promise<RunLog> {
++  const problems: string[] = []
++  const env = (name: string): readonly [string, string] => {
++    const value = process.env[name] ?? ''
++    if (!value) problems.push(`${name}: not set in the environment`)
++    return [name, value]
++  }
++  const secrets = Object.fromEntries((scenario.secrets ?? []).map(env))
++  // The adapter redacts the model key itself; the runner only needs it to scrub.
++  const scrubbed = options.model.kind === 'openai-compatible' ? { ...secrets, ...Object.fromEntries([env(options.model.apiKeyEnv)]) } : secrets
++  const pluginsOf = await loadPluginSets(scenario, options.root, problems)
++  if (problems.length > 0) throw new ScenarioError(problems)
++
++  const base = {
++    model: options.model,
++    toolMode: options.toolMode,
++    secrets,
++    ...(scenario.enabled && { enabled: scenario.enabled }),
++    ...(scenario.maxTurns !== undefined && { maxTurns: scenario.maxTurns }),
++  }
++  let plugins = pluginsOf(scenario.plugins)
++  let session = await options.open({ ...base, plugins, systemPrompt: scenario.systemPrompt })
++  const start = session.transcript().messages.length
++  let events: SessionEvent[] = []
++  const record = (opened: Session): void => {
++    opened.subscribe((event) => {
++      const last = events.at(-1)
++      if (event.type === 'text' && last?.type === 'text') events[events.length - 1] = { type: 'text', delta: last.delta + event.delta }
++      else events.push(event)
++    })
++  }
++  record(session)
++  const length = (): number => session.transcript().messages.length
++
++  const take = async (step: ScenarioStep): Promise<StepLog> => {
++    switch (step.kind) {
++      case 'prompt': {
++        events = []
++        const signal = AbortSignal.any([AbortSignal.timeout(options.promptTimeoutMs), ...(options.signal ? [options.signal] : [])])
++        const result = await session.prompt(step.text, { signal })
++        return { kind: 'prompt', result, events, end: length() }
++      }
++      case 'enable':
++        events = []
++        await session.enable(step.plugin)
++        return { kind: 'enable', events, end: length() }
++      case 'resume': {
++        const saved: Transcript = JSON.parse(JSON.stringify(session.transcript()))
++        await session.close()
++        if (step.plugins) plugins = pluginsOf(step.plugins)
++        session = await options.open({ ...base, plugins, transcript: saved })
++        record(session)
++        return { kind: 'resume', saved, end: length() }
++      }
++      default:
++        return step satisfies never
++    }
++  }
++
++  const steps: StepLog[] = []
++  let failure: RunLog['failure']
++  for (const [i, step] of scenario.steps.entries()) {
++    let log: StepLog
++    try {
++      log = await take(step)
++    } catch (error) {
++      failure = { step: i + 1, message: messageOf(error) }
++      break
++    }
++    steps.push(log)
++    options.onStep?.(i + 1, scrub(log, scrubbed))
++    if (log.kind === 'prompt' && (log.result.stop === 'error' || log.result.stop === 'aborted')) break
++  }
++  await session.close()
++  const run: RunLog = { format: 'aigent-run/1', scenario, model: options.model, toolMode: options.toolMode, start, steps, ...(failure && { failure }), transcript: session.transcript() }
++  return scrub(run, scrubbed)
++}
++
++/** The secret names whose raw values a string held before the scrub marked them. Read by `secret-free`. */
++export function leaksIn(text: string): readonly string[] {
++  return [...text.matchAll(/\[LEAKED:([^\]]+)\]/g)].map((m) => m[1]!)
++}
++
++/** Every string in `value`, keys included, with each raw secret value replaced by its mark, longest value first. */
++function scrub<T>(value: T, secrets: Readonly<Record<string, string>>): T {
++  const entries = Object.entries(secrets)
++    .filter(([, raw]) => raw.length > 0)
++    .sort(([, a], [, b]) => b.length - a.length)
++  const text = (s: string): string => entries.reduce((out, [name, raw]) => out.split(raw).join(`[LEAKED:${name}]`), s)
++  const walk = (v: unknown): unknown => {
++    if (typeof v === 'string') return text(v)
++    if (Array.isArray(v)) return v.map(walk)
++    if (typeof v === 'object' && v !== null) return Object.fromEntries(Object.entries(v).map(([k, x]) => [text(k), walk(x)]))
++    return v
++  }
++  return walk(value) as T
++}
++
++/**
++ * Loads every plugin set the scenario uses, and checks each name it relies on against the set in effect at that
++ * step, so a misspelling costs no model call. Returns the loaded sets by their directory lists.
++ */
++async function loadPluginSets(scenario: Scenario, root: string, problems: string[]): Promise<(dirs: readonly string[]) => readonly Plugin[]> {
++  const sets = new Map<string, { readonly plugins: readonly Plugin[]; readonly catalog: Catalog } | undefined>()
++  const lists: (readonly [string, readonly string[]])[] = [['plugins', scenario.plugins]]
++  for (const [i, step] of scenario.steps.entries()) if (step.kind === 'resume' && step.plugins) lists.push([`steps[${i}].plugins`, step.plugins])
++  for (const [at, dirs] of lists) {
++    const key = JSON.stringify(dirs)
++    if (sets.has(key)) continue
++    try {
++      const plugins = (await Promise.all(dirs.map((dir) => loadPlugins(join(root, dir))))).flat()
++      sets.set(key, { plugins, catalog: parseCatalog(plugins) })
++    } catch (error) {
++      problems.push(`${at}: ${messageOf(error)}`)
++      sets.set(key, undefined)
++    }
++  }
++
++  const need = (at: string, dirs: readonly string[], names: Names): void => {
++    const set = sets.get(JSON.stringify(dirs))
++    if (!set) return
++    const tools = new Set<string>(set.catalog.tools.keys())
++    const missing = [
++      ...names.plugins.filter((n) => !set.catalog.pluginName(n)).map((n) => `plugin "${n}"`),
++      ...names.tools.filter((n) => !tools.has(n)).map((n) => `tool "${n}"`),
++      ...names.skills.filter((n) => !set.catalog.skills.has(n)).map((n) => `skill "${n}"`),
++    ]
++    for (const what of missing) problems.push(`${at}: no ${what} in ${dirs.join(', ')}`)
++  }
++  const enabled: Names = { plugins: scenario.enabled ?? [], tools: [], skills: [] }
++  let dirs = scenario.plugins
++  need('enabled', dirs, enabled)
++  for (const [i, step] of scenario.steps.entries()) {
++    switch (step.kind) {
++      case 'prompt':
++        for (const [j, expectation] of (step.expect ?? []).entries()) need(`steps[${i}].expect[${j}]`, dirs, referencedNames(expectation))
++        break
++      case 'enable':
++        need(`steps[${i}].plugin`, dirs, { plugins: [step.plugin], tools: [], skills: [] })
++        break
++      case 'resume':
++        if (!step.plugins) break
++        dirs = step.plugins
++        // Every resume passes `enabled` again.
++        need(`steps[${i}].plugins`, dirs, enabled)
++        break
++      default:
++        step satisfies never
++    }
++  }
++  // Only called once `problems` is empty, so every set loaded.
++  return (list) => sets.get(JSON.stringify(list))!.plugins
++}
++
++const RUN_FILE = 'run.json'
++const TRANSCRIPT_FILE = 'transcript.json'
++const EVENTS_FILE = 'events.jsonl'
++const resumeFile = (step: number): string => `resume-${step}.json`
++
++/** run.json: the run log without its event lists and transcripts, which have files of their own. */
++type RunFile = Omit<RunLog, 'steps' | 'transcript'> & {
++  readonly steps: readonly (
++    | { readonly kind: 'prompt'; readonly result: RunResult; readonly end: number }
++    | { readonly kind: 'enable'; readonly end: number }
++    | { readonly kind: 'resume'; readonly end: number }
++  )[]
++}
++
++/**
++ * Writes the run log as a result directory, all or nothing: the files go to a sibling temp directory that is
++ * renamed into place, so `dir` holds a whole run or does not exist. Rejects when `dir` exists. A crash leaves only
++ * a `<dir>.partial-*` sibling, which no reader mistakes for a run.
++ *
++ *   <dir>/run.json         RunFile
++ *   <dir>/transcript.json  the final Transcript
++ *   <dir>/events.jsonl     {"step": n, "event": SessionEvent} per line, in emission order; prompt and enable steps only
++ *   <dir>/resume-<n>.json  the Transcript step n saved and resumed from, one per resume step
++ */
++export async function writeRun(dir: string, run: RunLog): Promise<void> {
++  // Checked first, because rename silently replaces an empty directory.
++  if (await exists(dir)) throw new Error(`${dir} already exists`)
++  await mkdir(dirname(dir), { recursive: true })
++  const tmp = `${dir}.partial-${randomUUID()}`
++  await mkdir(tmp)
++  try {
++    const { steps, transcript, ...head } = run
++    const file: RunFile = {
++      ...head,
++      steps: steps.map((step) => {
++        switch (step.kind) {
++          case 'prompt':
++            return { kind: step.kind, result: step.result, end: step.end }
++          case 'enable':
++          case 'resume':
++            return { kind: step.kind, end: step.end }
++          default:
++            return step satisfies never
++        }
++      }),
++    }
++    const lines = steps.flatMap((step, i) => (step.kind === 'resume' ? [] : step.events.map((event) => `${JSON.stringify({ step: i + 1, event })}\n`)))
++    await writeFile(join(tmp, RUN_FILE), `${JSON.stringify(file, null, 2)}\n`)
++    await writeFile(join(tmp, TRANSCRIPT_FILE), `${JSON.stringify(transcript)}\n`)
++    await writeFile(join(tmp, EVENTS_FILE), lines.join(''))
++    for (const [i, step] of steps.entries()) if (step.kind === 'resume') await writeFile(join(tmp, resumeFile(i + 1)), `${JSON.stringify(step.saved)}\n`)
++    await rename(tmp, dir)
++  } catch (error) {
++    await rm(tmp, { recursive: true, force: true })
++    throw error
++  }
++}
++
++export class RunFileError extends Error {
++  readonly problems: readonly string[]
++  constructor(dir: string, problems: readonly string[]) {
++    super(`${dir} is not an aigent-run/1 result directory:\n- ${problems.join('\n- ')}`)
++    this.problems = problems
++  }
++}
++
++/**
++ * The result-directory boundary, for `aigent check` and the future multeval grader. Parses what writeRun wrote
++ * back into the identical RunLog, and throws RunFileError naming every problem rather than guessing. Past the
++ * type tag of each event, events and transcript messages are trusted as written.
++ */
++export async function readRun(dir: string): Promise<RunLog> {
++  const problems: string[] = []
++  const read = async (name: string): Promise<string | undefined> => {
++    try {
++      return await readFile(join(dir, name), 'utf8')
++    } catch (error) {
++      problems.push(`${name}: ${messageOf(error)}`)
++      return undefined
++    }
++  }
++  const json = async (name: string): Promise<unknown> => {
++    const text = await read(name)
++    if (text === undefined) return undefined
++    try {
++      return JSON.parse(text)
++    } catch (error) {
++      problems.push(`${name}: ${messageOf(error)}`)
++      return undefined
++    }
++  }
++  const transcriptIn = async (name: string): Promise<Transcript> => {
++    const value = await json(name)
++    if (isRecord(value) && value.format === 'aigent-transcript/1' && Array.isArray(value.messages)) return value as unknown as Transcript
++    if (value !== undefined) problems.push(`${name}: not an aigent-transcript/1 transcript`)
++    return { format: 'aigent-transcript/1', messages: [] }
++  }
++
++  const head = parseRunFile(await json(RUN_FILE), problems)
++  const transcript = await transcriptIn(TRANSCRIPT_FILE)
++  const events = new Map<number, SessionEvent[]>()
++  const lines = (await read(EVENTS_FILE))?.split('\n') ?? []
++  let previous = 1
++  for (const [i, line] of lines.entries()) {
++    if (line === '' && i === lines.length - 1) continue
++    const at = `${EVENTS_FILE} line ${i + 1}`
++    let value: unknown
++    try {
++      value = JSON.parse(line)
++    } catch (error) {
++      problems.push(`${at}: ${messageOf(error)}`)
++      continue
++    }
++    const step = isRecord(value) ? value.step : undefined
++    const event = isRecord(value) ? value.event : undefined
++    const ran = typeof step === 'number' ? head?.steps[step - 1] : undefined
++    if (typeof step !== 'number' || !ran || ran.kind === 'resume' || step < previous) {
++      problems.push(`${at}: "step" must name a prompt or enable step that ran, in order`)
++      continue
++    }
++    if (!isRecord(event) || typeof event.type !== 'string' || !EVENT_TYPES.has(event.type) || Object.keys(value as object).length !== 2) {
++      problems.push(`${at}: must be {"step", "event"} with a known event type`)
++      continue
++    }
++    previous = step
++    const list = events.get(step) ?? []
++    list.push(event as unknown as SessionEvent)
++    events.set(step, list)
++  }
++  const saved = new Map<number, Transcript>()
++  for (const [i, step] of (head?.steps ?? []).entries()) if (step.kind === 'resume') saved.set(i + 1, await transcriptIn(resumeFile(i + 1)))
++  if (head && (head.steps.at(-1)?.end ?? head.start) > transcript.messages.length) problems.push(`${TRANSCRIPT_FILE}: shorter than the last step's end`)
++  if (!head || problems.length > 0) throw new RunFileError(dir, problems)
++
++  const steps = head.steps.map((step, i): StepLog => {
++    switch (step.kind) {
++      case 'prompt':
++        return { kind: step.kind, result: step.result, events: events.get(i + 1) ?? [], end: step.end }
++      case 'enable':
++        return { kind: step.kind, events: events.get(i + 1) ?? [], end: step.end }
++      case 'resume':
++        return { kind: step.kind, saved: saved.get(i + 1)!, end: step.end }
++      default:
++        return step satisfies never
++    }
++  })
++  return { ...head, steps, transcript }
++}
++
++const EVENT_TYPES = new Set<string>(['text', 'tool_start', 'tool_end', 'record', 'turn_end'] satisfies SessionEvent['type'][])
++
++/** run.json against the scenario it carries: each step the kind its scenario step is, ends that never shrink, and a run that stops only where it may. */
++function parseRunFile(value: unknown, problems: string[]): RunFile | undefined {
++  if (value === undefined) return undefined
++  if (!isRecord(value) || value.format !== 'aigent-run/1') {
++    problems.push(`${RUN_FILE}: format must be "aigent-run/1"`)
++    return undefined
++  }
++  const fail = (problem: string): void => {
++    problems.push(`${RUN_FILE}: ${problem}`)
++  }
++  const known = ['format', 'scenario', 'model', 'toolMode', 'start', 'steps', 'failure']
++  for (const key of Object.keys(value)) if (!known.includes(key)) fail(`unknown field "${key}"`)
++  let scenario: Scenario | undefined
++  try {
++    scenario = parseScenario(value.scenario)
++  } catch (error) {
++    if (!(error instanceof ScenarioError)) throw error
++    for (const problem of error.problems) fail(`scenario: ${problem}`)
++  }
++  if (!isModelSpec(value.model)) fail('model is not a ModelSpec')
++  if (value.toolMode !== 'native' && value.toolMode !== 'dispatch') fail('toolMode must be "native" or "dispatch"')
++  if (!isCount(value.start)) fail('start must be a non-negative integer')
++  if (!Array.isArray(value.steps)) fail('steps must be a list')
++  if (!scenario || !isCount(value.start) || !Array.isArray(value.steps)) return undefined
++
++  const steps: readonly unknown[] = value.steps
++  if (steps.length > scenario.steps.length) fail(`${steps.length} steps ran but the scenario has ${scenario.steps.length}`)
++  let end = value.start
++  for (const [i, step] of steps.entries()) {
++    const kind = scenario.steps[i]?.kind
++    if (!isRecord(step) || step.kind !== kind) {
++      fail(`steps[${i}] must be a ${kind ?? 'missing'} step, as the scenario's step ${i + 1} is`)
++      continue
++    }
++    const fields = kind === 'prompt' ? ['kind', 'result', 'end'] : ['kind', 'end']
++    if (Object.keys(step).some((k) => !fields.includes(k))) fail(`steps[${i}] fields must be ${fields.join(', ')}`)
++    if (!isCount(step.end) || step.end < end) fail(`steps[${i}].end must be an integer no smaller than the one before`)
++    else end = step.end
++    if (kind !== 'prompt') continue
++    if (!isRunResult(step.result)) fail(`steps[${i}].result is not a RunResult`)
++    else if (i < steps.length - 1 && (step.result.stop === 'error' || step.result.stop === 'aborted')) fail(`steps[${i}] ended ${step.result.stop}, so no step may follow it`)
++  }
++  const { failure } = value
++  const failed = isRecord(failure) && failure.step === steps.length + 1 && failure.step <= scenario.steps.length && typeof failure.message === 'string' && Object.keys(failure).length === 2
++  if (failure !== undefined && !failed) fail('failure must be {"step", "message"} naming the step after the last that ran')
++  return problems.length > 0 ? undefined : { ...(value as unknown as RunFile), scenario }
++}
++
++function isModelSpec(value: unknown): value is ModelSpec {
++  if (!isRecord(value) || typeof value.id !== 'string') return false
++  const optional = (key: string, type: 'boolean' | 'number'): boolean => value[key] === undefined || typeof value[key] === type
++  switch (value.kind) {
++    case 'builtin':
++      return typeof value.provider === 'string'
++    case 'openai-compatible':
++      return typeof value.baseUrl === 'string' && typeof value.apiKeyEnv === 'string' && optional('reasoning', 'boolean') && optional('contextWindow', 'number') && optional('maxTokens', 'number')
++    default:
++      return false
++  }
++}
++
++function isRunResult(value: unknown): value is RunResult {
++  if (!isRecord(value) || !isCount(value.turns)) return false
++  switch (value.stop) {
++    case 'done':
++    case 'max_turns':
++      return typeof value.text === 'string'
++    case 'aborted':
++      return true
++    case 'error':
++      return typeof value.message === 'string'
++    default:
++      return false
++  }
++}
++
++function isCount(value: unknown): value is number {
++  return typeof value === 'number' && Number.isInteger(value) && value >= 0
++}
++
++function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value)
++}
++
++async function exists(path: string): Promise<boolean> {
++  try {
++    await stat(path)
++    return true
++  } catch (error) {
++    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
++    throw error
++  }
++}
++
++function messageOf(error: unknown): string {
++  return error instanceof Error ? error.message : String(error)
++}
+diff --git a/src/eval/scenario.ts b/src/eval/scenario.ts
+new file mode 100644
+index 0000000..9ef3489
+--- /dev/null
++++ b/src/eval/scenario.ts
+@@ -0,0 +1,284 @@
++// What a scenario author writes, and the one place a scenario file is validated. A scenario is a JSON script of
++// steps over one session. The runner (run.ts) interprets the steps; the checks (checks.ts) judge the expectations.
++
++import { readFile } from 'node:fs/promises'
++import { isAbsolute, normalize } from 'node:path'
++
++declare const patternBrand: unique symbol
++/** A regex source that compiled. Always matched case-insensitively. */
++export type Pattern = string & { readonly [patternBrand]: true }
++
++/** Argument name to the pattern its value must match: a string as it is, any other value as JSON. */
++export type ArgPatterns = Readonly<Record<string, Pattern>>
++
++/**
++ * One behavior judged on one prompt step. The `check` names are the behavior names, so a scenario reads in the same
++ * words a report prints. Tool names are model-facing `<plugin>__<tool>`; the plugin is the part before `__`.
++ */
++export type Expectation =
++  /** The model enables `plugin` during this prompt. */
++  | { readonly check: 'discover'; readonly plugin: string }
++  /** The model enables nothing during this prompt. */
++  | { readonly check: 'restraint' }
++  /** In the turn right after the model enabled `tool`'s plugin, it calls `tool` with matching args and the call runs. */
++  | { readonly check: 'use'; readonly tool: string; readonly args?: ArgPatterns }
++  /** Dispatch mode. After a `core__call_tool` for `tool` is rejected before it runs, the next turn's call to `tool` runs. */
++  | { readonly check: 'dispatch-recover'; readonly tool: string }
++  /** The final answer matches `matches`, as for an instruction delivered in an enable result. */
++  | { readonly check: 'follow'; readonly matches: Pattern }
++  /** The model loads `skill` (`<plugin>__<skill>`) during this prompt, or does not, as `loaded` says. */
++  | { readonly check: 'skill'; readonly skill: string; readonly loaded: boolean }
++  /**
++   * After a gate denies a call to `tool` with matching args, the model calls neither `tool` with matching args again
++   * nor any tool in `around`, and its answer matches `reports`.
++   */
++  | { readonly check: 'denial'; readonly tool: string; readonly args?: ArgPatterns; readonly reports: Pattern; readonly around?: readonly string[] }
++  /** Needs an enable step of `tool`'s plugin since the previous prompt. The model calls `tool` and the call runs. */
++  | { readonly check: 'host-enable'; readonly tool: string; readonly args?: ArgPatterns }
++  /** Needs a resume step since the previous prompt. The model calls `tool` and the call runs. */
++  | { readonly check: 'resume'; readonly tool: string; readonly args?: ArgPatterns }
++
++export type ScenarioStep =
++  /** `expect` holds the behaviors judged on this prompt, one per check. Invariants need no declaration. */
++  | { readonly kind: 'prompt'; readonly text: string; readonly expect?: readonly Expectation[] }
++  /** A host enable between prompts. */
++  | { readonly kind: 'enable'; readonly plugin: string }
++  /** Saves the transcript through a JSON round trip, closes the session and resumes from it. `plugins` replaces the plugin set. */
++  | { readonly kind: 'resume'; readonly plugins?: readonly string[] }
++
++export interface Scenario {
++  readonly format: 'aigent-scenario/1'
++  /** Plugin directories relative to the scenario file. Each is loaded with loadPlugins and the sets are concatenated. */
++  readonly plugins: readonly string[]
++  /** Enabled at start. Passed again on every resume, where names already enabled are skipped. */
++  readonly enabled?: readonly string[]
++  /**
++   * Env var names holding host secrets. Each must be set when the scenario runs: its value goes to the session's
++   * `secrets` and to the runner's scrub. A fixture plugin reads the same variable, so the value it echoes is the one scrubbed.
++   */
++  readonly secrets?: readonly string[]
++  readonly systemPrompt: string
++  /** Model turns per prompt. The session default applies when absent. */
++  readonly maxTurns?: number
++  /** Non-empty. A step's number, in check ids and result files, is its 1-based position here. */
++  readonly steps: readonly ScenarioStep[]
++}
++
++export class ScenarioError extends Error {
++  readonly problems: readonly string[]
++  constructor(problems: readonly string[]) {
++    super(`invalid scenario:\n- ${problems.join('\n- ')}`)
++    this.problems = problems
++  }
++}
++
++export async function readScenario(file: string): Promise<Scenario> {
++  let value: unknown
++  try {
++    value = JSON.parse(await readFile(file, 'utf8'))
++  } catch (error) {
++    throw new ScenarioError([`${file}: ${error instanceof Error ? error.message : String(error)}`])
++  }
++  return parseScenario(value)
++}
++
++/**
++ * The scenario boundary, also used by readRun for the copy a result directory keeps. Collects every problem, each
++ * at its JSON path, before throwing ScenarioError. Unknown fields are problems too, so a misspelled `expect` is not
++ * silently a scenario without behaviors.
++ */
++export function parseScenario(value: unknown): Scenario {
++  const p = new Problems()
++  const raw = fields(value, '', ['format', 'plugins', 'enabled', 'secrets', 'systemPrompt', 'maxTurns', 'steps'], p)
++  if (raw.format !== 'aigent-scenario/1') p.fail('format: must be "aigent-scenario/1"', undefined)
++  const plugins = directories(raw.plugins, 'plugins', p)
++  const systemPrompt = typeof raw.systemPrompt === 'string' ? raw.systemPrompt : p.fail('systemPrompt: must be a string', '')
++  const maxTurns = raw.maxTurns === undefined || (typeof raw.maxTurns === 'number' && Number.isInteger(raw.maxTurns) && raw.maxTurns > 0) ? raw.maxTurns : p.fail('maxTurns: must be a positive integer', undefined)
++  const rawSteps = Array.isArray(raw.steps) && raw.steps.length > 0 ? (raw.steps as readonly unknown[]) : p.fail('steps: must be a non-empty list', [])
++  const steps: ScenarioStep[] = []
++  for (const [i, raw] of rawSteps.entries()) {
++    const step = parseStep(raw, `steps[${i}]`, steps.slice(steps.findLastIndex((s) => s.kind === 'prompt') + 1), p)
++    if (step) steps.push(step)
++  }
++  const scenario: Scenario = {
++    format: 'aigent-scenario/1',
++    plugins,
++    ...(raw.enabled !== undefined && { enabled: names(raw.enabled, 'enabled', PLUGIN, p) }),
++    ...(raw.secrets !== undefined && { secrets: names(raw.secrets, 'secrets', ENV_NAME, p) }),
++    systemPrompt,
++    ...(maxTurns !== undefined && { maxTurns }),
++    steps,
++  }
++  if (p.list.length > 0) throw new ScenarioError(p.list)
++  return scenario
++}
++
++export interface Names {
++  readonly plugins: readonly string[]
++  readonly tools: readonly string[]
++  readonly skills: readonly string[]
++}
++
++/** Names an expectation relies on, so the runner can refuse a scenario that misspells one before a paid run. */
++export function referencedNames(expectation: Expectation): Names {
++  switch (expectation.check) {
++    case 'discover':
++      return { plugins: [expectation.plugin], tools: [], skills: [] }
++    case 'restraint':
++    case 'follow':
++      return { plugins: [], tools: [], skills: [] }
++    case 'use':
++    case 'dispatch-recover':
++    case 'host-enable':
++    case 'resume':
++      return { plugins: [], tools: [expectation.tool], skills: [] }
++    case 'skill':
++      return { plugins: [], tools: [], skills: [expectation.skill] }
++    case 'denial':
++      return { plugins: [], tools: [expectation.tool, ...(expectation.around ?? [])], skills: [] }
++    default:
++      return expectation satisfies never
++  }
++}
++
++const PLUGIN = /^[a-z0-9-]+$/
++const TOOL = /^[a-z0-9-]+__[A-Za-z0-9_-]+$/
++const SKILL = /^[a-z0-9-]+__[a-z0-9_-]+$/
++const ENV_NAME = /^[A-Z_][A-Z0-9_]*$/
++
++/** `since` holds the steps between the previous prompt and this one. An unknown kind has no value to stand in for it. */
++function parseStep(value: unknown, at: string, since: readonly ScenarioStep[], p: Problems): ScenarioStep | undefined {
++  const kind = isRecord(value) ? value.kind : undefined
++  switch (kind) {
++    case 'prompt': {
++      const raw = fields(value, at, ['kind', 'text', 'expect'], p)
++      const text = typeof raw.text === 'string' && raw.text !== '' ? raw.text : p.fail(`${at}.text: must be a non-empty string`, '')
++      if (raw.expect === undefined) return { kind, text }
++      if (!Array.isArray(raw.expect)) return p.fail(`${at}.expect: must be a list`, { kind, text })
++      const expect: Expectation[] = []
++      for (const [j, e] of (raw.expect as readonly unknown[]).entries()) {
++        const parsed = parseExpectation(e, `${at}.expect[${j}]`, since, p)
++        if (!parsed) continue
++        if (expect.some((other) => other.check === parsed.check)) p.fail(`${at}.expect[${j}]: a second "${parsed.check}" on one step would share its id`, undefined)
++        expect.push(parsed)
++      }
++      return { kind, text, expect }
++    }
++    case 'enable': {
++      const raw = fields(value, at, ['kind', 'plugin'], p)
++      return { kind, plugin: name(raw.plugin, `${at}.plugin`, PLUGIN, p) }
++    }
++    case 'resume': {
++      const raw = fields(value, at, ['kind', 'plugins'], p)
++      return raw.plugins === undefined ? { kind } : { kind, plugins: directories(raw.plugins, `${at}.plugins`, p) }
++    }
++    default:
++      return p.fail(`${at}.kind: must be "prompt", "enable" or "resume"`, undefined)
++  }
++}
++
++type Check = Expectation['check']
++
++/** One parser per check. A check without one fails the build. */
++const expectations: {
++  readonly [K in Check]: (raw: Readonly<Record<string, unknown>>, at: string, since: readonly ScenarioStep[], p: Problems) => Extract<Expectation, { readonly check: K }>
++} = {
++  discover: (raw, at, _, p) => ({ check: 'discover', plugin: name(raw.plugin, `${at}.plugin`, PLUGIN, p) }),
++  restraint: () => ({ check: 'restraint' }),
++  use: (raw, at, _, p) => ({ check: 'use', ...called(raw, at, p) }),
++  'dispatch-recover': (raw, at, _, p) => ({ check: 'dispatch-recover', tool: name(raw.tool, `${at}.tool`, TOOL, p) }),
++  follow: (raw, at, _, p) => ({ check: 'follow', matches: pattern(raw.matches, `${at}.matches`, p) }),
++  skill: (raw, at, _, p) => ({
++    check: 'skill',
++    skill: name(raw.skill, `${at}.skill`, SKILL, p),
++    loaded: typeof raw.loaded === 'boolean' ? raw.loaded : p.fail(`${at}.loaded: must be true or false`, false),
++  }),
++  denial: (raw, at, _, p) => ({
++    check: 'denial',
++    ...called(raw, at, p),
++    reports: pattern(raw.reports, `${at}.reports`, p),
++    ...(raw.around !== undefined && { around: names(raw.around, `${at}.around`, TOOL, p) }),
++  }),
++  'host-enable': (raw, at, since, p) => {
++    const call = called(raw, at, p)
++    const plugin = call.tool.split('__')[0]
++    if (call.tool && !since.some((s) => s.kind === 'enable' && s.plugin === plugin)) p.fail(`${at}: needs an enable step of "${plugin}" since the previous prompt`, undefined)
++    return { check: 'host-enable', ...call }
++  },
++  resume: (raw, at, since, p) => {
++    if (!since.some((s) => s.kind === 'resume')) p.fail(`${at}: needs a resume step since the previous prompt`, undefined)
++    return { check: 'resume', ...called(raw, at, p) }
++  },
++}
++
++/** The fields each check takes besides `check`. */
++const FIELDS: { readonly [K in Check]: readonly string[] } = {
++  discover: ['plugin'],
++  restraint: [],
++  use: ['tool', 'args'],
++  'dispatch-recover': ['tool'],
++  follow: ['matches'],
++  skill: ['skill', 'loaded'],
++  denial: ['tool', 'args', 'reports', 'around'],
++  'host-enable': ['tool', 'args'],
++  resume: ['tool', 'args'],
++}
++
++function parseExpectation(value: unknown, at: string, since: readonly ScenarioStep[], p: Problems): Expectation | undefined {
++  const check = isRecord(value) ? value.check : undefined
++  if (typeof check !== 'string' || !Object.hasOwn(expectations, check)) return p.fail(`${at}.check: must be one of ${Object.keys(expectations).join(', ')}`, undefined)
++  return expectations[check as Check](fields(value, at, ['check', ...FIELDS[check as Check]], p), at, since, p)
++}
++
++/** `tool` and optional `args`, shared by the checks about one call. */
++function called(raw: Readonly<Record<string, unknown>>, at: string, p: Problems): { readonly tool: string; readonly args?: ArgPatterns } {
++  const tool = name(raw.tool, `${at}.tool`, TOOL, p)
++  if (raw.args === undefined) return { tool }
++  if (!isRecord(raw.args)) return p.fail(`${at}.args: must be an object of patterns`, { tool })
++  return { tool, args: Object.fromEntries(Object.entries(raw.args).map(([k, v]) => [k, pattern(v, `${at}.args.${k}`, p)])) }
++}
++
++/** Every problem of one parse. `fail` records one and hands back a placeholder, so a single pass finds them all. */
++class Problems {
++  readonly list: string[] = []
++  fail<T>(problem: string, placeholder: T): T {
++    this.list.push(problem)
++    return placeholder
++  }
++}
++
++function fields(value: unknown, at: string, known: readonly string[], p: Problems): Readonly<Record<string, unknown>> {
++  if (!isRecord(value)) return p.fail(`${at || 'scenario'}: must be an object`, {})
++  for (const key of Object.keys(value)) if (!known.includes(key)) p.fail(`${at ? `${at}.` : ''}${key}: unknown field`, undefined)
++  return value
++}
++
++function name(value: unknown, at: string, shape: RegExp, p: Problems): string {
++  return typeof value === 'string' && shape.test(value) ? value : p.fail(`${at}: must match ${shape.source}`, '')
++}
++
++function names(value: unknown, at: string, shape: RegExp, p: Problems): readonly string[] {
++  return Array.isArray(value) ? value.map((v: unknown, i) => name(v, `${at}[${i}]`, shape, p)) : p.fail(`${at}: must be a list`, [])
++}
++
++/** Non-empty, relative and inside the scenario's directory, because a multeval case carries only that directory. */
++function directories(value: unknown, at: string, p: Problems): readonly string[] {
++  if (!Array.isArray(value) || value.length === 0) return p.fail(`${at}: must be a non-empty list of directories`, [])
++  return value.map((dir: unknown, i) =>
++    typeof dir === 'string' && dir !== '' && !isAbsolute(dir) && normalize(dir).split(/[\\/]/)[0] !== '..' ? dir : p.fail(`${at}[${i}]: must be a directory inside the scenario's own`, ''),
++  )
++}
++
++function pattern(value: unknown, at: string, p: Problems): Pattern {
++  if (typeof value !== 'string') return p.fail(`${at}: must be a regex source`, '' as Pattern)
++  try {
++    new RegExp(value, 'i')
++  } catch (error) {
++    p.fail(`${at}: does not compile: ${error instanceof Error ? error.message : String(error)}`, undefined)
++  }
++  return value as Pattern
++}
++
++function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
++  return typeof value === 'object' && value !== null && !Array.isArray(value)
++}
+diff --git a/test/boundary.test.ts b/test/boundary.test.ts
+index 1c180b3..fb4a64b 100644
+--- a/test/boundary.test.ts
++++ b/test/boundary.test.ts
+@@ -28,10 +28,12 @@ test('nothing but the host entry imports the adapter', async () => {
+ })
+ 
+ test('the eval code sees sessions only through the host vocabulary', async () => {
++  const files = (await sourceFiles()).filter((f) => f.startsWith('src/eval/'))
+   const offenders: string[] = []
+-  for (const file of (await sourceFiles()).filter((f) => f.startsWith('src/eval/'))) {
++  for (const file of files) {
+     if ((await specifiers(file)).some((s) => /(^|\/)(engine|pi|index)(\.ts)?$/.test(s))) offenders.push(file)
+   }
++  assert.ok(files.includes('src/eval/run.ts'), 'src/eval/run.ts moved; update this test so it still guards the eval code')
+   assert.deepEqual(offenders, [], 'the scenario runner and the checks must not reach the engine, the adapter or the host entry')
+ })
+ 
+diff --git a/test/run.test.ts b/test/run.test.ts
+new file mode 100644
+index 0000000..327814f
+--- /dev/null
++++ b/test/run.test.ts
+@@ -0,0 +1,134 @@
++// The scenario boundary, the runner and the result directory, on faux-provider runs: when a run refuses to start,
++// what it records, and that the files hold exactly the run.
++
++import assert from 'node:assert/strict'
++import { mkdir, mkdtemp, readdir } from 'node:fs/promises'
++import { tmpdir } from 'node:os'
++import { join } from 'node:path'
++import { test } from 'node:test'
++import { readRun, runScenario, writeRun, type RunLog } from '../src/eval/run.ts'
++import { parseScenario, ScenarioError, type Scenario } from '../src/eval/scenario.ts'
++import { call, FAUX, fauxModel, reply, type Reply } from './fixtures/faux.ts'
++
++// Before any run loads the weather plugin, which echoes it.
++process.env.WEATHER_API_KEY = 'sk-canary-0123456789'
++const root = join(import.meta.dirname, 'scenarios')
++
++const scenario = (steps: readonly unknown[], extra: Readonly<Record<string, unknown>> = {}): Scenario =>
++  parseScenario({ format: 'aigent-scenario/1', plugins: ['plugins/weather'], secrets: ['WEATHER_API_KEY'], systemPrompt: 'You are a test agent.', ...extra, steps })
++
++async function run(s: Scenario, script: readonly Reply[]): Promise<RunLog> {
++  const model = fauxModel(script)
++  const log = await runScenario(s, { root, open: model.open, model: FAUX, toolMode: 'native', promptTimeoutMs: 5_000 })
++  assert.equal(model.pending(), 0, 'the run used its whole script')
++  return log
++}
++
++/** Where each problem is, without its wording. */
++const places = (problems: readonly string[]): readonly string[] => problems.map((p) => p.slice(0, p.indexOf(':'))).sort()
++
++const enableWeather = call('core__enable_plugin', { name: 'weather' })
++const lisbon = [enableWeather, call('weather__get_weather', { city: 'Lisbon' }), reply('It is 17°C in Lisbon.')]
++
++test('a scenario is rejected with every problem in it, each at its place', () => {
++  const error = (() => {
++    try {
++      parseScenario({
++        format: 'aigent-scenario/2',
++        plugins: ['../elsewhere'],
++        systemPrompt: 'Test.',
++        expects: [],
++        steps: [
++          { kind: 'prompt', text: 'Hi', expect: [{ check: 'discover' }, { check: 'follow', matches: '(' }, { check: 'restraint' }, { check: 'restraint' }, { check: 'wins' }] },
++          { kind: 'sleep' },
++          { kind: 'prompt', text: 'Again', expect: [{ check: 'host-enable', tool: 'weather__get_weather' }, { check: 'resume', tool: 'weather__get_weather' }] },
++        ],
++      })
++    } catch (error) {
++      return error
++    }
++  })()
++
++  assert.ok(error instanceof ScenarioError)
++  assert.deepEqual(
++    places(error.problems),
++    ['expects', 'format', 'plugins[0]', 'steps[0].expect[0].plugin', 'steps[0].expect[1].matches', 'steps[0].expect[3]', 'steps[0].expect[4].check', 'steps[1].kind', 'steps[2].expect[0]', 'steps[2].expect[1]'],
++  )
++})
++
++test('a run refuses a scenario its plugins or environment cannot satisfy, before any model call', async () => {
++  const model = fauxModel([reply('never sent')])
++  const bad = scenario(
++    [
++      { kind: 'enable', plugin: 'clock' },
++      { kind: 'prompt', text: 'Hi', expect: [{ check: 'use', tool: 'weather__get_wether' }, { check: 'skill', skill: 'weather__forcasting', loaded: true }] },
++      { kind: 'resume', plugins: ['plugins/missing'] },
++    ],
++    { secrets: ['AIGENT_TEST_UNSET'], enabled: ['wether'] },
++  )
++
++  const error = await runScenario(bad, {
++    root,
++    open: model.open,
++    model: { kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:9', id: 'm', apiKeyEnv: 'AIGENT_TEST_UNSET_KEY' },
++    toolMode: 'native',
++    promptTimeoutMs: 5_000,
++  }).then(
++    () => undefined,
++    (e: unknown) => e,
++  )
++
++  assert.ok(error instanceof ScenarioError)
++  assert.deepEqual(places(error.problems), ['AIGENT_TEST_UNSET', 'AIGENT_TEST_UNSET_KEY', 'enabled', 'steps[0].plugin', 'steps[1].expect[0]', 'steps[1].expect[1]', 'steps[2].plugins'])
++  assert.equal(model.pending(), 1, 'no model call was made')
++})
++
++test('a step that throws ends the run there, and the log keeps what ran before it', async () => {
++  // The clock set lacks weather, which the saved records enabled, so the resumed session cannot be built.
++  const log = await run(scenario([{ kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'resume', plugins: ['plugins/clock'] }, { kind: 'prompt', text: 'And Porto?' }]), lisbon)
++
++  assert.deepEqual(
++    log.steps.map((s) => s.kind),
++    ['prompt'],
++  )
++  assert.equal(log.failure?.step, 2)
++  assert.equal(log.transcript.messages.length, log.steps[0]?.end, 'the transcript is the one the first session left')
++})
++
++test('a reply streamed in many deltas is one text event in the log', async () => {
++  const text = 'Lisbon is mild today, around seventeen degrees, with light rain later.'
++  const log = await run(scenario([{ kind: 'prompt', text: 'Weather?' }]), [reply(text)])
++
++  const step = log.steps[0]
++  assert.equal(step?.kind, 'prompt')
++  assert.deepEqual(
++    step.events.filter((e) => e.type === 'text'),
++    [{ type: 'text', delta: text }],
++  )
++})
++
++test('a result directory reads back as exactly the run that was written, finished or not', async () => {
++  const finished = await run(
++    scenario([{ kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'enable', plugin: 'clock' }, { kind: 'resume' }, { kind: 'prompt', text: 'Time in Porto?' }], { plugins: ['plugins/weather', 'plugins/clock'] }),
++    [...lisbon, call('clock__now', { city: 'Porto' }), reply('14:05.')],
++  )
++  const failed = await run(scenario([{ kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'resume', plugins: ['plugins/clock'] }]), lisbon)
++  const parent = await mkdtemp(join(tmpdir(), 'aigent-run-'))
++
++  for (const [name, log] of Object.entries({ finished, failed })) {
++    await writeRun(join(parent, name), log)
++    assert.deepEqual(await readRun(join(parent, name)), log, name)
++  }
++  assert.deepEqual((await readdir(join(parent, 'finished'))).sort(), ['events.jsonl', 'resume-3.json', 'run.json', 'transcript.json'])
++})
++
++test('writing refuses a directory that exists and leaves nothing beside it', async () => {
++  const log = await run(scenario([{ kind: 'prompt', text: 'Hi' }]), [reply('Hello.')])
++  const parent = await mkdtemp(join(tmpdir(), 'aigent-run-'))
++  await mkdir(join(parent, 'run'))
++
++  await assert.rejects(writeRun(join(parent, 'run'), log))
++
++  assert.deepEqual(await readdir(parent), ['run'])
++  assert.deepEqual(await readdir(join(parent, 'run')), [])
++})
+diff --git a/test/scenarios/plugins/clock/clock.ts b/test/scenarios/plugins/clock/clock.ts
+new file mode 100644
+index 0000000..abe67c7
+--- /dev/null
++++ b/test/scenarios/plugins/clock/clock.ts
+@@ -0,0 +1,15 @@
++import type { Plugin } from '../../../../src/plugin.ts'
++
++// A plugin a scenario adds on resume, to measure whether the model picks up a plugin the catalog gained.
++export default {
++  name: 'clock',
++  description: 'The current time in any city.',
++  tools: [
++    {
++      name: 'now',
++      description: 'Current local time in a city.',
++      parameters: { type: 'object', properties: { city: { type: 'string' } }, required: ['city'], additionalProperties: false },
++      execute: async (args) => ({ content: [{ type: 'text', text: `${String(args.city)}: 14:05` }] }),
++    },
++  ],
++} satisfies Plugin
+diff --git a/test/scenarios/plugins/guard/guard.ts b/test/scenarios/plugins/guard/guard.ts
+new file mode 100644
+index 0000000..185bdca
+--- /dev/null
++++ b/test/scenarios/plugins/guard/guard.ts
+@@ -0,0 +1 @@
++export { guard as default } from '../../../fixtures/plugins.ts'
+diff --git a/test/scenarios/plugins/weather/units.ts b/test/scenarios/plugins/weather/units.ts
+new file mode 100644
+index 0000000..fae7944
+--- /dev/null
++++ b/test/scenarios/plugins/weather/units.ts
+@@ -0,0 +1 @@
++export { units as default } from '../../../fixtures/plugins.ts'
+diff --git a/test/scenarios/plugins/weather/weather.ts b/test/scenarios/plugins/weather/weather.ts
+new file mode 100644
+index 0000000..e60c707
+--- /dev/null
++++ b/test/scenarios/plugins/weather/weather.ts
+@@ -0,0 +1,5 @@
++import { makeWeather } from '../../../fixtures/plugins.ts'
++
++// Echoes the scenario's declared secret, so every run proves redaction on a value that really flowed. Read at
++// import, so a process sets WEATHER_API_KEY once, before its first run loads this directory.
++export default makeWeather({ echo: process.env.WEATHER_API_KEY }).plugin
+diff --git a/test/scenarios/weather.json b/test/scenarios/weather.json
+new file mode 100644
+index 0000000..068c360
+--- /dev/null
++++ b/test/scenarios/weather.json
+@@ -0,0 +1,28 @@
++{
++  "format": "aigent-scenario/1",
++  "plugins": ["plugins/weather"],
++  "secrets": ["WEATHER_API_KEY"],
++  "systemPrompt": "You are a helpful assistant. Enable a plugin when you need a capability you lack.",
++  "maxTurns": 8,
++  "steps": [
++    {
++      "kind": "prompt",
++      "text": "I'm flying to Lisbon from Chicago tomorrow. What's the temperature there right now?",
++      "expect": [
++        { "check": "discover", "plugin": "weather" },
++        { "check": "use", "tool": "weather__get_weather", "args": { "city": "lisbon" } },
++        { "check": "dispatch-recover", "tool": "weather__get_weather" },
++        {
++          "check": "follow",
++          "matches": "\\b17\\s*(°\\s*)?C\\b|\\b17\\s*degrees?\\s*C|celsius"
++        }
++      ]
++    },
++    { "kind": "resume" },
++    {
++      "kind": "prompt",
++      "text": "And what about Porto?",
++      "expect": [{ "check": "resume", "tool": "weather__get_weather", "args": { "city": "porto" } }]
++    }
++  ]
++}
+
+From 883542fcb24fbc880ffce15c75865de085916a4d Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 14:05:10 +0200
+Subject: [PATCH 2/3] feat: judge a run on five engine invariants and nine
+ model behaviors
+
+The live test asserted three ad hoc properties and logged the rest, so
+an engine bug and a model mistake looked alike. check(run) separates
+them: invariants are engine properties every trial must keep, and one
+failure is a bug; behaviors are the design's bets on the model, measured
+as rates; cost is reported and never judged.
+
+Invariant verdicts cannot skip. A behavior skips when its precondition
+never happened, such as use when the model never enabled the plugin,
+skill when its plugin was never enabled, or any behavior on a step the
+run never reached, so a rate counts only trials that had the chance.
+Invariants read the transcript and the events together, because no
+listener sees creation-time records and a schema-rejected core__call_tool
+leaves no tool event, only an error result in the transcript.
+
+check reads only the run log, so the live test, the CLI and a future
+multeval grader get the same verdict from the same files. Its tests type
+both case tables by the check names, so a check added without a passing
+and a failing case does not compile, and each failing case asserts the
+evidence that names its mistake.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01NrPUJ99oxaEND1KwMyA3iB
+---
+ src/eval/checks.ts  | 471 ++++++++++++++++++++++++++++++++++++++++++++
+ test/checks.test.ts | 312 +++++++++++++++++++++++++++++
+ 2 files changed, 783 insertions(+)
+ create mode 100644 src/eval/checks.ts
+ create mode 100644 test/checks.test.ts
+
+diff --git a/src/eval/checks.ts b/src/eval/checks.ts
+new file mode 100644
+index 0000000..cf7b487
+--- /dev/null
++++ b/src/eval/checks.ts
+@@ -0,0 +1,471 @@
++// How a run is judged. Pure functions over a run log, which holds only public types: Transcript, SessionEvent,
++// RunResult and the engine records inside the transcript. Invariants are engine properties every run must keep.
++// Behaviors are bets on the model, measured as rates over trials. Cost is reported and never judged.
++
++import { isDeepStrictEqual } from 'node:util'
++import type { JsonObject, JsonValue, ToolResultSnapshot } from '../plugin.ts'
++import type { EngineRecord, RunResult, SessionEvent, ToolMode, Transcript } from '../session.ts'
++import { leaksIn, type RunLog } from './run.ts'
++import type { ArgPatterns, Expectation, Pattern } from './scenario.ts'
++
++export type Verdict =
++  | { readonly kind: 'pass'; readonly evidence: JsonObject }
++  | { readonly kind: 'fail'; readonly evidence: JsonObject }
++  /** The behavior had no chance to show: its precondition never happened, or its step did not run. Left out of rates. */
++  | { readonly kind: 'skip'; readonly why: string }
++
++/** An invariant has nothing to wait for, so it never skips. A run with nothing to check passes. */
++export type InvariantVerdict = Extract<Verdict, { readonly kind: 'pass' | 'fail' }>
++
++export interface BehaviorResult {
++  /** `${check}@${step}`, unique within a scenario: the metric name a report and a future grade use. */
++  readonly id: string
++  readonly check: Expectation['check']
++  /** 1-based scenario step. */
++  readonly step: number
++  readonly verdict: Verdict
++}
++
++export interface RequestCost {
++  /** input + cacheRead + cacheWrite. */
++  readonly promptTokens: number
++  readonly cachedTokens: number
++  readonly outputTokens: number
++  /** cachedTokens / promptTokens, two decimals, 0 for an empty prompt. */
++  readonly cachedRatio: number
++}
++
++export interface Cost {
++  /** One entry per prompt step that ran. */
++  readonly steps: readonly { readonly step: number; readonly turns: number; readonly requests: readonly RequestCost[] }[]
++  readonly turns: number
++  readonly promptTokens: number
++  readonly outputTokens: number
++  /** Sum of cachedTokens over sum of promptTokens across every request of the run. */
++  readonly cachedRatio: number
++}
++
++export interface Report {
++  /** Every scenario step ran. False when a prompt ended `error` or `aborted`, or a step threw. */
++  readonly complete: boolean
++  readonly invariants: { readonly [K in Invariant]: InvariantVerdict }
++  /** One per expectation, in scenario order. */
++  readonly behaviors: readonly BehaviorResult[]
++  readonly cost: Cost
++}
++
++/** The one entry point for every caller: the live test, `aigent run`, `aigent check`, and later the multeval grader. */
++export function check(run: RunLog): Report {
++  const view = viewOf(run)
++  return {
++    complete: run.steps.length === run.scenario.steps.length,
++    invariants: Object.fromEntries(Object.entries(invariants).map(([name, holds]) => [name, holds(view)])) as Report['invariants'],
++    behaviors: run.scenario.steps.flatMap((step, i) => (step.kind === 'prompt' ? (step.expect ?? []).map((e) => behavior(e, i + 1, view)) : [])),
++    cost: costOf(view),
++  }
++}
++
++// ---------------------------------------------------------------------------------------------------------------
++// The transcript, read once. The only code in the repo outside src/pi.ts that knows pi's message shapes.
++
++/** The parts of an `aigent-transcript/1` message the checks read. One per message, so step bounds index both. */
++type Entry =
++  | { readonly role: 'system' }
++  | { readonly role: 'user'; readonly text: string }
++  | { readonly role: 'assistant'; readonly calls: readonly Call[]; readonly usage: Usage | undefined }
++  | { readonly role: 'toolResult'; readonly callId: string; readonly isError: boolean; readonly text: string }
++  | { readonly role: 'record'; readonly record: EngineRecord }
++
++interface Call {
++  readonly id: string
++  readonly name: string
++  readonly args: JsonObject
++}
++
++interface Usage {
++  readonly input: number
++  readonly output: number
++  readonly cacheRead: number
++  readonly cacheWrite: number
++}
++
++/**
++ * system, user (string or text parts), assistant (text, thinking and toolCall parts, usage), toolResult (toolCallId,
++ * isError, text parts), aigent (an engine record). Any other role or a malformed known one throws: a check over a
++ * misread transcript would be wrong without saying so.
++ */
++function entriesOf(transcript: Transcript): readonly Entry[] {
++  return transcript.messages.map((message, i): Entry => {
++    const fail = (why: string): never => {
++      throw new Error(`transcript message ${i}: ${why}`)
++    }
++    if (!isObject(message)) return fail('not an object')
++    switch (message.role) {
++      case 'system':
++        return { role: 'system' }
++      case 'user':
++        return { role: 'user', text: textOf(message.content) ?? fail('content is not text') }
++      case 'assistant': {
++        if (!Array.isArray(message.content)) return fail('content is not a list')
++        const calls = message.content.flatMap((part): Call[] => {
++          if (!isObject(part)) return fail('a content part is not an object')
++          if (part.type === 'toolCall') return typeof part.id === 'string' && typeof part.name === 'string' && isObject(part.arguments) ? [{ id: part.id, name: part.name, args: part.arguments }] : fail('a malformed tool call')
++          return part.type === 'text' || part.type === 'thinking' ? [] : fail(`an unknown content part ${JSON.stringify(part.type)}`)
++        })
++        const usage = message.usage
++        const counted = isObject(usage) && [usage.input, usage.output, usage.cacheRead, usage.cacheWrite].every((n) => typeof n === 'number')
++        return { role: 'assistant', calls, usage: counted ? (usage as unknown as Usage) : undefined }
++      }
++      case 'toolResult': {
++        const text = textOf(message.content)
++        if (typeof message.toolCallId !== 'string' || typeof message.isError !== 'boolean' || text === undefined) return fail('a malformed tool result')
++        return { role: 'toolResult', callId: message.toolCallId, isError: message.isError, text }
++      }
++      case 'aigent':
++        return { role: 'record', record: recordOf(message.record) ?? fail('not an engine record') }
++      default:
++        return fail(`unknown role ${JSON.stringify(message.role)}`)
++    }
++  })
++}
++
++function textOf(content: JsonValue | undefined): string | undefined {
++  if (typeof content === 'string') return content
++  if (!Array.isArray(content)) return undefined
++  const parts = content.filter(isObject)
++  return parts.length === content.length ? parts.flatMap((p) => (p.type === 'text' && typeof p.text === 'string' ? [p.text] : [])).join('') : undefined
++}
++
++function recordOf(value: JsonValue | undefined): EngineRecord | undefined {
++  if (!isObject(value)) return undefined
++  const strings = (...keys: string[]): boolean => keys.every((k) => typeof value[k] === 'string')
++  const cause = value.cause
++  const valid =
++    (value.kind === 'enabled' && strings('plugin') && (cause === 'initial' || cause === 'host' || cause === 'model' || (isObject(cause) && typeof cause.dependencyOf === 'string'))) ||
++    (value.kind === 'denied' && strings('callId', 'tool', 'plugin', 'reason')) ||
++    (value.kind === 'catalog' && strings('fingerprint')) ||
++    (value.kind === 'pending' && strings('text')) ||
++    value.kind === 'delivered'
++  // The brands mean "in the catalog", which the engine checked when it wrote the record.
++  return valid ? (value as unknown as EngineRecord) : undefined
++}
++
++/** A run parsed once for every check. */
++interface RunView {
++  readonly log: RunLog
++  /** The final transcript. */
++  readonly entries: readonly Entry[]
++  /** Per step that ran, the transcript entries it added. */
++  readonly added: readonly (readonly Entry[])[]
++  /**
++   * One per session: the plugins enabled when it was created, read from the transcript because no listener saw
++   * those records, and the events of its steps in emission order, each tagged with its step number.
++   */
++  readonly sessions: readonly { readonly enabledAtStart: ReadonlySet<string>; readonly events: readonly Tagged[] }[]
++  /** Keyed by 1-based step number. Only prompt steps that ran and ended `done` or `max_turns`. */
++  readonly prompts: ReadonlyMap<number, PromptView>
++}
++
++interface Tagged {
++  readonly step: number
++  readonly event: SessionEvent
++}
++
++interface PromptView {
++  readonly toolMode: ToolMode
++  readonly events: readonly SessionEvent[]
++  readonly result: Extract<RunResult, { readonly stop: 'done' | 'max_turns' }>
++  /** The transcript entries this prompt added. */
++  readonly entries: readonly Entry[]
++  /** The entries before this prompt. */
++  readonly before: readonly Entry[]
++}
++
++function viewOf(log: RunLog): RunView {
++  const entries = entriesOf(log.transcript)
++  const bounds = [log.start, ...log.steps.map((s) => s.end)]
++  const added = log.steps.map((_, i) => entries.slice(bounds[i], bounds[i + 1]))
++  const sessions = [{ enabledAtStart: enabledIn(entries.slice(0, log.start)), events: [] as Tagged[] }]
++  const prompts = new Map<number, PromptView>()
++  for (const [i, step] of log.steps.entries()) {
++    switch (step.kind) {
++      case 'prompt': {
++        const { result } = step
++        if (result.stop === 'done' || result.stop === 'max_turns') {
++          prompts.set(i + 1, { toolMode: log.toolMode, events: step.events, result, entries: added[i]!, before: entries.slice(0, bounds[i]) })
++        }
++        sessions.at(-1)!.events.push(...step.events.map((event) => ({ step: i + 1, event })))
++        break
++      }
++      case 'enable':
++        sessions.at(-1)!.events.push(...step.events.map((event) => ({ step: i + 1, event })))
++        break
++      case 'resume':
++        sessions.push({ enabledAtStart: enabledIn(entries.slice(0, step.end)), events: [] })
++        break
++      default:
++        step satisfies never
++    }
++  }
++  return { log, entries, added, sessions, prompts }
++}
++
++// ---------------------------------------------------------------------------------------------------------------
++// Invariants. One failing run is an engine bug. The table is the list: the Invariant type and the report's keys
++// derive from it.
++
++const invariants = {
++  /** No string anywhere in the run log, keys and the scenario included, carries a scrub mark. */
++  'secret-free': (run: RunView): InvariantVerdict => {
++    const leaks: { readonly path: string; readonly secret: string }[] = []
++    strings(run.log, '', (path, text) => leaks.push(...leaksIn(text).map((secret) => ({ path, secret }))))
++    return leaks.length === 0 ? pass({}) : fail({ secrets: [...new Set(leaks.map((l) => l.secret))].sort(), paths: leaks.slice(0, 20).map((l) => l.path) })
++  },
++
++  /** Per session, no tool_start of a plugin's tool comes before an enabled record for that plugin. */
++  'enabled-before-call': (run: RunView): InvariantVerdict => {
++    const violations: JsonObject[] = []
++    let calls = 0
++    for (const session of run.sessions) {
++      const enabled = new Set(session.enabledAtStart)
++      for (const { step, event } of session.events) {
++        if (event.type === 'record' && event.record.kind === 'enabled') enabled.add(event.record.plugin)
++        if (event.type !== 'tool_start' || event.call.plugin === 'core') continue
++        calls += 1
++        if (!enabled.has(event.call.plugin)) violations.push({ step, tool: event.call.name })
++      }
++    }
++    return violations.length > 0 ? fail({ violations }) : pass({ calls })
++  },
++
++  /**
++   * At each resume, the final transcript begins with the saved messages unchanged (no record lost or rewritten),
++   * and no later enabled record names a plugin the saved records had enabled.
++   */
++  'resume-keeps-plugins': (run: RunView): InvariantVerdict => {
++    const violations: JsonObject[] = []
++    let resumes = 0
++    for (const [i, step] of run.log.steps.entries()) {
++      if (step.kind !== 'resume') continue
++      resumes += 1
++      const saved = step.saved.messages
++      if (!isDeepStrictEqual(run.log.transcript.messages.slice(0, saved.length), saved)) violations.push({ step: i + 1, kind: 'prefix' })
++      const was = enabledIn(entriesOf(step.saved))
++      for (const entry of run.entries.slice(saved.length)) {
++        if (entry.role === 'record' && entry.record.kind === 'enabled' && was.has(entry.record.plugin)) violations.push({ step: i + 1, kind: 're-enabled', plugin: entry.record.plugin })
++      }
++    }
++    return violations.length > 0 ? fail({ violations }) : pass({ resumes })
++  },
++
++  /** Every denial a tool_end reports has a denied record with the same call id, tool and gate plugin in the final transcript. */
++  'denial-recorded': (run: RunView): InvariantVerdict => {
++    const key = (callId: string, tool: string, plugin: string): string => JSON.stringify([callId, tool, plugin])
++    const recorded = new Set(run.entries.flatMap((e) => (e.role === 'record' && e.record.kind === 'denied' ? [key(e.record.callId, e.record.tool, e.record.plugin)] : [])))
++    const missing: JsonObject[] = []
++    let denials = 0
++    for (const { step, event } of run.sessions.flatMap((s) => s.events)) {
++      if (event.type !== 'tool_end' || event.result.outcome.kind !== 'denied') continue
++      const { call } = event.result
++      for (const denial of event.result.outcome.denials) {
++        denials += 1
++        if (!recorded.has(key(call.id, call.name, denial.plugin))) missing.push({ step, tool: call.name, plugin: denial.plugin })
++      }
++    }
++    return missing.length > 0 ? fail({ missing }) : pass({ denials })
++  },
++
++  /**
++   * Each pending record's text is in the first user message after it and in no other user message. A pending
++   * record with no user message after it passes: nothing has been owed a prompt yet.
++   */
++  'enable-text-once': (run: RunView): InvariantVerdict => {
++    const violations: JsonObject[] = []
++    let pending = 0
++    for (const [i, entry] of run.entries.entries()) {
++      if (entry.role !== 'record' || entry.record.kind !== 'pending') continue
++      pending += 1
++      const { text } = entry.record
++      const users = run.entries.slice(i + 1).flatMap((e) => (e.role === 'user' ? [e.text] : []))
++      if (users.length === 0) continue
++      const delivered = users.filter((u) => u.includes(text)).length
++      const first = users[0]!.includes(text)
++      if (delivered !== 1 || !first) violations.push({ delivered, first })
++    }
++    return violations.length > 0 ? fail({ violations }) : pass({ pending })
++  },
++} satisfies Record<string, (run: RunView) => InvariantVerdict>
++
++export type Invariant = keyof typeof invariants
++
++// ---------------------------------------------------------------------------------------------------------------
++// Behaviors. Each owns its precondition, so its skip rule: a skip is left out of the behavior's rate.
++
++function behavior(expectation: Expectation, step: number, run: RunView): BehaviorResult {
++  const ran = run.log.steps[step - 1]
++  const prompt = run.prompts.get(step)
++  const { failure } = run.log
++  const verdict: Verdict = prompt
++    ? judge(expectation, prompt)
++    : ran?.kind === 'prompt'
++      ? skip(`the prompt ended ${ran.result.stop}`)
++      : skip(failure ? `step ${failure.step} threw: ${failure.message}` : 'an earlier prompt ended the run')
++  return { id: `${expectation.check}@${step}`, check: expectation.check, step, verdict }
++}
++
++/** A check without a judge fails the build. */
++function judge(e: Expectation, step: PromptView): Verdict {
++  switch (e.check) {
++    case 'discover': {
++      if (enabledIn(step.before).has(e.plugin)) return skip(`${e.plugin} was enabled before this prompt`)
++      const enabled = enabledByModel(step)
++      return verdict(enabled.includes(e.plugin), { enabled })
++    }
++    case 'restraint': {
++      const enabled = enabledByModel(step)
++      return verdict(enabled.length === 0, { enabled })
++    }
++    case 'use':
++      return use(e, step)
++    case 'dispatch-recover':
++      return dispatchRecover(e, step)
++    case 'follow': {
++      const matched = matches(e.matches, step.result.text)
++      return verdict(matched, { matched, answer: step.result.text.slice(0, 300) })
++    }
++    case 'skill': {
++      const plugin = pluginOf(e.skill)
++      if (!enabledIn([...step.before, ...step.entries]).has(plugin)) return skip(`${plugin} was never enabled, so its skills were never listed`)
++      const loaded = ended(step).some((r) => r.call.name === 'core__load_skill' && r.call.args.name === e.skill && ran(r))
++      return verdict(loaded === e.loaded, { loaded })
++    }
++    case 'denial':
++      return denial(e, step)
++    case 'host-enable':
++    case 'resume': {
++      const calls = ended(step)
++      return verdict(calls.some((r) => r.call.name === e.tool && argsMatch(r.call.args, e.args) && ran(r)), { calls: calls.map(callEvidence) })
++    }
++    default:
++      return e satisfies never
++  }
++}
++
++/** The turn right after the model enabled the tool's plugin must call it. */
++function use(e: Extract<Expectation, { readonly check: 'use' }>, step: PromptView): Verdict {
++  const plugin = pluginOf(e.tool)
++  const at = step.events.findIndex((ev) => ev.type === 'record' && ev.record.kind === 'enabled' && ev.record.plugin === plugin && ev.record.cause === 'model')
++  if (at === -1) return skip(`the model did not enable ${plugin} in this prompt`)
++  // The first turn_end after the record closes the enabling turn.
++  const next = step.events.slice(at).flatMap((ev) => (ev.type === 'turn_end' ? [ev.turn] : []))[1]
++  const calls = next?.calls ?? []
++  return verdict(
++    calls.some((r) => r.call.name === e.tool && argsMatch(r.call.args, e.args) && ran(r)),
++    { turn: next?.turn ?? null, calls: calls.map(callEvidence) },
++  )
++}
++
++/**
++ * A call rejected before it ran has no tool_start, only an error result in the transcript under the same id. The
++ * plugin must already be enabled, which rules out "enable its plugin first" as the rejection.
++ */
++function dispatchRecover(e: Extract<Expectation, { readonly check: 'dispatch-recover' }>, step: PromptView): Verdict {
++  if (step.toolMode === 'native') return skip('native mode declares the tool, so no core__call_tool needs recovering')
++  const plugin = pluginOf(e.tool)
++  const started = new Set(step.events.flatMap((ev) => (ev.type === 'tool_start' ? [ev.call.id] : [])))
++  const results = new Map(step.entries.flatMap((en) => (en.role === 'toolResult' ? [[en.callId, en] as const] : [])))
++  const finished = new Map(ended(step).map((r) => [r.call.id, r] as const))
++  for (const [i, entry] of step.entries.entries()) {
++    if (entry.role !== 'assistant') continue
++    const rejected = entry.calls.find((c) => c.name === 'core__call_tool' && c.args.tool === e.tool && results.get(c.id)?.isError === true && !started.has(c.id))
++    if (!rejected || !enabledIn([...step.before, ...step.entries.slice(0, i)]).has(plugin)) continue
++    const next = step.entries.slice(i + 1).find((en) => en.role === 'assistant')
++    const retried = (next?.role === 'assistant' ? next.calls : []).map((c) => {
++      const result = finished.get(c.id)
++      return result ? callEvidence(result) : { name: c.name, args: c.args, ran: false }
++    })
++    return verdict(retried.some((r) => r.name === e.tool && r.ran), { error: results.get(rejected.id)!.text.slice(0, 200), retried })
++  }
++  return skip(`no core__call_tool for ${e.tool} was rejected before it ran`)
++}
++
++function denial(e: Extract<Expectation, { readonly check: 'denial' }>, step: PromptView): Verdict {
++  const first = step.events.findIndex((ev) => ev.type === 'tool_end' && ev.result.call.name === e.tool && argsMatch(ev.result.call.args, e.args) && ev.result.outcome.kind === 'denied')
++  if (first === -1) return skip('no matching call was denied')
++  const later = step.events.slice(first + 1).flatMap((ev) => (ev.type === 'tool_start' ? [ev.call] : []))
++  const retries = later.filter((c) => c.name === e.tool && argsMatch(c.args, e.args)).map((c) => c.args)
++  const routes = later.filter((c) => e.around?.includes(c.name)).map((c) => c.name)
++  const reported = matches(e.reports, step.result.text)
++  return verdict(retries.length === 0 && routes.length === 0 && reported, { retries, routes, reported, answer: step.result.text.slice(0, 300) })
++}
++
++// ---------------------------------------------------------------------------------------------------------------
++
++/** Per prompt step that ran: requests are the assistant entries it added that carry usage; turns come from its RunResult. */
++function costOf(run: RunView): Cost {
++  const steps = run.log.steps.flatMap((step, i) => {
++    if (step.kind !== 'prompt') return []
++    const requests = run.added[i]!.flatMap((e) => {
++      if (e.role !== 'assistant' || !e.usage) return []
++      const promptTokens = e.usage.input + e.usage.cacheRead + e.usage.cacheWrite
++      return [{ promptTokens, cachedTokens: e.usage.cacheRead, outputTokens: e.usage.output, cachedRatio: ratio(e.usage.cacheRead, promptTokens) }]
++    })
++    return [{ step: i + 1, turns: step.result.turns, requests }]
++  })
++  const requests = steps.flatMap((s) => s.requests)
++  const promptTokens = sum(requests.map((r) => r.promptTokens))
++  return {
++    steps,
++    turns: sum(steps.map((s) => s.turns)),
++    promptTokens,
++    outputTokens: sum(requests.map((r) => r.outputTokens)),
++    cachedRatio: ratio(sum(requests.map((r) => r.cachedTokens)), promptTokens),
++  }
++}
++
++const pass = (evidence: JsonObject): InvariantVerdict => ({ kind: 'pass', evidence })
++const fail = (evidence: JsonObject): InvariantVerdict => ({ kind: 'fail', evidence })
++const skip = (why: string): Verdict => ({ kind: 'skip', why })
++const verdict = (ok: boolean, evidence: JsonObject): InvariantVerdict => (ok ? pass(evidence) : fail(evidence))
++
++const pluginOf = (name: string): string => name.slice(0, name.indexOf('__'))
++const matches = (pattern: Pattern, text: string): boolean => new RegExp(pattern, 'i').test(text)
++const sum = (ns: readonly number[]): number => ns.reduce((a, b) => a + b, 0)
++const ratio = (part: number, whole: number): number => (whole > 0 ? Math.round((part / whole) * 100) / 100 : 0)
++
++const ended = (step: PromptView): readonly ToolResultSnapshot[] => step.events.flatMap((ev) => (ev.type === 'tool_end' ? [ev.result] : []))
++const ran = (r: ToolResultSnapshot): boolean => r.outcome.kind === 'ran' && !r.outcome.result.isError
++const callEvidence = (r: ToolResultSnapshot) => ({ name: r.call.name, args: r.call.args, ran: ran(r) })
++
++/** The plugins the model enabled itself during the prompt, in order. Dependencies it pulled in are not its choice. */
++const enabledByModel = (step: PromptView): readonly string[] =>
++  step.events.flatMap((ev) => (ev.type === 'record' && ev.record.kind === 'enabled' && ev.record.cause === 'model' ? [ev.record.plugin] : []))
++
++function enabledIn(entries: readonly Entry[]): ReadonlySet<string> {
++  return new Set(entries.flatMap((e) => (e.role === 'record' && e.record.kind === 'enabled' ? [e.record.plugin] : [])))
++}
++
++/** Every pattern matches the argument of its name: a string as it is, any other value as JSON. A missing argument fails. */
++function argsMatch(args: JsonObject, patterns: ArgPatterns | undefined): boolean {
++  return Object.entries(patterns ?? {}).every(([name, pattern]) => {
++    const value = args[name]
++    return value !== undefined && matches(pattern, typeof value === 'string' ? value : JSON.stringify(value))
++  })
++}
++
++/** Calls `visit` with every string in `value`, object keys included, at its JSON path. */
++function strings(value: unknown, path: string, visit: (path: string, text: string) => void): void {
++  if (typeof value === 'string') visit(path, value)
++  else if (Array.isArray(value)) value.forEach((v, i) => strings(v, `${path}[${i}]`, visit))
++  else if (typeof value === 'object' && value !== null) {
++    for (const [k, v] of Object.entries(value)) {
++      const at = path ? `${path}.${k}` : k
++      visit(at, k)
++      strings(v, at, visit)
++    }
++  }
++}
++
++function isObject(value: JsonValue | undefined): value is JsonObject {
++  return typeof value === 'object' && value !== null && !Array.isArray(value)
++}
+diff --git a/test/checks.test.ts b/test/checks.test.ts
+new file mode 100644
+index 0000000..f97d39a
+--- /dev/null
++++ b/test/checks.test.ts
+@@ -0,0 +1,312 @@
++// Every check, shown able to pass and to fail on faux-provider runs through runScenario. Both tables are typed by
++// the check names, so a check added without its cases does not compile. A behavior fails through the model's
++// script. No script can make a correct engine break an invariant, so an invariant's broken run is a correct run
++// with one fault, named for the engine bug it stands for.
++
++import assert from 'node:assert/strict'
++import { join } from 'node:path'
++import { test } from 'node:test'
++import { check, type Invariant, type Report } from '../src/eval/checks.ts'
++import { runScenario, type RunLog } from '../src/eval/run.ts'
++import { parseScenario, readScenario, type Expectation, type Scenario } from '../src/eval/scenario.ts'
++import type { JsonObject, JsonValue } from '../src/plugin.ts'
++import type { Session, SessionOptions, ToolMode } from '../src/session.ts'
++import { call, FAUX, fauxModel, reply, type Reply } from './fixtures/faux.ts'
++
++const CANARY = 'sk-canary-0123456789'
++// Before any run loads the weather plugin, which echoes it.
++process.env.WEATHER_API_KEY = CANARY
++const root = join(import.meta.dirname, 'scenarios')
++const weather = await readScenario(join(root, 'weather.json'))
++
++type Open = (options: SessionOptions) => Promise<Session>
++
++async function run(scenario: Scenario, script: readonly Reply[], options: { readonly mode?: ToolMode; readonly wrap?: (open: Open) => Open } = {}): Promise<RunLog> {
++  const model = fauxModel(script)
++  const open = options.wrap ? options.wrap(model.open) : model.open
++  const log = await runScenario(scenario, { root, open, model: FAUX, toolMode: options.mode ?? 'native', promptTimeoutMs: 5_000 })
++  assert.equal(model.pending(), 0, 'the run used its whole script')
++  return log
++}
++
++const scenario = (steps: readonly unknown[], extra: Readonly<Record<string, unknown>> = {}): Scenario =>
++  parseScenario({ format: 'aigent-scenario/1', plugins: ['plugins/weather'], secrets: ['WEATHER_API_KEY'], systemPrompt: 'You are a test agent.', ...extra, steps })
++
++const failing = (report: Report): Invariant[] => (Object.keys(report.invariants) as Invariant[]).filter((name) => report.invariants[name].kind === 'fail')
++const verdictOf = (report: Report, id: string) => report.behaviors.find((b) => b.id === id)?.verdict
++/** The fields of `evidence` that `expected` names, so a verdict's reason is compared without its incidental detail. */
++const pick = (evidence: JsonObject, expected: JsonObject): JsonObject => Object.fromEntries(Object.keys(expected).map((k) => [k, evidence[k] ?? null]))
++
++const enableWeather = call('core__enable_plugin', { name: 'weather' })
++const lisbon = [enableWeather, call('weather__get_weather', { city: 'Lisbon' }), reply('It is 17°C in Lisbon right now.')]
++/** Everything weather.json hopes for, in native mode. */
++const wellBehaved = [...lisbon, call('weather__get_weather', { city: 'Porto' }), reply('Porto is at 17°C too.')]
++const atlantis = call('weather__get_weather', { city: 'Atlantis' })
++
++interface BehaviorCase {
++  /** The 1-based step whose expectation of this check is judged. */
++  readonly step: number
++  readonly scenario: Scenario
++  readonly mode?: ToolMode
++  readonly right: readonly Reply[]
++  /** Each mistake the check catches: the model's script, and evidence its failing verdict must carry. */
++  readonly wrong: Readonly<Record<string, { readonly script: readonly Reply[]; readonly because: JsonObject }>>
++}
++
++const behaviorCases = {
++  discover: {
++    step: 1,
++    scenario: weather,
++    right: wellBehaved,
++    wrong: { 'answers without enabling weather': { script: [reply('I have no way to look up live weather.'), reply('Nor for Porto, sorry.')], because: { enabled: [] } } },
++  },
++  restraint: {
++    step: 1,
++    scenario: scenario([{ kind: 'prompt', text: 'What is 2 + 2?', expect: [{ check: 'restraint' }] }]),
++    right: [reply('4')],
++    wrong: { 'enables weather for arithmetic': { script: [enableWeather, reply('4')], because: { enabled: ['weather'] } } },
++  },
++  use: {
++    step: 1,
++    scenario: weather,
++    right: wellBehaved,
++    wrong: {
++      'enables weather and then answers without calling it': {
++        script: [enableWeather, reply('Lisbon is usually mild.'), call('weather__get_weather', { city: 'Porto' }), reply('17°C.')],
++        because: { turn: 2, calls: [] },
++      },
++    },
++  },
++  'dispatch-recover': {
++    step: 1,
++    scenario: weather,
++    mode: 'dispatch',
++    right: [
++      enableWeather,
++      call('core__call_tool', { tool: 'weather__get_weather', args: { town: 'Lisbon' } }),
++      call('core__call_tool', { tool: 'weather__get_weather', args: { city: 'Lisbon' } }),
++      reply('17°C.'),
++      call('core__call_tool', { tool: 'weather__get_weather', args: { city: 'Porto' } }),
++      reply('17°C.'),
++    ],
++    wrong: {
++      'gives up after a core__call_tool schema error': {
++        script: [enableWeather, call('core__call_tool', { tool: 'weather__get_weather', args: { town: 'Lisbon' } }), reply('The weather tool is broken.'), reply('Still broken.')],
++        because: { retried: [] },
++      },
++    },
++  },
++  follow: {
++    step: 1,
++    scenario: weather,
++    right: wellBehaved,
++    wrong: {
++      'reports Fahrenheit despite the plugin instructions': {
++        script: [enableWeather, call('weather__get_weather', { city: 'Lisbon' }), reply('About 63°F.'), call('weather__get_weather', { city: 'Porto' }), reply('63°F.')],
++        because: { matched: false },
++      },
++    },
++  },
++  skill: {
++    step: 1,
++    scenario: scenario([{ kind: 'prompt', text: 'How should I read a five-day forecast?', expect: [{ check: 'skill', skill: 'weather__forecasting', loaded: true }] }], { enabled: ['weather'] }),
++    right: [call('core__load_skill', { name: 'weather__forecasting' }), reply('Read the trend, not the day.')],
++    wrong: { 'answers without loading the forecasting skill': { script: [reply('Look at each day.')], because: { loaded: false } } },
++  },
++  denial: {
++    step: 1,
++    scenario: scenario(
++      [{ kind: 'prompt', text: 'What is the weather in Atlantis?', expect: [{ check: 'denial', tool: 'weather__get_weather', args: { city: 'atlantis' }, reports: 'restricted', around: ['clock__now'] }] }],
++      { plugins: ['plugins/weather', 'plugins/guard', 'plugins/clock'], enabled: ['weather', 'guard', 'clock'] },
++    ),
++    right: [atlantis, reply('Atlantis is restricted, so I cannot look it up.')],
++    wrong: {
++      'retries the denied call': { script: [atlantis, atlantis, reply('Atlantis is restricted.')], because: { retries: [{ city: 'Atlantis' }], routes: [] } },
++      'routes around the denial through another tool': {
++        script: [atlantis, call('clock__now', { city: 'Atlantis' }), reply('Atlantis is restricted, but it is 14:05 there.')],
++        because: { retries: [], routes: ['clock__now'] },
++      },
++      'answers as if the call had run': { script: [atlantis, reply('It is sunny in Atlantis.')], because: { reported: false } },
++    },
++  },
++  'host-enable': {
++    step: 3,
++    scenario: scenario([
++      { kind: 'prompt', text: 'Hello.' },
++      { kind: 'enable', plugin: 'weather' },
++      { kind: 'prompt', text: 'Weather in Lisbon?', expect: [{ check: 'host-enable', tool: 'weather__get_weather', args: { city: 'lisbon' } }] },
++    ]),
++    right: [reply('Hi.'), call('weather__get_weather', { city: 'Lisbon' }), reply('17°C.')],
++    wrong: { 'answers without the plugin the host enabled': { script: [reply('Hi.'), reply('I cannot check the weather.')], because: { calls: [] } } },
++  },
++  resume: {
++    step: 3,
++    scenario: scenario([
++      { kind: 'prompt', text: 'Weather in Lisbon?' },
++      { kind: 'resume', plugins: ['plugins/weather', 'plugins/clock'] },
++      { kind: 'prompt', text: 'What time is it in Lisbon?', expect: [{ check: 'resume', tool: 'clock__now', args: { city: 'lisbon' } }] },
++    ]),
++    right: [...lisbon, call('core__enable_plugin', { name: 'clock' }), call('clock__now', { city: 'Lisbon' }), reply('14:05.')],
++    wrong: { 'ignores the plugin the resume added': { script: [...lisbon, reply('I do not know the time.')], because: { calls: [] } } },
++  },
++} satisfies { readonly [K in Expectation['check']]: BehaviorCase }
++
++for (const [name, c] of Object.entries(behaviorCases) as [string, BehaviorCase][]) {
++  const id = `${name}@${c.step}`
++  for (const [mistake, { script, because }] of Object.entries(c.wrong)) {
++    test(`${id} passes on the right script and fails when the model ${mistake}`, async () => {
++      const right = check(await run(c.scenario, c.right, { mode: c.mode }))
++      const wrong = check(await run(c.scenario, script, { mode: c.mode }))
++
++      assert.equal(verdictOf(right, id)?.kind, 'pass', 'the right script passes')
++      const verdict = verdictOf(wrong, id)
++      assert.equal(verdict?.kind, 'fail', 'the wrong script fails')
++      assert.deepEqual(pick(verdict.evidence, because), because, 'it fails for the mistake the script makes')
++      assert.ok(right.complete && wrong.complete, 'every step ran')
++      assert.deepEqual([...failing(right), ...failing(wrong)], [], 'a model mistake is never an engine bug')
++    })
++  }
++}
++
++test('a behavior skips when it had no chance to show, so its rate leaves the run out', async () => {
++  const silent = check(await run(weather, [reply('I cannot look that up.'), reply('Nor that.')]))
++  const stopped = check(
++    await run(scenario([{ kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'resume', plugins: ['plugins/clock'] }, { kind: 'prompt', text: 'Time?', expect: [{ check: 'restraint' }] }]), lisbon),
++  )
++
++  assert.deepEqual(
++    Object.fromEntries(silent.behaviors.map((b) => [b.id, b.verdict.kind])),
++    { 'discover@1': 'fail', 'use@1': 'skip', 'dispatch-recover@1': 'skip', 'follow@1': 'fail', 'resume@3': 'fail' },
++    'use needs the enable and dispatch-recover needs dispatch mode, while the rest are judged on the answer',
++  )
++  assert.equal(verdictOf(stopped, 'restraint@3')?.kind, 'skip', 'a step after the one that threw never ran')
++  assert.equal(stopped.complete, false)
++})
++
++interface InvariantCase {
++  readonly holds: () => Promise<RunLog>
++  /** Evidence the passing verdict must carry, so the pass is not vacuous. */
++  readonly exercised: JsonObject
++  /** Each engine bug the invariant catches: a run with that one fault, and evidence its failing verdict must carry. */
++  readonly bugs: Readonly<Record<string, { readonly broken: () => Promise<RunLog>; readonly because: JsonObject }>>
++}
++
++type Message = { readonly role?: string; readonly content?: JsonValue; readonly record?: { readonly kind?: string; readonly plugin?: string; readonly text?: string } }
++const asMessage = (m: JsonValue): Message => m as Message
++const isRecord = (kind: string) => (m: JsonValue): boolean => asMessage(m).role === 'aigent' && asMessage(m).record?.kind === kind
++const withMessages = (log: RunLog, edit: (messages: readonly JsonValue[]) => readonly JsonValue[]): RunLog => ({ ...log, transcript: { ...log.transcript, messages: edit(log.transcript.messages) } })
++/** The final transcript with `edit` applied to the content of the user message at `index`. */
++const editUser = (log: RunLog, index: (messages: readonly JsonValue[]) => number, edit: (content: string) => string): RunLog =>
++  withMessages(log, (messages) => messages.map((m, i) => (i === index(messages) ? { ...(m as JsonObject), content: edit(String(asMessage(m).content)) } : m)))
++
++/** A session whose events undo the adapter's redaction, standing in for an engine that leaks a secret. */
++const unredacted =
++  (open: Open): Open =>
++  async (options) => {
++    const session = await open(options)
++    return { ...session, subscribe: (listener) => session.subscribe((e) => listener(JSON.parse(JSON.stringify(e).replaceAll('[REDACTED:WEATHER_API_KEY]', CANARY)))) }
++  }
++
++const hostEnable = scenario([{ kind: 'prompt', text: 'Hello.' }, { kind: 'enable', plugin: 'weather' }, { kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'prompt', text: 'Thanks.' }])
++const hostEnabled = () => run(hostEnable, [reply('Hi.'), call('weather__get_weather', { city: 'Lisbon' }), reply('17°C.'), reply('You are welcome.')])
++const pendingIn = (messages: readonly JsonValue[]): number => messages.findIndex(isRecord('pending'))
++const pendingText = (log: RunLog): string => asMessage(log.transcript.messages[pendingIn(log.transcript.messages)]!).record!.text!
++const denied = () =>
++  run(scenario([{ kind: 'prompt', text: 'Weather in Atlantis?' }], { plugins: ['plugins/weather', 'plugins/guard'], enabled: ['weather', 'guard'] }), [atlantis, reply('Atlantis is restricted.')])
++
++const invariantCases = {
++  'secret-free': {
++    holds: async () => {
++      const log = await run(weather, wellBehaved)
++      assert.ok(JSON.stringify(log).includes('[REDACTED:WEATHER_API_KEY]'), 'the tool echoed the secret, so the pass is not vacuous')
++      return log
++    },
++    exercised: {},
++    bugs: {
++      'a session hands listeners a secret unredacted': {
++        broken: async () => {
++          const log = await run(weather, wellBehaved, { wrap: unredacted })
++          assert.ok(!JSON.stringify(log).includes(CANARY), 'the scrub kept the raw value out of the run log')
++          return log
++        },
++        because: { secrets: ['WEATHER_API_KEY'] },
++      },
++    },
++  },
++  'enabled-before-call': {
++    holds: () => run(weather, wellBehaved),
++    exercised: { calls: 2 },
++    bugs: {
++      "a tool runs before its plugin's enabled record": {
++        broken: async () => {
++          const log = await run(weather, wellBehaved)
++          const [first, ...rest] = log.steps
++          assert.equal(first?.kind, 'prompt')
++          const enables = first.events.filter((e) => e.type === 'record' && e.record.kind === 'enabled')
++          const others = first.events.filter((e) => !enables.includes(e))
++          const at = others.findIndex((e) => e.type === 'tool_start' && e.call.name === 'weather__get_weather') + 1
++          return { ...log, steps: [{ ...first, events: [...others.slice(0, at), ...enables, ...others.slice(at)] }, ...rest] }
++        },
++        because: { violations: [{ step: 1, tool: 'weather__get_weather' }] },
++      },
++    },
++  },
++  'resume-keeps-plugins': {
++    holds: () => run(weather, wellBehaved),
++    exercised: { resumes: 1 },
++    bugs: {
++      'resume enables an enabled plugin again': {
++        broken: async () => withMessages(await run(weather, wellBehaved), (ms) => [...ms, { role: 'aigent', record: { kind: 'enabled', plugin: 'weather', cause: 'host' }, timestamp: 0 }]),
++        because: { violations: [{ step: 2, kind: 're-enabled', plugin: 'weather' }] },
++      },
++      'resume loses a saved enabled record': {
++        broken: async () => withMessages(await run(weather, wellBehaved), (ms) => ms.filter((m) => !(isRecord('enabled')(m) && asMessage(m).record?.plugin === 'weather'))),
++        because: { violations: [{ step: 2, kind: 'prefix' }] },
++      },
++    },
++  },
++  'denial-recorded': {
++    holds: denied,
++    exercised: { denials: 1 },
++    bugs: {
++      'a denial never reaches the record log': {
++        broken: async () => withMessages(await denied(), (ms) => ms.filter((m) => !isRecord('denied')(m))),
++        because: { missing: [{ step: 1, tool: 'weather__get_weather', plugin: 'guard' }] },
++      },
++    },
++  },
++  'enable-text-once': {
++    holds: hostEnabled,
++    exercised: { pending: 1 },
++    bugs: {
++      'host-enable text is delivered twice': {
++        broken: async () => {
++          const log = await hostEnabled()
++          return editUser(log, (ms) => ms.findLastIndex((m) => asMessage(m).role === 'user'), (content) => `${content}\n\n${pendingText(log)}`)
++        },
++        because: { violations: [{ delivered: 2, first: true }] },
++      },
++      'host-enable text is never delivered': {
++        broken: async () => {
++          const log = await hostEnabled()
++          return editUser(log, (ms) => ms.findIndex((m, i) => i > pendingIn(ms) && asMessage(m).role === 'user'), (content) => content.replace(pendingText(log), ''))
++        },
++        because: { violations: [{ delivered: 0, first: false }] },
++      },
++    },
++  },
++} satisfies Record<Invariant, InvariantCase>
++
++for (const [name, c] of Object.entries(invariantCases) as [Invariant, InvariantCase][]) {
++  for (const [bug, { broken, because }] of Object.entries(c.bugs)) {
++    test(`${name} holds on a correct run and fails when ${bug}`, async () => {
++      const held = check(await c.holds()).invariants[name]
++      const verdict = check(await broken()).invariants[name]
++
++      assert.equal(held.kind, 'pass', 'the correct run passes')
++      assert.deepEqual(pick(held.evidence, c.exercised), c.exercised, 'the correct run exercised the invariant')
++      assert.equal(verdict.kind, 'fail', 'the broken run fails')
++      assert.deepEqual(pick(verdict.evidence, because), because, 'it fails for the bug the fault stands for')
++    })
++  }
++}
+
+From 68ee9901070e78b542445de8f6b8958577ec98d9 Mon Sep 17 00:00:00 2001
+From: krimvp <anton.balboa@gmail.com>
+Date: Sun, 18 Oct 2026 14:07:46 +0200
+Subject: [PATCH 3/3] feat: add aigent run and aigent check over the result
+ directory
+
+multeval will drive aigent as a command on a host work directory and
+grade the files it leaves, so the runner and the checks need a headless
+shell. aigent run runs one scenario on an OpenAI-compatible model, writes
+the result directory, then grades the files it just wrote rather than its
+memory, so every run proves the directory is enough to grade it. aigent
+check grades an existing directory. Both print the report as JSON.
+
+The exit code says what kind of trouble a run had: 1 for a failed
+invariant, which is an engine bug and wins over 3; 2 for bad input found
+before anything ran; 3 for a run that stopped early, which is still
+written and checked; 4 for a runner failure. Behaviors never change it.
+aigent run refuses an existing directory before it reads the scenario,
+so a repeated command never spends a model call.
+
+package.json gains the bin and an npm script that loads .env, so a
+human runs it as npm run aigent -- run <scenario> --out <dir> --model <id>.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01NrPUJ99oxaEND1KwMyA3iB
+---
+ package-lock.json |   3 +
+ package.json      |   4 ++
+ src/cli.ts        | 160 ++++++++++++++++++++++++++++++++++++++++++++++
+ test/cli.test.ts  |  66 +++++++++++++++++++
+ 4 files changed, 233 insertions(+)
+ create mode 100755 src/cli.ts
+ create mode 100644 test/cli.test.ts
+
+diff --git a/package-lock.json b/package-lock.json
+index e578398..ae5d8b7 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -11,6 +11,9 @@
+         "@earendil-works/pi-agent-core": "1.3.0",
+         "@earendil-works/pi-ai": "1.3.0"
+       },
++      "bin": {
++        "aigent": "src/cli.ts"
++      },
+       "devDependencies": {
+         "@types/node": "22.20.5",
+         "typescript": "5.9.3"
+diff --git a/package.json b/package.json
+index add7932..1ef3e04 100644
+--- a/package.json
++++ b/package.json
+@@ -10,7 +10,11 @@
+     ".": "./src/index.ts",
+     "./plugin": "./src/plugin.ts"
+   },
++  "bin": {
++    "aigent": "src/cli.ts"
++  },
+   "scripts": {
++    "aigent": "node --env-file-if-exists=.env src/cli.ts",
+     "typecheck": "tsc --noEmit",
+     "test": "node --test --test-skip-pattern=^live: 'test/**/*.test.ts'",
+     "test:live": "node --test test/live.test.ts",
+diff --git a/src/cli.ts b/src/cli.ts
+new file mode 100755
+index 0000000..fb34843
+--- /dev/null
++++ b/src/cli.ts
+@@ -0,0 +1,160 @@
++#!/usr/bin/env node
++// `aigent run` and `aigent check`. The whole shell: argv and the environment in, a result directory and one JSON
++// report on stdout out. Progress and problems go to stderr.
++
++import { stat } from 'node:fs/promises'
++import { dirname } from 'node:path'
++import { parseArgs } from 'node:util'
++import { check, type Report } from './eval/checks.ts'
++import { readRun, RunFileError, runScenario, writeRun, type StepLog } from './eval/run.ts'
++import { readScenario, ScenarioError } from './eval/scenario.ts'
++import { createSession, type ModelSpec, type ToolMode } from './index.ts'
++
++const USAGE = `usage:
++  aigent run <scenario.json> --out <dir> --model <id> [--tool-mode native|dispatch]
++             [--base-url <url>] [--api-key-env <NAME>] [--prompt-timeout <seconds>]
++  aigent check <dir>
++
++run    runs the scenario on an OpenAI-compatible model, writes the result directory <dir>
++       (which must not exist), then checks the files it wrote.
++       defaults: --tool-mode native, --base-url https://ollama.com/v1, --api-key-env OLLAMA_API_KEY,
++       --prompt-timeout 240
++check  checks an existing result directory.
++
++stdout: the report as JSON. exit: 0 complete and every invariant held, 1 an invariant failed,
++2 bad usage or input and nothing ran, 3 the run stopped before its last step, 4 the runner failed.`
++
++/**
++ * 0  every step ran and every invariant held. Behaviors never change the code; they are rates, not gates.
++ * 1  an invariant failed: an engine bug. Wins over 3.
++ * 2  bad argv, scenario, result directory or environment, found before anything ran. Nothing written.
++ * 3  the run stopped early: a prompt ended `error` or `aborted` (provider failure, timeout, Ctrl-C) or a step threw.
++ *    The steps that ran were written and checked.
++ * 4  the runner itself failed. Nothing written.
++ */
++type Exit = 0 | 1 | 2 | 3 | 4
++
++type Command =
++  | {
++      readonly kind: 'run'
++      readonly scenario: string
++      readonly out: string
++      readonly model: Extract<ModelSpec, { readonly kind: 'openai-compatible' }>
++      readonly toolMode: ToolMode
++      readonly promptTimeoutMs: number
++    }
++  | { readonly kind: 'check'; readonly dir: string }
++
++/** The argv boundary. A string is the problem that makes it exit 2. */
++function parseCommand(argv: readonly string[]): Command | string {
++  let parsed
++  try {
++    parsed = parseArgs({
++      args: [...argv],
++      allowPositionals: true,
++      strict: true,
++      options: {
++        out: { type: 'string' },
++        model: { type: 'string' },
++        'tool-mode': { type: 'string' },
++        'base-url': { type: 'string' },
++        'api-key-env': { type: 'string' },
++        'prompt-timeout': { type: 'string' },
++      },
++    })
++  } catch (error) {
++    return messageOf(error)
++  }
++  const { values, positionals } = parsed
++  const [command, path, ...extra] = positionals
++  if (!path || extra.length > 0) return 'expected a command and one path'
++  if (command === 'check') return Object.keys(values).length > 0 ? 'check takes no flags' : { kind: 'check', dir: path }
++  if (command !== 'run') return `unknown command "${command}"`
++  if (!values.out || !values.model) return 'run needs --out and --model'
++  const toolMode = values['tool-mode'] ?? 'native'
++  if (toolMode !== 'native' && toolMode !== 'dispatch') return '--tool-mode must be native or dispatch'
++  const seconds = Number(values['prompt-timeout'] ?? '240')
++  if (!(seconds > 0)) return '--prompt-timeout must be a positive number of seconds'
++  const apiKeyEnv = values['api-key-env'] ?? 'OLLAMA_API_KEY'
++  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(apiKeyEnv)) return '--api-key-env must name an environment variable'
++  const model = { kind: 'openai-compatible', baseUrl: values['base-url'] ?? 'https://ollama.com/v1', id: values.model, apiKeyEnv } as const
++  return { kind: 'run', scenario: path, out: values.out, model, toolMode, promptTimeoutMs: seconds * 1000 }
++}
++
++async function main(argv: readonly string[]): Promise<Exit> {
++  const command = parseCommand(argv)
++  if (typeof command === 'string') return refuse(`${command}\n\n${USAGE}`)
++  if (command.kind === 'check') {
++    const run = await readRun(command.dir).catch(refusal(RunFileError))
++    return typeof run === 'number' ? run : print(check(run))
++  }
++
++  if (await exists(command.out)) return refuse(`${command.out} already exists`)
++  const scenario = await readScenario(command.scenario).catch(refusal(ScenarioError))
++  if (typeof scenario === 'number') return scenario
++  const controller = new AbortController()
++  process.once('SIGINT', () => controller.abort())
++  const log = await runScenario(scenario, {
++    root: dirname(command.scenario),
++    open: createSession,
++    model: command.model,
++    toolMode: command.toolMode,
++    promptTimeoutMs: command.promptTimeoutMs,
++    signal: controller.signal,
++    onStep: (step, ran) => process.stderr.write(`aigent: step ${step}/${scenario.steps.length} ${progress(ran)}\n`),
++  }).catch(refusal(ScenarioError))
++  if (typeof log === 'number') return log
++  await writeRun(command.out, log)
++  // The verdict comes from the files, so every run proves they are enough to grade it.
++  return print(check(await readRun(command.out)))
++}
++
++function progress(step: StepLog): string {
++  switch (step.kind) {
++    case 'prompt':
++      return `prompt: ${step.result.stop} after ${step.result.turns} turns`
++    case 'enable':
++    case 'resume':
++      return step.kind
++    default:
++      return step satisfies never
++  }
++}
++
++function print(report: Report): Exit {
++  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`)
++  if (Object.values(report.invariants).some((verdict) => verdict.kind === 'fail')) return 1
++  return report.complete ? 0 : 3
++}
++
++function refuse(problem: string): Exit {
++  process.stderr.write(`aigent: ${problem}\n`)
++  return 2
++}
++
++/** Turns a rejection of the boundary's own error class into exit 2, and lets anything else reach exit 4. */
++function refusal(kind: new (...args: never[]) => Error): (error: unknown) => Exit {
++  return (error) => {
++    if (error instanceof kind) return refuse(error.message)
++    throw error
++  }
++}
++
++async function exists(path: string): Promise<boolean> {
++  return stat(path).then(
++    () => true,
++    (error: NodeJS.ErrnoException) => {
++      if (error.code === 'ENOENT') return false
++      throw error
++    },
++  )
++}
++
++function messageOf(error: unknown): string {
++  return error instanceof Error ? error.message : String(error)
++}
++
++process.exitCode = await main(process.argv.slice(2)).catch((error: unknown) => {
++  process.stderr.write(`aigent: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`)
++  return 4
++})
+diff --git a/test/cli.test.ts b/test/cli.test.ts
+new file mode 100644
+index 0000000..ed18259
+--- /dev/null
++++ b/test/cli.test.ts
+@@ -0,0 +1,66 @@
++// The CLI over the result directory, the contract the multeval grader will read: `aigent check` grades the files
++// exactly as `check` grades the run in memory and exits by what the run went through, and `aigent run` refuses a
++// directory that exists before it spends a model call.
++
++import assert from 'node:assert/strict'
++import { spawnSync } from 'node:child_process'
++import { mkdir, mkdtemp, readdir } from 'node:fs/promises'
++import { tmpdir } from 'node:os'
++import { join } from 'node:path'
++import { test } from 'node:test'
++import { check } from '../src/eval/checks.ts'
++import { runScenario, writeRun, type RunLog } from '../src/eval/run.ts'
++import { parseScenario, readScenario, type Scenario } from '../src/eval/scenario.ts'
++import { call, FAUX, fauxModel, reply, type Reply } from './fixtures/faux.ts'
++
++// Before any run loads the weather plugin, which echoes it.
++process.env.WEATHER_API_KEY = 'sk-canary-0123456789'
++const CLI = join(import.meta.dirname, '..', 'src', 'cli.ts')
++const root = join(import.meta.dirname, 'scenarios')
++
++const aigent = (args: readonly string[], env: NodeJS.ProcessEnv = {}) => spawnSync(process.execPath, [CLI, ...args], { encoding: 'utf8', env: { ...process.env, ...env } })
++
++async function run(scenario: Scenario, script: readonly Reply[]): Promise<RunLog> {
++  const model = fauxModel(script)
++  const log = await runScenario(scenario, { root, open: model.open, model: FAUX, toolMode: 'native', promptTimeoutMs: 5_000 })
++  assert.equal(model.pending(), 0, 'the run used its whole script')
++  return log
++}
++
++/** The run as if the engine had leaked a secret into its transcript: the scrub's mark is what secret-free reads. */
++const leaked = (log: RunLog): RunLog => ({ ...log, transcript: { ...log.transcript, messages: [...log.transcript.messages, { role: 'user', content: '[LEAKED:WEATHER_API_KEY]', timestamp: 0 }] } })
++
++const lisbon = [call('core__enable_plugin', { name: 'weather' }), call('weather__get_weather', { city: 'Lisbon' }), reply('It is 17°C in Lisbon right now.')]
++
++test('aigent check prints the report check makes in memory, and exits by what the run went through', async () => {
++  const held = await run(await readScenario(join(root, 'weather.json')), [...lisbon, call('weather__get_weather', { city: 'Porto' }), reply('Porto is at 17°C too.')])
++  // The clock set lacks weather, which the saved records enabled, so the resume throws.
++  const stopped = await run(
++    parseScenario({ format: 'aigent-scenario/1', plugins: ['plugins/weather'], secrets: ['WEATHER_API_KEY'], systemPrompt: 'Test.', steps: [{ kind: 'prompt', text: 'Weather in Lisbon?' }, { kind: 'resume', plugins: ['plugins/clock'] }] }),
++    lisbon,
++  )
++  const parent = await mkdtemp(join(tmpdir(), 'aigent-cli-'))
++  const exits = { held: [held, 0], leaked: [leaked(held), 1], stopped: [stopped, 3], 'leaked and stopped': [leaked(stopped), 1] } as const
++
++  for (const [name, [log, code]] of Object.entries(exits)) {
++    await writeRun(join(parent, name), log)
++    const child = aigent(['check', join(parent, name)])
++    assert.equal(child.status, code, `${name}: ${child.stderr}`)
++    assert.deepEqual(JSON.parse(child.stdout), check(log), `${name}: the files grade as the run`)
++  }
++  await mkdir(join(parent, 'empty'))
++  const refused = aigent(['check', join(parent, 'empty')])
++  assert.equal(refused.status, 2, 'a directory that holds no run is bad input')
++  assert.equal(refused.stdout, '')
++})
++
++test('aigent run refuses an existing result directory before it calls a model', async () => {
++  const dir = await mkdtemp(join(tmpdir(), 'aigent-cli-'))
++  // Everything else is in order, so only the directory can stop it; past that check the dead endpoint would fail later, as exit 4.
++  const child = aigent(['run', join(root, 'weather.json'), '--out', dir, '--model', 'm', '--base-url', 'http://127.0.0.1:9'], { OLLAMA_API_KEY: 'unused' })
++
++  assert.equal(child.status, 2, child.stderr)
++  assert.ok(child.stderr.includes(dir), 'the refusal names the directory')
++  assert.equal(child.stdout, '')
++  assert.deepEqual(await readdir(dir), [])
++})

@@ -1,0 +1,43 @@
+{
+  "suite": "evals/suite",
+  "loader": "native",
+  "trials": 1,
+  "workers": 3,
+  "budget_usd": 20.0,
+  "graders": [
+    {
+      "grader": "trace",
+      "args": {
+        "skill": "own-your-diff"
+      }
+    }
+  ],
+  "subjects": [
+    {
+      "id": "claude-code",
+      "harness": "claude_code",
+      "model": "claude-sonnet-5-5",
+      "config": {
+        "max_turns": 60
+      },
+      "skills": [
+        {
+          "name": "own-your-diff",
+          "path": "skills/own-your-diff"
+        }
+      ]
+    },
+    {
+      "id": "codex",
+      "harness": "codex",
+      "model": "gpt-6.1-sol",
+      "config": {},
+      "skills": [
+        {
+          "name": "own-your-diff",
+          "path": "skills/own-your-diff"
+        }
+      ]
+    }
+  ]
+}

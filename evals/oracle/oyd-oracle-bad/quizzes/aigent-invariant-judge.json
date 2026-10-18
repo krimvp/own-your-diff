@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "883542f^",
+  "head": "883542f",
+  "target": "check(run) judges a run from its log alone: five engine invariants that every trial must keep, where one failure is a bug, and nine model behaviors measured as rates that skip when their precondition never happened. Cost is reported and never judged.",
+  "altitude": "design",
+  "incidental": [
+    "the names of individual checks",
+    "the TypeScript types of the case tables",
+    "the evidence strings"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "prompt": "Question 1",
+      "key_points": [
+        "the point"
+      ],
+      "options": [
+        {
+          "label": "right",
+          "correct": true
+        },
+        {
+          "label": "wrong",
+          "correct": false
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 2",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 3",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 4",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 5",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 6",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 7",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q8",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 8",
+      "key_points": [
+        "the point"
+      ]
+    },
+    {
+      "id": "q9",
+      "kind": "free",
+      "category": "rationale",
+      "prompt": "Question 9",
+      "key_points": [
+        "the point"
+      ]
+    }
+  ]
+}

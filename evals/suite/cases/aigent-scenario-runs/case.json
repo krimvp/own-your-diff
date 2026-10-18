@@ -1,0 +1,31 @@
+{
+  "instruction": "The commits on this branch are not pushed yet. Use the own-your-diff skill to plan the quiz for them, plan only: write the plan to quiz.json in this directory and stop. Nobody will answer questions in this run.",
+  "tags": [
+    "aigent",
+    "design",
+    "questions"
+  ],
+  "timeout_s": 1200,
+  "checks": [
+    {
+      "id": "plan",
+      "grader": "script"
+    },
+    {
+      "id": "judge",
+      "grader": "judge",
+      "args": {
+        "provider": "anthropic",
+        "model": "claude-opus-5-5",
+        "rubric": [
+          "Every question in quiz.json tests a point about the target of the change: Scenarios become data files run by one runner that writes each run as a result directory, a check(run) judge separates engine invariants from model behavior rates, and an aigent CLI runs or checks a directory with exit codes that say what kind of trouble a run had.",
+          "Every question sits at design altitude: the problem the change solves, the shape chosen, the alternatives, and what it makes easy or hard next, above function names and flags",
+          "No question asks about these incidental parts of the change: the test fixtures under test/scenarios/plugins; package.json script names; the boundary test edit",
+          "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+          "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+          "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out"
+        ]
+      }
+    }
+  ]
+}

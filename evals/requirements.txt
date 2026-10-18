@@ -1,0 +1,10 @@
+multeval-core @ git+ssh://git@github.com/krimvp/multeval@main
+multeval-std @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-std
+multeval-claude-code @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-claude-code
+multeval-codex @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-codex
+multeval-droid @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-droid
+multeval-trace @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-trace
+multeval-judge @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-judge
+multeval-judge-anthropic @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-judge-anthropic
+multeval-judge-openai @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-judge-openai
+multeval-proxy @ git+ssh://git@github.com/krimvp/multeval@main#subdirectory=plugins/multeval-proxy

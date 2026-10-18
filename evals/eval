@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Run the quiz evals through multeval, from the repo root.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+# Keys for paid runs live in evals/.env, which git ignores.
+if [[ -f evals/.env ]]; then set -a; . evals/.env; set +a; fi
+multeval() { uv run -q --no-project --with-requirements evals/requirements.lock.txt multeval "$@"; }
+
+usage() {
+  cat <<'USAGE'
+usage: evals/eval <command>
+  prove          run fixed good and bad quiz plans through the checks, no model, no cost
+  run [SPEC]     run a spec (default evals/run.json) into evals/runs
+  compare REF    run the skill at REF against the working tree's skill
+  report RUN     print the report of a run
+  build          regenerate evals/suite and evals/oracle from evals/cases.json
+  lock           re-resolve multeval main into evals/requirements.lock.txt
+USAGE
+}
+
+latest_run() { ls -td evals/runs/*/ | head -n1; }
+
+cmd_prove() {
+  evals/build --no-judge --out evals/.build/offline >/dev/null
+  multeval run evals/run-oracle.json --out evals/runs >/dev/null
+  python3 evals/prove.py "$(latest_run)"
+}
+
+case "${1:-}" in
+  prove) cmd_prove ;;
+  run)
+    spec=${2:-evals/run.json}
+    python3 evals/preflight.py "$spec"
+    multeval run "$spec" --out evals/runs ;;
+  compare)
+    ref=${2:?usage: evals/eval compare REF}
+    rm -rf evals/.build/base && mkdir -p evals/.build/base
+    git archive "$ref" skills/own-your-diff | tar -x -C evals/.build/base --strip-components=1
+    python3 evals/preflight.py evals/run-compare.json
+    multeval run evals/run-compare.json --out evals/runs ;;
+  report) multeval report "${2:?usage: evals/eval report RUN}" ;;
+  build) evals/build ;;
+  lock) uv pip compile evals/requirements.txt -o evals/requirements.lock.txt ;;
+  *) usage; exit 2 ;;
+esac
