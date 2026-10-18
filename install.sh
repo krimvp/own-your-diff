@@ -13,6 +13,26 @@ claude_install() {
   claude plugin marketplace update own-your-diff
   claude plugin install "$ID" --scope user
   claude plugin update "$ID" --scope user
+  # A repo whose .claude/settings.json enables the plugin gets its own project-scope
+  # install, which a user-scope update leaves on the old version.
+  local project
+  for project in $(claude_projects); do
+    (cd "$project" && claude plugin update "$ID" --scope project)
+  done
+}
+
+claude_projects() {
+  python3 - "$ID" <<'PY'
+import json, os, sys
+path = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+try:
+    entries = json.load(open(path)).get("plugins", {}).get(sys.argv[1], [])
+except (OSError, ValueError):
+    entries = []
+for entry in entries:
+    if entry.get("scope") == "project" and os.path.isdir(entry.get("projectPath", "")):
+        print(entry["projectPath"])
+PY
 }
 
 droid_install() {

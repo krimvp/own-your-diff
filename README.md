@@ -64,6 +64,6 @@ The git hook does not depend on any harness. It runs `quizgate` from `PATH` or `
 
 ## Updating
 
-Rerun `install.sh`. It refreshes each marketplace, updates the plugin, and re-trusts the Codex hooks. Restart open sessions to load the new version.
+Rerun `install.sh`. It refreshes each marketplace, updates the plugin, and re-trusts the Codex hooks. In Claude Code, it also updates each repo's project-scope install, which a repo's `.claude/settings.json` creates. Restart open sessions to load the new version.
 
 Claude Code and Codex cache the plugin by its `version`. Bump it in both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` with every change you want installs to pick up. The selftest fails when they differ.
