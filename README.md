@@ -34,7 +34,7 @@ quizgate install    # writes .own-your-diff and .git/hooks/pre-push
 git add .own-your-diff && git commit -m "chore: require own-your-diff before push"
 ```
 
-The committed `.own-your-diff` file is the opt-in. In a fresh clone, the plugin's session-start hook sees it and installs the git hook. `quizgate install` leaves an existing pre-push hook alone and prints the line to add to it.
+The committed `.own-your-diff` file is the opt-in. In a fresh clone, the plugin's session-start hook sees it and installs the git hook. `quizgate install` leaves an existing pre-push hook alone, and so does a repo whose `core.hooksPath` points at a hooks manager such as husky. Each time, it prints the line to add. A `core.hooksPath` that points at a missing directory, such as a deleted `.githooks`, is unset at the next session start.
 
 To have Claude Code and Droid offer the plugin to everyone who opens the repo, commit this as `.claude/settings.json` and `.factory/settings.json`:
 
@@ -60,4 +60,6 @@ The git hook does not depend on any harness. It runs `quizgate` from `PATH` or `
 
 ## Updating
 
-Claude Code and Codex cache the plugin by its `version`. Bump it in both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` with every change you want installs to pick up. The selftest fails when they differ. Then run `claude plugin update own-your-diff@own-your-diff`, `droid plugin update own-your-diff@own-your-diff --scope user`, or `codex plugin marketplace upgrade own-your-diff && codex plugin add own-your-diff@own-your-diff`.
+Rerun `install.sh`. It refreshes each marketplace, updates the plugin, and re-trusts the Codex hooks. Restart open sessions to load the new version.
+
+Claude Code and Codex cache the plugin by its `version`. Bump it in both `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` with every change you want installs to pick up. The selftest fails when they differ.
