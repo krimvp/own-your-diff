@@ -102,8 +102,8 @@
 <main>
 <header class="course">
   <p class="kicker">Change walkthrough · {{design | mechanism | trivial}} altitude</p>
-  <h1>{{What changes, for whom, in one sentence}}</h1>
-  <p class="lede">{{Two sentences: the problem and the shape of the answer.}}</p>
+  <h1>{{What changes, and for whom, in one short sentence}}</h1>
+  <p class="lede">{{Two short sentences. First the problem. Then what this change does about it.}}</p>
   <dl class="meta">
     <div><dt>Branch</dt><dd>{{branch}}</dd></div>
     <div><dt>Range</dt><dd>{{base}}..{{head}}</dd></div>
@@ -126,13 +126,13 @@
 <section class="lesson" id="why">
   <p class="lesson-n">Lesson 1</p>
   <h2>Why this change</h2>
-  <p>{{The problem, who has it, and what was wrong or missing before.}}</p>
+  <p>{{The problem in plain words. Who has it, and what was wrong or missing before. Give one concrete case.}}</p>
 </section>
 
 <section class="lesson" id="map">
   <p class="lesson-n">Lesson 2</p>
   <h2>The map</h2>
-  <p>{{Which parts of the system this touches, and where the new piece sits.}}</p>
+  <p>{{Which parts of the system this touches. Where the new piece sits.}}</p>
   <!-- snippet tree -->
   <figure class="diagram">
     {{Inline SVG of the real components. Use class "new" for new boxes, "box" for existing ones, "arrow" and "lbl" for edges.}}
@@ -143,15 +143,15 @@
 <section class="lesson" id="idea">
   <p class="lesson-n">Lesson 3</p>
   <h2>The core idea</h2>
-  <p>{{The abstraction, boundary, data shape, or mechanism at the heart of the change, and what it owns.}}</p>
-  <aside class="note"><b>Key idea</b><p>{{The one sentence to remember.}}</p></aside>
+  <p>{{The idea at the heart of the change. Start with a concrete example, then name the rule. Say what it owns.}}</p>
+  <aside class="note"><b>Key idea</b><p>{{One short sentence to remember.}}</p></aside>
   <!-- snippet diff PATH HUNK -->
 </section>
 
 <section class="lesson" id="how">
   <p class="lesson-n">Lesson 4</p>
   <h2>How it works</h2>
-  <p>{{Walk the main flow, or the mechanism end to end. Show the code that carries each step.}}</p>
+  <p>{{Walk the main flow one step at a time. One short paragraph per step, then the code that carries it.}}</p>
   <!-- snippet file PATH START END -->
 </section>
 
@@ -169,13 +169,13 @@
 <section class="lesson" id="next">
   <p class="lesson-n">Lesson 6</p>
   <h2>What comes next</h2>
-  <p>{{Where the next feature in this area goes, and what this design now constrains.}}</p>
+  <p>{{Where the next feature in this area goes. What this design now makes easy, and what it makes hard.}}</p>
 </section>
 
 <section class="lesson" id="proof">
   <p class="lesson-n">Lesson 7</p>
   <h2>Blast radius and proof</h2>
-  <p>{{Who or what this touches, why that is safe or risky, and the real runs that prove it.}}</p>
+  <p>{{Who or what this touches. Why that is safe or risky. The real runs that prove it.}}</p>
   <h3>Also in this change</h3>
   <ul><li>{{One line per incidental change.}}</li></ul>
 </section>

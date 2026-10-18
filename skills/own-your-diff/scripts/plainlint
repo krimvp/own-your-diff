@@ -1,0 +1,104 @@
+#!/usr/bin/env python3
+"""Point at the prose of a walkthrough page that may be hard to read.
+
+usage: plainlint FILE
+
+Reads the prose of the page: headings, paragraphs, list items, table cells and captions.
+Code blocks from `snippet` and the diagram are not prose, so they are left out.
+
+A template placeholder still on the page is an error: exit 1.
+A sentence over 25 words or a paragraph over 6 sentences is a note to reread, not an
+error. Shorten it, or keep it when the longer form is clearer. Notes exit 0.
+"""
+import re
+import sys
+from html.parser import HTMLParser
+
+MAX_WORDS = 25
+MAX_SENTENCES = 6
+UNITS = {"p", "li", "h1", "h2", "h3", "td", "th", "figcaption", "dd"}
+SKIPPED = {"script", "style", "svg", "pre", "title"}
+SKIPPED_CLASSES = {"ed", "tree"}
+VOID = {"br", "img", "hr", "meta", "link", "input", "wbr", "source", "path", "rect", "line", "circle"}
+
+
+class Prose(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.stack = []
+        self.units = []
+
+    def skipping(self):
+        return any(tag in SKIPPED or classes & SKIPPED_CLASSES for tag, classes, _ in self.stack)
+
+    def handle_starttag(self, tag, attrs):
+        if tag in VOID:
+            return
+        classes = set((dict(attrs).get("class") or "").split())
+        unit = [] if tag in UNITS and not self.skipping() else None
+        self.stack.append((tag, classes, unit))
+
+    def handle_endtag(self, tag):
+        while self.stack:
+            open_tag, _, unit = self.stack.pop()
+            if unit is not None:
+                self.units.append((open_tag, " ".join("".join(unit).split())))
+            if open_tag == tag:
+                return
+
+    def handle_data(self, data):
+        if self.skipping():
+            return
+        # Text belongs to the innermost unit, so a list inside a list item is its own unit.
+        for _, _, unit in reversed(self.stack):
+            if unit is not None:
+                unit.append(data)
+                return
+
+
+def sentences(text):
+    return [s for s in re.split(r"(?<=[.!?])\s+(?=[A-Z0-9`\"(])", text) if s.strip()]
+
+
+def words(sentence):
+    return re.findall(r"[\w'’/.:@`-]+", sentence)
+
+
+def main(argv):
+    if len(argv) != 2:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    with open(argv[1], encoding="utf-8") as handle:
+        page = handle.read()
+    main_start = page.find("<main")
+    parser = Prose()
+    parser.feed(page[main_start:] if main_start >= 0 else page)
+
+    errors = ["a template placeholder {{...}} is still on the page"] if "{{" in page else []
+    notes = []
+    counted = longest = 0
+    for tag, text in parser.units:
+        if not text:
+            continue
+        found = sentences(text)
+        if tag == "p" and len(found) > MAX_SENTENCES:
+            notes.append(f"a paragraph of {len(found)} sentences: {text[:80]}...")
+        for sentence in found:
+            counted += 1
+            n = len(words(sentence))
+            longest = max(longest, n)
+            if n > MAX_WORDS:
+                notes.append(f"{n} words: {sentence}")
+
+    for note in notes:
+        print(f"note: {note}")
+    for error in errors:
+        print(f"plainlint: {error}")
+    if errors:
+        return 1
+    print(f"ok: {counted} sentence(s), the longest {longest} words, {len(notes)} note(s) to reread")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

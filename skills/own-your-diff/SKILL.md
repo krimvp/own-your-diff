@@ -11,6 +11,7 @@ Tools are in `scripts/`. Run each with no arguments for its commands.
 
 - `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.
 - `snippet` renders real git content as editor-style HTML blocks.
+- `plainlint` checks the walkthrough for leftover placeholders, and notes long sentences and paragraphs.
 - `quizlint` checks a quiz file against [`references/quiz-file.md`](references/quiz-file.md).
 - `quizstats` counts questions and pass rates by category and kind across quiz files.
 
@@ -39,6 +40,15 @@ Done when every hunk in the diff belongs to the target or to the incidental list
 
 Copy `assets/explainer.html` to `$(quizgate dir)/<branch>-<short-sha>.html`. Write it as a short course: each lesson builds on the one before, and each one teaches a single idea. Fill in the template's lessons in order. Delete a lesson that has nothing to say, and renumber the rest.
 
+Write plain English, in the spirit of ASD-STE100 and Orwell's rules. The reader is learning the change, so teach it directly. These are guidelines. Keep a longer sentence when joining two ideas makes them clearer.
+
+- Open each lesson with one sentence that says what it teaches. Then give a concrete example, then the general rule, then the code.
+- Prefer short sentences with one idea each, about 20 words or fewer.
+- Use the active voice and name who does what: "the grader reads the file", not "the file is read".
+- Choose the short, common word. Use one word for one thing on every line of the page.
+- Define a new term in a plain sentence the first time it appears.
+- Cut every word that does no work.
+
 - Put code on the page only through `snippet` directives, each on its own line. Then run `snippet expand <file>`. Expanding again refreshes every block from git.
   - `<!-- snippet tree -->` shows the changed files.
   - `<!-- snippet diff PATH [HUNK...] -->` shows a diff, all hunks or the 1-based hunks named.
@@ -47,9 +57,11 @@ Copy `assets/explainer.html` to `$(quizgate dir)/<branch>-<short-sha>.html`. Wri
 - Draw the design as an inline SVG with the template's `new`, `box`, `arrow`, and `lbl` classes. A diagram shows the real components and marks what is new.
 - Keep the quiz off the page.
 
+Run `plainlint <file>`. It fails on a template placeholder left on the page. It also prints a note for each long sentence and long paragraph. Reread each note, and shorten the prose unless the longer form is clearer.
+
 Open the file with `quizgate open <file>` and give the author its path.
 
-Done when the page renders with every directive expanded, and the author confirms they read it.
+Done when the page renders with every directive expanded, `plainlint` passes and you reread its notes, and the author confirms they read it.
 
 ### 4. Quiz
 
