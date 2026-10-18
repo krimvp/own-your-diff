@@ -9,9 +9,8 @@ The author pushes only work they can explain. You write a walkthrough, the autho
 
 Tools are in `scripts/`. Run each with no arguments for its commands.
 
-- `quizgate` is the gate. The pre-push hook calls `quizgate check`. In a fresh clone, run `quizgate install` once.
+- `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.
 - `snippet` renders real git content as editor-style HTML blocks.
-- `selftest` runs both through real `git push`. Run it after you change either one.
 
 ## Steps
 

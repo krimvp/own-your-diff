@@ -2,7 +2,7 @@
 
 On an unattended run, the authoring agent is the examinee. Asking yourself questions proves nothing, so two fresh subagents take the examiner's seat. Neither one has seen your context. The quiz now works as **verification**: it catches places where what you say you built differs from what the diff does, and design gaps that only show up when you apply the design to a new case.
 
-Spawn both as `poteto-agent` (see the Subagents and Harness sections of `poteto-mode`). Use a model family different from yours when one is available. Pass file paths, not summaries.
+Spawn each one fresh, with none of your context. Under pstack, spawn them as `poteto-agent` (see the Subagents and Harness sections of `poteto-mode`). Use a model family different from yours when one is available. Pass file paths, not summaries.
 
 ## 1. Examine
 

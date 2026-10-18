@@ -17,7 +17,9 @@ usage: quizgate <command>
              mark every pending commit, and their combined diff, as quizzed
   open FILE  open an explainer in the browser
   check      pre-push hook entry point; reads pushed refs on stdin
-  install    point core.hooksPath at the repo's .githooks
+  install    opt this repo in: write .own-your-diff and the pre-push hook
+  sync       copy quizgate to $QUIZGATE_BIN (default ~/.local/bin), and
+             install the hook in an opted-in repo that lacks it
 EOF
 }
 
@@ -103,9 +105,43 @@ cmd_check() {
   exit 1
 }
 
+HOOK_TAG="# own-your-diff pre-push hook"
+
+hook_path() { echo "$(git rev-parse --path-format=absolute --git-path hooks)/pre-push"; }
+
+write_hook() {
+  local hook
+  hook=$(hook_path)
+  grep -qF "$HOOK_TAG" "$hook" 2>/dev/null && return
+  if [[ -e "$hook" ]]; then
+    echo "own-your-diff: $hook already exists. Add this line to it: quizgate check || exit 1" >&2
+    return 1
+  fi
+  mkdir -p "$(dirname "$hook")"
+  cat >"$hook" <<'HOOK'
+#!/bin/sh
+# own-your-diff pre-push hook
+gate=$(command -v quizgate || echo "$HOME/.local/bin/quizgate")
+[ -x "$gate" ] || { echo "own-your-diff: push blocked. quizgate is not installed, see https://github.com/krimvp/own-your-diff" >&2; exit 1; }
+exec "$gate" check
+HOOK
+  chmod +x "$hook"
+  echo "installed $hook"
+}
+
 cmd_install() {
-  git config core.hooksPath .githooks
-  echo "core.hooksPath=.githooks"
+  local marker
+  marker="$(git rev-parse --show-toplevel)/.own-your-diff"
+  [[ -e "$marker" ]] || { echo "Pushes from this repo need a passed own-your-diff quiz." >"$marker"; echo "wrote $marker, commit it"; }
+  write_hook
+}
+
+cmd_sync() {
+  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top
+  mkdir -p "$bin"
+  cmp -s "$0" "$bin/quizgate" || install -m 755 "$0" "$bin/quizgate"
+  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+  [[ -e "$top/.own-your-diff" ]] && write_hook >/dev/null || true
 }
 
 case "${1:-}" in
@@ -116,5 +152,6 @@ case "${1:-}" in
   open) shift; cmd_open "$@" ;;
   check) cmd_check ;;
   install) cmd_install ;;
+  sync) cmd_sync ;;
   *) usage; exit 2 ;;
 esac
