@@ -33,7 +33,7 @@ The target sets the altitude. A change can carry both kinds.
 - **Mechanism altitude.** The target is one mechanism, for example LLM prompt-cache hits, retry and backoff, stream backpressure, or a bug's root cause. Go through that mechanism's ins and outs: inputs, state, invariants, what invalidates or breaks it, the root cause, why the fix works, and how it was measured. Stay above function names and signatures.
 - **Incidental.** Helpers, renames, plumbing, version bumps, and test scaffolding that serve the target. Give each one line and no question.
 - **Trivial.** The whole change is a typo, formatting, a version bump, or a one-line config change. Write a short walkthrough. The quiz usually has no questions.
-- **Docs.** The change only documents or explains behavior the code already has. Treat it as trivial: the author owned that design when it was built. A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude.
+- **Docs.** The change only documents or explains behavior the code already has. Treat it as trivial: the author owned that design when it was built. A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.
 
 Done when every hunk in the diff belongs to the target or to the incidental list.
 
@@ -77,7 +77,7 @@ List every point at the target's altitude that the author must own to stand behi
 - **`important`.** How the parts hold together: a failure mode, an invariant, where the next requirement goes.
 - **`useful`.** A detail worth knowing that the push does not stand on.
 
-Write one question per point, 10 at most, and drop the `useful` points first when there are more. Stop when the points run out. A small fix usually carries one or two, a trivial change none, and incidental items none.
+Write one question per `core` and `important` point, 10 at most. Ask about a `useful` point only when the quiz would otherwise have no question. Stop when the points run out. A small fix usually carries one or two, a trivial change none, and incidental items none.
 
 Ask outside in. Open with the `core` points, starting from what the change is for and its main boundary, then move inward to the mechanisms and details. Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.
 
