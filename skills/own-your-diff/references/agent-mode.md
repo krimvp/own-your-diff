@@ -36,6 +36,6 @@ Done when a round has no findings. After three rounds that still have findings, 
 
 ## 5. Record
 
-Write the transcript to `$(quizgate dir)/<branch>-<short-sha>.quiz.md`. Include every round's questions, answers, grades, and findings with their fixes. Then run `quizgate record --by agent`.
+Write the quiz file of step 4 of `SKILL.md` with `examinee` set to `agent`. It holds every round's questions, each answer and grade as an attempt with its `round`, and every finding with its fix under `findings`. Run `quizlint` on it until it passes. Then run `quizgate record --by agent`.
 
 The ledger keeps `agent` in the pass, so a human can later see which pushes no human was quizzed on. The walkthrough stays in `$(quizgate dir)` for the human to read when they are back.

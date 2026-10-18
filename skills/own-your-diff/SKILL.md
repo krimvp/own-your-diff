@@ -11,8 +11,11 @@ Tools are in `scripts/`. Run each with no arguments for its commands.
 
 - `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.
 - `snippet` renders real git content as editor-style HTML blocks.
+- `quizlint` checks a quiz file against [`references/quiz-file.md`](references/quiz-file.md).
 
 ## Steps
+
+Asked for the quiz plan only, as an eval does? Do steps 1 and 2, skip the walkthrough, and write the plan of step 4 for a human examinee to the path you were given. Stop when `quizlint --plan` passes on it. Ask nothing.
 
 ### 1. Scope
 
@@ -60,8 +63,10 @@ For each question, list the key points a correct answer must cover. Every key po
 
 Ask **transfer** questions. A transfer question makes the author apply the design to a case the walkthrough did not spell out:
 
-- Design: "Why this abstraction over <the rejected alternative>?" "What breaks if <assumption> stops holding?" "A new <requirement> arrives. Where does it go, and what changes?" "What does this boundary protect the rest of the system from?"
-- Mechanism: "Walk a request through <mechanism>. Where can it miss or fail?" "What invalidates <cache or state>?" "Why did <the number> move, and what would move it back?"
+- Design. `rationale`: "Why this abstraction over <the rejected alternative>?" `failure`: "What breaks if <assumption> stops holding?" `extension`: "A new <requirement> arrives. Where does it go, and what changes?" `boundary`: "What does this boundary protect the rest of the system from?"
+- Mechanism. `flow`: "Walk a request through <mechanism>. Where can it miss or fail?" `invalidation`: "What invalidates <cache or state>?" `measurement`: "Why did <the number> move, and what would move it back?" `failure` fits here too.
+
+Give each question the one category it tests. Spread a quiz across categories rather than asking the same kind of question twice.
 
 Mix three kinds:
 
@@ -70,6 +75,8 @@ Mix three kinds:
 - **Free-form.** The author answers in their own words. Use it where the reasoning is the point.
 
 End the quiz with a multi-select or a free-form question that applies several points to one new case. That is where the pieces come together. Every wrong option is a plausible misreading of the change, never filler. Put options in random order and mark none of them.
+
+Write the questions as a plan to `$(quizgate dir)/<branch>-<short-sha>.quiz.json`, in the shape of [`references/quiz-file.md`](references/quiz-file.md). Run `quizlint --plan` on it and fix what it reports before the first question.
 
 Ask one question at a time and wait for the answer. Use the harness's structured-question tool when it has one: `AskUserQuestion` in Claude Code, `AskUser` in Droid, `request_user_input` in Codex where it is enabled. Where the tool has no multi-select, or there is no tool, ask in chat with lettered options and say whether to pick one or several. Never answer for the author.
 
@@ -85,7 +92,7 @@ Done when every question is passed, or a point fails three times. With no questi
 
 ### 5. Record
 
-On a full pass, write the transcript to `$(quizgate dir)/<branch>-<short-sha>.quiz.md`. For each question, record its kind, the prompt, the options with the correct ones marked, the author's pick or answer verbatim, your verdict, and its key points. Then run `quizgate record --by human`, or `--by agent` after agent mode.
+As the quiz runs, add each answer to its question in the quiz file as an attempt: the author's words or picks verbatim, your verdict, and what you told them. On a full pass, set `outcome` to `passed` and run `quizlint` on the file until it passes. Then run `quizgate record --by human`, or `--by agent` after agent mode.
 
 Done when `quizgate pending` prints nothing. Push only if you were asked to push.
 
@@ -94,4 +101,4 @@ Done when `quizgate pending` prints nothing. Push only if you were asked to push
 - A pass belongs to the examinee who earned it in this session. Run `quizgate record` only after that pass.
 - Push with the hook active. `--no-verify` is the human's call, never yours.
 - A blocked push routes back to step 1 for the commits the hook names. The ledger keys passes on `git patch-id`, so rewording, rebasing, or squashing quizzed commits needs no new quiz. New content does.
-- For a PR, draw the body from the walkthrough's Why, Scope, and Tradeoffs. The walkthrough and transcript stay out of the tree.
+- For a PR, draw the body from the walkthrough's Why, Scope, and Tradeoffs. The walkthrough and quiz file stay out of the tree.

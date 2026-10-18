@@ -141,6 +141,60 @@ check ok "guard allows a plain push" bash -c "[[ -z \$(guard Bash 'git push -u o
 check ok "guard allows commit --no-verify" bash -c "[[ -z \$(guard Bash 'git commit --no-verify -m x') ]]"
 check ok "guard allows reading core.hooksPath" bash -c "[[ -z \$(guard Bash 'git config --get core.hooksPath') ]]"
 
+lint="$ROOT/skills/own-your-diff/scripts/quizlint"
+mkdir -p "$T/quiz"
+python3 - "$T/quiz" "$ROOT/skills/own-your-diff/references/quiz-file.md" <<'PY'
+import copy, json, re, sys
+out, doc = sys.argv[1], open(sys.argv[2]).read()
+open(f"{out}/doc-example.json", "w").write(re.search(r"```json\n(.*?)```", doc, re.S).group(1))
+opt = lambda label, ok: {"label": label, "correct": ok}
+single = {"id": "q1", "kind": "single", "category": "rationale", "prompt": "p",
+          "options": [opt("a", True), opt("b", False)], "key_points": ["k"]}
+multi = {"id": "q2", "kind": "multi", "category": "failure", "prompt": "p",
+         "options": [opt("a", True), opt("b", True), opt("c", False)], "key_points": ["k"]}
+free = {"id": "q3", "kind": "free", "category": "extension", "prompt": "p", "key_points": ["k"]}
+def quiz(questions, examinee="human", **top):
+    return {"version": 1, "branch": "b", "base": "a1", "head": "b2", "target": "t",
+            "altitude": "design", "incidental": [], "examinee": examinee,
+            "questions": copy.deepcopy(questions), **top}
+def answered(q, *verdicts):
+    q = copy.deepcopy(q)
+    q["attempts"] = [{"answer": "x", "verdict": v} for v in verdicts]
+    return q
+two_right = copy.deepcopy(single); two_right["options"][1]["correct"] = True
+trivia = dict(free, category="trivia")
+cases = {
+    "plan-ok": quiz([single, free, multi]),
+    "plan-empty": quiz([]),
+    "plan-eleven": quiz([dict(free, id=f"f{i}") for i in range(11)]),
+    "plan-two-right": quiz([two_right]),
+    "plan-opens-free": quiz([free, single]),
+    "plan-ends-single": quiz([single, dict(single, id="q4")]),
+    "plan-trivia": quiz([trivia]),
+    "plan-agent-single": quiz([single], examinee="agent"),
+    "plan-with-attempts": quiz([answered(free, "pass")]),
+    "done-ends-vague": quiz([answered(free, "wrong", "vague")], outcome="passed"),
+    "done-ends-pass": quiz([answered(free, "vague", "pass")], outcome="passed"),
+}
+for name, body in cases.items():
+    json.dump(body, open(f"{out}/{name}.json", "w"))
+PY
+refuses() { # file message [--plan]
+  ! "$lint" ${3:-} "$T/quiz/$1.json" >"$T/lint.out" && grep -qF "$2" "$T/lint.out"
+}
+check ok "quizlint passes a plan that opens single and ends multi" "$lint" --plan "$T/quiz/plan-ok.json"
+check ok "quizlint passes a plan with no questions" "$lint" --plan "$T/quiz/plan-empty.json"
+check ok "quizlint passes the example in quiz-file.md" "$lint" "$T/quiz/doc-example.json"
+check ok "quizlint passes a passed quiz that ends on a pass" "$lint" "$T/quiz/done-ends-pass.json"
+check ok "quizlint refuses 11 questions" refuses plan-eleven "more than 10" --plan
+check ok "quizlint refuses a single with two correct options" refuses plan-two-right "exactly one correct" --plan
+check ok "quizlint refuses a quiz that opens with free" refuses plan-opens-free "opens with a single" --plan
+check ok "quizlint refuses a quiz that ends with single" refuses plan-ends-single "ends with a multi or a free" --plan
+check ok "quizlint refuses an unknown category" refuses plan-trivia "category is one of" --plan
+check ok "quizlint refuses select questions for an agent examinee" refuses plan-agent-single "free questions only" --plan
+check ok "quizlint refuses attempts in a plan" refuses plan-with-attempts "no attempts yet" --plan
+check ok "quizlint refuses a passed quiz whose last attempt is not a pass" refuses done-ends-vague "ends every question on a pass"
+
 version() { grep -o '"version": *"[^"]*"' "$ROOT/$1"; }
 check ok "Claude and Codex manifests carry the same version" bash -c "[[ '$(version .claude-plugin/plugin.json)' == '$(version .codex-plugin/plugin.json)' ]]"
 
