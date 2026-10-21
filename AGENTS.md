@@ -4,7 +4,7 @@ One plugin tree for Claude Code, Factory Droid, and Codex. They share `skills/` 
 
 - Run `scripts/selftest` after changing anything under `skills/` or `hooks/`. It drives the gate through real `git push` and feeds the guard each harness's tool name.
 - Run `claude plugin validate . --strict` after changing a manifest.
-- CI (`.github/workflows/check.yml`) runs both on every push and PR.
+- CI (`.github/workflows/check.yml`) runs both only when started by hand from the Actions tab. Run them locally before every push.
 - Run `evals/eval prove` after changing a quiz check, `quizlint`, or `evals/cases.json`. Run `evals/eval compare main` to measure a change to how the skill writes questions. See `evals/README.md`.
 - Bump `version` in `.claude-plugin/plugin.json` and `.codex-plugin/plugin.json` together with every change that installs should pick up. Claude Code and Codex cache by it.
 - Hook scripts find the plugin root with `dirname "$0"`. Droid sets `CLAUDE_PLUGIN_ROOT` to a placeholder inside hook processes, so they never read it from the environment.
