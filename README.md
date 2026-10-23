@@ -10,8 +10,6 @@ One plugin tree serves Claude Code, Factory Droid, and Codex. Claude Code and Dr
 
 ## Install
 
-The repo is private, so git needs working GitHub credentials first (`gh auth login && gh auth setup-git`, or an SSH key in your agent).
-
 ```bash
 git clone https://github.com/krimvp/own-your-diff && own-your-diff/install.sh            # every harness on PATH
 own-your-diff/install.sh codex                                                          # or name them
