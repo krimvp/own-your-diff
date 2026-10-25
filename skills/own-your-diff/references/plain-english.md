@@ -33,6 +33,34 @@ The reader is new to this part of the code. They are smart but busy. Write so th
 | paradigm, synergy, holistic | say the real thing |
 | essentially, basically, simply, just | delete it |
 
+## Simple first, technical only when needed
+
+Say what happens in everyday words first. Add the technical term or detail only when the reader needs it.
+
+- Start with what the change does for a person: "Before, you could push code nobody had read. Now the push stops until you pass a short quiz."
+- Then give the technical version, if the reader needs it: "The pre-push hook runs `quizgate check`, which looks up each commit in the ledger."
+- A technical detail earns its place only if the reader needs it to follow the next step, to change the code, or to answer the quiz. If not, cut it.
+- Give a number, a file, or a line of code instead of an adjective. "Pushes now take 40 ms longer", not "a small cost".
+- Never explain a simple thing with a hard word. If a 12-year-old could follow the plain version, use the plain version.
+
+## No AI fluff
+
+AI fluff is text that sounds smart but tells the reader nothing. Every sentence must say a fact about this change: what it does, why, what it costs, or what can go wrong. A sentence you could paste into a walkthrough of a different change is fluff. Delete it.
+
+Do not write:
+
+- **Throat-clearing.** "Let's dive in", "In this section we will explore", "It's worth noting that", "It is important to understand". Say the thing.
+- **Summaries of what you just said.** "In summary", "In short", "Overall", "To recap". The page is short. The reader remembers.
+- **Praise and hype.** "elegant", "powerful", "clean", "crucial", "game-changer", "best practice". Say what it does and let the reader judge.
+- **Empty contrast.** "This isn't just X, it's Y." "Not only X, but also Y." Say Y.
+- **Lists of three for rhythm.** "fast, safe, and simple". Keep only the items that are true and matter, with evidence.
+- **Hedges.** "may help", "can potentially", "aims to", "is designed to". Say what the code does. If you do not know, say so once and plainly.
+- **Vague nouns.** "landscape", "ecosystem", "journey", "realm", "tapestry", "space" (for "area"). Name the real thing.
+- **Grand verbs.** "delve", "unlock", "empower", "elevate", "streamline", "harness", "foster", "underscore", "navigate". Use the plain verb.
+- **Dashes for drama.** An em dash (—) to set up a reveal. Use a period.
+
+`plainlint` notes the words and phrases it can find from these lists. It cannot find all fluff. Reread each sentence and ask: "What fact does this tell the reader?" No fact, no sentence.
+
 ## New terms
 
 - Introduce a new term only when the reader needs it, and only one new term at a time.
@@ -66,4 +94,6 @@ Read the page as the reader. For each lesson, ask:
 
 - Does it teach one idea, and does its first sentence say which idea?
 - Does it use a word that the page has not yet explained?
+- Does every sentence tell a fact about this change? Is any of it AI fluff?
+- Did it go technical only where the reader needs it?
 - Can I cut a word, a sentence, or the whole lesson and lose nothing?

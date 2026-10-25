@@ -43,6 +43,8 @@ Copy `assets/explainer.html` to `$(quizgate dir)/<branch>-<short-sha>.html`. Wri
 
 Write for a reader who is new to this part of the code. Follow [`references/plain-english.md`](references/plain-english.md). Read it before you write. In short:
 
+- Say it in everyday words first. Go technical only when the reader needs the detail to follow the next step, change the code, or answer the quiz.
+- No AI fluff. Every sentence states a fact about this change. Cut throat-clearing, recaps, hype, hedges, and "not just X, but Y".
 - Write simple technical English, in the spirit of ASD-STE100 and Orwell's rules. One idea per sentence, 20 words or fewer, active voice, present tense.
 - Open each lesson with one sentence that says what it teaches.
 - Use the short, common word, and one word for one thing on the whole page.
@@ -59,7 +61,7 @@ Write for a reader who is new to this part of the code. Follow [`references/plai
 - Draw each diagram as an inline SVG with the template's `new`, `box`, `arrow`, and `lbl` classes. A diagram shows the real components, with plain nouns on boxes and plain verbs on arrows, and marks what is new.
 - Keep the quiz off the page.
 
-Run `plainlint <file>`. It fails on a template placeholder left on the page. It also prints a note for each long sentence, long paragraph, and word from the do-not-write list of `references/plain-english.md`. Reread each note, and fix the prose unless the longer form is clearer. Then reread the page once as the reader, with the checklist at the end of `references/plain-english.md`.
+Run `plainlint <file>`. It fails on a template placeholder left on the page. It also prints a note for each long sentence, long paragraph, hard word, and AI-fluff phrase from the lists in `references/plain-english.md`. Reread each note, and fix the prose unless the longer form is clearer. Then reread the page once as the reader, with the checklist at the end of `references/plain-english.md`.
 
 Open the file with `quizgate open <file>` and give the author its path.
 
