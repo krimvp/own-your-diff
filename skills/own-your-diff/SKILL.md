@@ -11,7 +11,7 @@ Tools are in `scripts/`. Run each with no arguments for its commands.
 
 - `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.
 - `snippet` renders real git content as editor-style HTML blocks.
-- `plainlint` checks the walkthrough for leftover placeholders, and notes long sentences and paragraphs.
+- `plainlint` checks the walkthrough for leftover placeholders, and notes long sentences, long paragraphs, and words to replace.
 - `quizlint` checks a quiz file against [`references/quiz-file.md`](references/quiz-file.md).
 - `quizstats` counts questions and pass rates by category and kind across quiz files.
 
@@ -41,13 +41,13 @@ Done when every hunk in the diff belongs to the target or to the incidental list
 
 Copy `assets/explainer.html` to `$(quizgate dir)/<branch>-<short-sha>.html`. Write it as a short course: each lesson builds on the one before, and each one teaches a single idea. Fill in the template's lessons in order. Delete a lesson that has nothing to say, and renumber the rest.
 
-Write plain English, in the spirit of ASD-STE100 and Orwell's rules. The reader is learning the change, so teach it directly. These are guidelines. Keep a longer sentence when joining two ideas makes them clearer.
+Write for a reader who is new to this part of the code. Follow [`references/plain-english.md`](references/plain-english.md). Read it before you write. In short:
 
-- Open each lesson with one sentence that says what it teaches. Then give a concrete example, then the general rule, then the code.
-- Prefer short sentences with one idea each, about 20 words or fewer.
-- Use the active voice and name who does what: "the grader reads the file", not "the file is read".
-- Choose the short, common word. Use one word for one thing on every line of the page.
-- Define a new term in a plain sentence the first time it appears.
+- Write simple technical English, in the spirit of ASD-STE100 and Orwell's rules. One idea per sentence, 20 words or fewer, active voice, present tense.
+- Use the short, common word, and one word for one thing on the whole page.
+- Introduce one new term at a time, and define it in a plain sentence the first time it appears. Show the concrete case first, then name it, then give the rule.
+- Go from the top down: the system, then the part the change touches, then the code. Each lesson stays at one level. Never use a lower-level detail before the reader has the level above it.
+- Draw one diagram per level. The first shows the whole system with 3 to 7 boxes. Each diagram after it opens one box of the one before, and its caption says which box.
 - Cut every word that does no work.
 
 - Put code on the page only through `snippet` directives, each on its own line. Then run `snippet expand <file>`. Expanding again refreshes every block from git.
@@ -55,10 +55,10 @@ Write plain English, in the spirit of ASD-STE100 and Orwell's rules. The reader 
   - `<!-- snippet diff PATH [HUNK...] -->` shows a diff, all hunks or the 1-based hunks named.
   - `<!-- snippet file PATH START END [REV] -->` shows file lines in an editor block.
 - Show diffs where the target lives, and only the hunks that carry it. Use `file` blocks for code the reader needs whole, such as a new type or the core function. Incidental files appear only in the tree and in the "Also in this change" list.
-- Draw the design as an inline SVG with the template's `new`, `box`, `arrow`, and `lbl` classes. A diagram shows the real components and marks what is new.
+- Draw each diagram as an inline SVG with the template's `new`, `box`, `arrow`, and `lbl` classes. A diagram shows the real components, with plain nouns on boxes and plain verbs on arrows, and marks what is new.
 - Keep the quiz off the page.
 
-Run `plainlint <file>`. It fails on a template placeholder left on the page. It also prints a note for each long sentence and long paragraph. Reread each note, and shorten the prose unless the longer form is clearer.
+Run `plainlint <file>`. It fails on a template placeholder left on the page. It also prints a note for each long sentence, long paragraph, and word from the do-not-write list of `references/plain-english.md`. Reread each note, and fix the prose unless the longer form is clearer. Then reread the page once as the reader, with the checklist at the end of `references/plain-english.md`.
 
 Open the file with `quizgate open <file>` and give the author its path.
 
@@ -82,6 +82,8 @@ Write one question per `core` and `important` point, 10 at most. Ask about a `us
 Ask outside in. Open with the `core` points, starting from what the change is for and its main boundary, then move inward to the mechanisms and details. Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.
 
 For each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric. Keep the rubric to yourself until the quiz ends.
+
+Write the questions and options in the same plain English as the walkthrough, with the words the walkthrough used.
 
 Ask **transfer** questions. A transfer question makes the author apply the design to a case the walkthrough did not spell out:
 

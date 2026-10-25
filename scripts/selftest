@@ -209,8 +209,10 @@ plain="$ROOT/skills/own-your-diff/scripts/plainlint"
 long="This sentence keeps going with one more clause and then another clause and then yet another clause so that it ends up far past the limit."
 printf '<main><p>Short and clear. The grader reads the file.</p><figure class="ed"><pre>%s</pre></figure></main>\n' "$long" >"$T/plain-ok.html"
 printf '<main><p>%s</p></main>\n' "$long" >"$T/plain-long.html"
+printf '<main><p>The hook will leverage the ledger.</p></main>\n' >"$T/plain-hard.html"
 check ok "plainlint passes plain prose and leaves code blocks out" bash -c "'$plain' '$T/plain-ok.html' | grep -q '0 note(s)'"
 check ok "plainlint notes a long sentence without failing" bash -c "'$plain' '$T/plain-long.html' | grep -q '^note: 26 words'"
+check ok "plainlint notes a word from the do-not-write list" bash -c "'$plain' '$T/plain-hard.html' | grep -q '^note: \"leverage\": write use'"
 check blocked "plainlint fails the template, which still holds its placeholders" "$plain" "$ROOT/skills/own-your-diff/assets/explainer.html"
 
 version() { grep -o '"version": *"[^"]*"' "$ROOT/$1"; }
