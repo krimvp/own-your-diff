@@ -4,7 +4,7 @@ Push only what you can explain. Before a push, your agent writes an HTML walkthr
 
 One plugin tree serves Claude Code, Factory Droid, and Codex. Claude Code and Droid read `.claude-plugin/`. Codex reads its native `.codex-plugin/` and `.agents/plugins/marketplace.json`, which add its display name, category, and starter prompts. Each harness gets:
 
-- The `own-your-diff` skill: walkthrough, quiz, and record steps, plus the `quizgate`, `snippet`, `plainlint` and `quizlint` tools.
+- The `own-your-diff` skill: walkthrough, quiz, and record steps, plus the `quizgate`, `snippet`, `plainlint` and `quizlint` tools. Walkthroughs follow a plain-English guide and explain from the whole system down to the code.
 - A session-start hook. It keeps `quizgate` current in `~/.local/bin` and installs the git hook in any clone of an opted-in repo.
 - A shell guard. It denies an agent's `git push --no-verify` and any `core.hooksPath` change. Skipping the gate is the human's call.
 

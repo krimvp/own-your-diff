@@ -57,6 +57,8 @@
   .note p { margin: 0; }
   .note.trade { border-color: var(--trade); } .note.trade > b { color: var(--trade); }
   .note.warn { border-color: var(--warn); } .note.warn > b { color: var(--warn); }
+  .terms dl { margin: 0; } .terms dt { font-weight: 600; } .terms dd { margin: 0 0 8px; }
+  .zoom { font-size: 14px; color: var(--muted); margin: 0 0 12px; }
 
   .ed, .tree { margin: 24px -8px; background: var(--ed-bg); color: var(--ed-fg); border: 1px solid var(--ed-border); border-radius: 8px; overflow: hidden; box-shadow: 0 8px 24px rgba(0, 0, 0, .12); }
   .ed-bar { display: flex; align-items: center; gap: 10px; background: var(--ed-bar); border-bottom: 1px solid var(--ed-border); font: 13px/1 var(--sans); padding-right: 12px; }
@@ -110,12 +112,18 @@
     <div><dt>Commits</dt><dd>{{n}}</dd></div>
     <div><dt>Reading time</dt><dd>~{{n}} min</dd></div>
   </dl>
+  <aside class="note terms"><b>Words on this page</b>
+    <dl>
+      <dt>{{term}}</dt><dd>{{What it is, in one plain sentence. List only the new terms the reader needs. Delete this box when there are none.}}</dd>
+    </dl>
+  </aside>
   <nav class="toc"><b>In this walkthrough</b>
     <ol>
       <li><a href="#why">Why this change</a></li>
-      <li><a href="#map">The map</a></li>
+      <li><a href="#system">The big picture</a></li>
+      <li><a href="#part">The part that changes</a></li>
       <li><a href="#idea">The core idea</a></li>
-      <li><a href="#how">How it works</a></li>
+      <li><a href="#how">How it works in the code</a></li>
       <li><a href="#alternatives">Alternatives and tradeoffs</a></li>
       <li><a href="#next">What comes next</a></li>
       <li><a href="#proof">Blast radius and proof</a></li>
@@ -126,37 +134,49 @@
 <section class="lesson" id="why">
   <p class="lesson-n">Lesson 1</p>
   <h2>Why this change</h2>
-  <p>{{The problem in plain words. Who has it, and what was wrong or missing before. Give one concrete case.}}</p>
+  <p>{{The problem in plain words. Who has it, and what was wrong or missing before. Give one concrete case. No code and no names from the code.}}</p>
 </section>
 
-<section class="lesson" id="map">
-  <p class="lesson-n">Lesson 2</p>
-  <h2>The map</h2>
-  <p>{{Which parts of the system this touches. Where the new piece sits.}}</p>
-  <!-- snippet tree -->
+<section class="lesson" id="system">
+  <p class="lesson-n">Lesson 2 · Level 1: the system</p>
+  <h2>The big picture</h2>
+  <p>{{What the whole system does and who uses it, in two or three sentences. Then which part of it this change touches.}}</p>
   <figure class="diagram">
-    {{Inline SVG of the real components. Use class "new" for new boxes, "box" for existing ones, "arrow" and "lbl" for edges.}}
-    <figcaption>{{What to notice.}}</figcaption>
+    {{Inline SVG of the whole system: 3 to 7 boxes, plain nouns on boxes, plain verbs on arrows. Mark the touched part with class "new". Use "box" for the rest, and "arrow" and "lbl" for edges.}}
+    <figcaption>{{One sentence: what to notice.}}</figcaption>
   </figure>
 </section>
 
+<section class="lesson" id="part">
+  <p class="lesson-n">Lesson 3 · Level 2: the part</p>
+  <h2>The part that changes</h2>
+  <p class="zoom">{{Zoom in on the "<box>" box of the big picture.}}</p>
+  <p>{{The pieces inside that box and how they talk. Say which piece is new or changed.}}</p>
+  <figure class="diagram">
+    {{Inline SVG of the inside of that one box: 3 to 7 boxes. Mark new and changed pieces with class "new".}}
+    <figcaption>{{One sentence: what to notice.}}</figcaption>
+  </figure>
+  <!-- snippet tree -->
+</section>
+
 <section class="lesson" id="idea">
-  <p class="lesson-n">Lesson 3</p>
+  <p class="lesson-n">Lesson 4</p>
   <h2>The core idea</h2>
   <p>{{The idea at the heart of the change. Start with a concrete example, then name the rule. Say what it owns.}}</p>
   <aside class="note"><b>Key idea</b><p>{{One short sentence to remember.}}</p></aside>
-  <!-- snippet diff PATH HUNK -->
 </section>
 
 <section class="lesson" id="how">
-  <p class="lesson-n">Lesson 4</p>
-  <h2>How it works</h2>
+  <p class="lesson-n">Lesson 5 · Level 3: the code</p>
+  <h2>How it works in the code</h2>
+  <p class="zoom">{{Zoom in on the "<piece>" piece of lesson 3.}}</p>
   <p>{{Walk the main flow one step at a time. One short paragraph per step, then the code that carries it.}}</p>
+  <!-- snippet diff PATH HUNK -->
   <!-- snippet file PATH START END -->
 </section>
 
 <section class="lesson" id="alternatives">
-  <p class="lesson-n">Lesson 5</p>
+  <p class="lesson-n">Lesson 6</p>
   <h2>Alternatives and tradeoffs</h2>
   <table>
     <tr><th>Option</th><th>Why it lost, or what it costs</th></tr>
@@ -167,13 +187,13 @@
 </section>
 
 <section class="lesson" id="next">
-  <p class="lesson-n">Lesson 6</p>
+  <p class="lesson-n">Lesson 7</p>
   <h2>What comes next</h2>
   <p>{{Where the next feature in this area goes. What this design now makes easy, and what it makes hard.}}</p>
 </section>
 
 <section class="lesson" id="proof">
-  <p class="lesson-n">Lesson 7</p>
+  <p class="lesson-n">Lesson 8</p>
   <h2>Blast radius and proof</h2>
   <p>{{Who or what this touches. Why that is safe or risky. The real runs that prove it.}}</p>
   <h3>Also in this change</h3>

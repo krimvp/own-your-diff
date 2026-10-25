@@ -7,15 +7,41 @@ Reads the prose of the page: headings, paragraphs, list items, table cells and c
 Code blocks from `snippet` and the diagram are not prose, so they are left out.
 
 A template placeholder still on the page is an error: exit 1.
-A sentence over 25 words or a paragraph over 6 sentences is a note to reread, not an
-error. Shorten it, or keep it when the longer form is clearer. Notes exit 0.
+A sentence over 20 words, a paragraph over 5 sentences, or a word or phrase from the
+do-not-write and AI-fluff lists of references/plain-english.md is a note to reread, not an error. Fix it, or keep it
+when the longer form is clearer. Notes exit 0.
 """
 import re
 import sys
 from html.parser import HTMLParser
 
-MAX_WORDS = 25
-MAX_SENTENCES = 6
+MAX_WORDS = 20
+MAX_SENTENCES = 5
+# The do-not-write list of references/plain-english.md, with the plain word to use.
+HARD = {
+    "utilize": "write use", "utilise": "write use", "leverage": "write use",
+    "facilitate": "write let or help", "orchestrate": "write run",
+    "robust": "say what it handles", "seamless": "say what it handles", "seamlessly": "say what it handles",
+    "ensure": "write make sure", "in order to": "write to", "prior to": "write before",
+    "subsequent to": "write after", "a number of": "write some, or give the number",
+    "paradigm": "name the real thing", "synergy": "name the real thing", "holistic": "name the real thing",
+    "essentially": "delete it", "basically": "delete it", "simply": "delete it",
+}
+# The AI-fluff list of references/plain-english.md: text that sounds smart and says nothing.
+FLUFF = [
+    "let's dive", "dive in", "dive into", "delve", "it's worth noting", "it is worth noting",
+    "it's important to", "it is important to", "in this section", "in summary", "to recap",
+    "in short", "overall,", "not just", "not only", "game-changer", "game changer", "best practice",
+    "elegant", "powerful", "crucial", "unlock", "empower", "elevate", "streamline", "harness",
+    "foster", "underscore", "landscape", "ecosystem", "journey", "realm", "tapestry",
+    "can potentially", "aims to", "is designed to", "—",
+]
+for phrase in FLUFF:
+    HARD.setdefault(phrase, "AI fluff: say the fact, or cut it")
+HARD_RE = re.compile(
+    "|".join(r"(?<!\w)" + re.escape(w) + (r"(?!\w)" if w[-1].isalnum() else "") for w in sorted(HARD, key=len, reverse=True)),
+    re.IGNORECASE,
+)
 UNITS = {"p", "li", "h1", "h2", "h3", "td", "th", "figcaption", "dd"}
 SKIPPED = {"script", "style", "svg", "pre", "title"}
 SKIPPED_CLASSES = {"ed", "tree"}
@@ -89,6 +115,8 @@ def main(argv):
             longest = max(longest, n)
             if n > MAX_WORDS:
                 notes.append(f"{n} words: {sentence}")
+        for word in dict.fromkeys(m.group(0).lower() for m in HARD_RE.finditer(text)):
+            notes.append(f'"{word}": {HARD[word]} ({text[:60]}...)')
 
     for note in notes:
         print(f"note: {note}")
