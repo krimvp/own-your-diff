@@ -44,6 +44,7 @@ Copy `assets/explainer.html` to `$(quizgate dir)/<branch>-<short-sha>.html`. Wri
 Write for a reader who is new to this part of the code. Follow [`references/plain-english.md`](references/plain-english.md). Read it before you write. In short:
 
 - Write simple technical English, in the spirit of ASD-STE100 and Orwell's rules. One idea per sentence, 20 words or fewer, active voice, present tense.
+- Open each lesson with one sentence that says what it teaches.
 - Use the short, common word, and one word for one thing on the whole page.
 - Introduce one new term at a time, and define it in a plain sentence the first time it appears. Show the concrete case first, then name it, then give the rule.
 - Go from the top down: the system, then the part the change touches, then the code. Each lesson stays at one level. Never use a lower-level detail before the reader has the level above it.
