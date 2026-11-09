@@ -1,11 +1,23 @@
 #!/usr/bin/env python3
 """Check a quiz file against the shape in references/quiz-file.md.
 
-usage: quizlint [--plan] FILE
+usage: quizlint [--plan] [--json] FILE
   --plan   the quiz has not run yet: no attempts and no outcome
+  --json   print one JSON object: ok, problems, notes, and metrics
+
+After the shape, it checks the words of each prompt, option, and key point.
+A prompt over 40 words, an option over 20, a key point over 25, more than 4 key points,
+or a correct option that its length gives away is an error: exit 1.
+A word from the lists of references/plain-english.md, a code name, or a sentence
+over 20 words in a prompt is a note to reread, not an error.
 """
 import json
+import os
 import sys
+
+sys.dont_write_bytecode = True  # keep the plugin tree free of __pycache__
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from plain import HARD, HARD_RE, code_names, giveaway, sentences, words  # noqa: E402
 
 ALTITUDES = {"design", "mechanism", "trivial"}
 KINDS = {"single", "multi", "free"}
@@ -17,6 +29,11 @@ TOP_KEYS = {"version", "branch", "base", "head", "target", "altitude", "incident
 QUESTION_KEYS = {"id", "kind", "category", "relevance", "prompt", "options", "key_points", "attempts"}
 ATTEMPT_KEYS = {"prompt", "kind", "options", "answer", "verdict", "feedback", "round"}
 MAX_QUESTIONS = 10
+MAX_PROMPT_WORDS = 40
+MAX_OPTION_WORDS = 20
+MAX_POINT_WORDS = 25
+MAX_POINTS = 4
+MAX_SENTENCE_WORDS = 20
 
 
 def text(value):
@@ -121,6 +138,12 @@ def lint(quiz, plan):
             if a.get("verdict") not in VERDICTS:
                 problems.append(f"{at}: verdict is one of {sorted(VERDICTS)}")
 
+    relevance = [q.get("relevance") for q in questions if isinstance(q, dict)]
+    if "core" in relevance or "important" in relevance:
+        for n, q in enumerate(questions, 1):
+            if isinstance(q, dict) and q.get("relevance") == "useful":
+                problems.append(f"question {n}: a useful point gets a question only when the quiz would have none")
+
     ranks = [RELEVANCE.get(q.get("relevance")) for q in questions[:-1] if isinstance(q, dict)]
     if None not in ranks and ranks != sorted(ranks):
         problems.append("the questions run from most to least relevant, except the last")
@@ -147,23 +170,81 @@ def lint(quiz, plan):
     return problems
 
 
+def language(questions):
+    """Check the words of each question. Returns problems, notes, and metrics."""
+    problems, notes = [], []
+    prompt_words, option_words, names, giveaways, fluff = [], [], [], 0, 0
+    for n, q in enumerate(questions, 1):
+        where = f"question {n}"
+        prompt = q["prompt"]
+        labels = [o["label"] for o in q.get("options") or []]
+        points = q["key_points"]
+
+        prompt_words.append(len(words(prompt)))
+        if prompt_words[-1] > MAX_PROMPT_WORDS:
+            problems.append(f"{where}: the prompt has {prompt_words[-1]} words, more than {MAX_PROMPT_WORDS}: "
+                            "ask one thing in one or two short sentences")
+        for label in labels:
+            option_words.append(len(words(label)))
+            if option_words[-1] > MAX_OPTION_WORDS:
+                problems.append(f"{where}: an option has {option_words[-1]} words, more than {MAX_OPTION_WORDS}")
+        for point in points:
+            if len(words(point)) > MAX_POINT_WORDS:
+                problems.append(f"{where}: a key point has {len(words(point))} words, more than {MAX_POINT_WORDS}")
+        if len(points) > MAX_POINTS:
+            problems.append(f"{where}: {len(points)} key points, more than {MAX_POINTS}")
+        if q["kind"] == "single" and giveaway(q["options"]):
+            giveaways += 1
+            problems.append(f"{where}: the correct option is much longer than the wrong ones, so its length gives it away")
+
+        hits = [m.group(0).lower() for t in [prompt, *labels, *points] for m in HARD_RE.finditer(t)]
+        fluff += len(hits)
+        for word in dict.fromkeys(hits):
+            notes.append(f'{where}: "{word}": {HARD[word]}')
+        found = code_names(" ".join([prompt, *labels]))
+        names.append(len(found))
+        for name in found:
+            notes.append(f"{where}: code name {name}: say what it is in plain words, unless the question is about that name")
+        for sentence in sentences(prompt):
+            if len(words(sentence)) > MAX_SENTENCE_WORDS:
+                notes.append(f"{where}: a sentence of {len(words(sentence))} words in the prompt: {sentence}")
+
+    mean = lambda xs: round(sum(xs) / len(xs), 2) if xs else 0
+    metrics = {"questions": len(questions),
+               "prompt_words": mean(prompt_words), "prompt_words_max": max(prompt_words, default=0),
+               "option_words": mean(option_words), "option_words_max": max(option_words, default=0),
+               "code_names": mean(names), "giveaways": giveaways, "fluff": fluff}
+    return problems, notes, metrics
+
+
 def main(argv):
     plan = "--plan" in argv
-    files = [a for a in argv if a != "--plan"]
+    as_json = "--json" in argv
+    files = [a for a in argv if a not in {"--plan", "--json"}]
     if len(files) != 1:
         sys.exit(__doc__.strip())
+    notes, metrics = [], {}
     try:
         with open(files[0]) as f:
             quiz = json.load(f)
     except (OSError, json.JSONDecodeError) as error:
-        sys.exit(f"quizlint: {files[0]}: {error}")
-    problems = lint(quiz, plan)
+        problems = [f"{files[0]}: {error}"]
+    else:
+        problems = lint(quiz, plan)
+        if not problems:
+            problems, notes, metrics = language(quiz["questions"])
+
+    if as_json:
+        print(json.dumps({"ok": not problems, "problems": problems, "notes": notes, "metrics": metrics}, indent=2))
+        return 1 if problems else 0
+    for note in notes:
+        print(f"note: {note}")
     if problems:
         print("\n".join(f"quizlint: {p}" for p in problems))
         return 1
     questions = quiz["questions"]
     kinds = ",".join(q["kind"] for q in questions) or "none"
-    print(f"ok: {len(questions)} question(s), kinds {kinds}")
+    print(f"ok: {len(questions)} question(s), kinds {kinds}, {len(notes)} note(s) to reread")
     return 0
 
 

@@ -5,7 +5,7 @@ description: "Before any push or PR: explain the unpushed change in an HTML walk
 
 # Own your diff
 
-The author pushes only work they can explain. You write a walkthrough, the author reads it, an examiner quizzes them, and a pass unlocks the push. The quiz checks that the author can reason about the change at the right **altitude**. It is not a memory test of the walkthrough.
+The author pushes only work they can explain. You write a walkthrough, the author reads it, an examiner quizzes them, and a pass unlocks the push. The quiz checks that the author understands the change at the right **altitude**: what it does, why, and what follows from it. It is not a memory test of the walkthrough or of the code.
 
 Tools are in `scripts/`. Run each with no arguments for its commands.
 
@@ -33,7 +33,7 @@ The target sets the altitude. A change can carry both kinds.
 - **Mechanism altitude.** The target is one mechanism, for example LLM prompt-cache hits, retry and backoff, stream backpressure, or a bug's root cause. Go through that mechanism's ins and outs: inputs, state, invariants, what invalidates or breaks it, the root cause, why the fix works, and how it was measured. Stay above function names and signatures.
 - **Incidental.** Helpers, renames, plumbing, version bumps, and test scaffolding that serve the target. Give each one line and no question.
 - **Trivial.** The whole change is a typo, formatting, a version bump, or a one-line config change. Write a short walkthrough. The quiz usually has no questions.
-- **Docs.** The change only documents or explains behavior the code already has. Treat it as trivial: the author owned that design when it was built. A doc that sets a new rule, contract, or policy, such as a rule in AGENTS.md, makes that rule the target, at design altitude. Steps a contributor runs, such as a check to run or a version to bump, stay incidental even when a doc states them as rules.
+- **Docs.** The change only writes down what the code already does, or how to work on it. Treat it as trivial: the author owned that design when it was built. Notes for contributors, such as a check to run, a version to bump, or how a script finds its files, stay incidental even when a doc states them as rules. A doc is a target only when it sets a rule that changes what users of the system can rely on, and no code in the change sets it. That rule is then the target, at design altitude.
 
 Done when every hunk in the diff belongs to the target or to the incidental list.
 
@@ -80,13 +80,32 @@ List every point at the target's altitude that the author must own to stand behi
 - **`important`.** How the parts hold together: a failure mode, an invariant, where the next requirement goes.
 - **`useful`.** A detail worth knowing that the push does not stand on.
 
-Write one question per `core` and `important` point, 10 at most. Ask about a `useful` point only when the quiz would otherwise have no question. Stop when the points run out. A small fix usually carries one or two, a trivial change none, and incidental items none.
+Write one question per `core` and `important` point, 10 at most. Ask about a `useful` point only when the quiz would otherwise have no question. Stop when the points run out. Two points that one answer covers are one point. A fix of one bug carries one or two questions, and never more than three. A trivial change carries none, and incidental items carry none.
 
 Ask outside in. Open with the `core` points, starting from what the change is for and its main boundary, then move inward to the mechanisms and details. Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.
 
 For each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric. Keep the rubric to yourself until the quiz ends.
 
-Write the questions and options in the same plain English as the walkthrough, with the words the walkthrough used.
+#### Ask high, in plain words
+
+A question tests whether the author understands the change. It does not test whether they remember the code.
+
+- Ask what the change does, why it is built this way, what it costs, and what happens in a new case. An author who understands the change can answer with the code closed.
+- Go lower only when the author cannot own the point without the detail. At mechanism altitude, that detail is the mechanism's steps, its state, and what breaks it. A detail that only proves the author read the code gets no question.
+- Name things in plain words: "the list of passed quizzes", not `ledger.jsonl`. Use a name from the code only when the question is about that name. A name from the code is a function, a file, a flag, an exit code, or an exact value. The question is about the name when the author must know it to use or change the thing.
+- Write in the plain English of [`references/plain-english.md`](references/plain-english.md), with the words the walkthrough used.
+- A prompt asks one thing in one or two short sentences, 40 words at most. When the question needs a case, set it up in one sentence. Do not retell the walkthrough.
+- An option is one short sentence, 20 words at most. Give the options of a question the same form and about the same length. The correct option must not stand out by its length or its detail.
+- A key point is one short sentence. A question has 4 at most.
+
+`quizlint` fails a prompt, an option, or a key point over these limits, and a correct option much longer than the wrong ones. It prints a note for each name from the code and each word from the do-not-write lists. Reread each note. Put the plain words in, unless the question is about that name.
+
+Compare:
+
+- Low and hard to read: "The process is killed while `writeRun` writes the result directory. What is on disk, and why can no reader mistake it for a run?"
+- High and plain: "The program stops halfway through saving a run. What does the next reader of that run see?"
+
+#### Kinds of question
 
 Ask **transfer** questions. A transfer question makes the author apply the design to a case the walkthrough did not spell out:
 
@@ -107,11 +126,11 @@ Write the questions as a plan to `$(quizgate dir)/<branch>-<short-sha>.quiz.json
 
 Ask one question at a time and wait for the answer. Use the harness's structured-question tool when it has one: `AskUserQuestion` in Claude Code, `AskUser` in Droid, `request_user_input` in Codex where it is enabled. Where the tool has no multi-select, or there is no tool, ask in chat with lettered options and say whether to pick one or several. Never answer for the author.
 
-After each select question, say which options were right and why in one or two sentences, so a wrong pick turns into a gotcha the author remembers. Grade each answer against its key points:
+After each select question, say which options were right and why in one or two plain sentences, so a wrong pick turns into a gotcha the author remembers. Grade each answer against its key points:
 
 - **Pass.** It covers the core point with sound reasoning, or picks the right options. Wording and depth beyond the point do not matter.
 - **Vague.** Ask one follow-up probe on the missing point.
-- **Wrong or still vague.** Explain the gap in two or three sentences. Then ask a new question that targets the same point from another angle.
+- **Wrong or still vague.** Explain the gap in two or three plain sentences. Then ask a new question that targets the same point from another angle.
 
 A probe or retry stays at the altitude of the question it follows. It tests the same key point in a new case, never a finer detail of how that point is implemented. At design altitude, "the gate keys on diff content, not commits" is the point. How a partial squash hashes is a mechanism detail, so it is out of bounds.
 
