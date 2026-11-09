@@ -24,11 +24,11 @@ idna==3.20
     #   httpx2
 jiter==0.17.0
     # via anthropic
-multeval-claude-code @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-claude-code
+multeval-claude-code @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-claude-code
     # via -r evals/requirements.txt
-multeval-codex @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-codex
+multeval-codex @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-codex
     # via -r evals/requirements.txt
-multeval-core @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70
+multeval-core @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c
     # via
     #   -r evals/requirements.txt
     #   multeval-claude-code
@@ -42,33 +42,33 @@ multeval-core @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36
     #   multeval-proxy
     #   multeval-std
     #   multeval-trace
-multeval-droid @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-droid
+multeval-droid @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-droid
     # via -r evals/requirements.txt
-multeval-exec @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-exec
+multeval-exec @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-exec
     # via -r evals/requirements.txt
-multeval-judge @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-judge
+multeval-judge @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-judge
     # via
     #   -r evals/requirements.txt
     #   multeval-judge-anthropic
     #   multeval-judge-openai
-multeval-judge-anthropic @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-judge-anthropic
+multeval-judge-anthropic @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-judge-anthropic
     # via -r evals/requirements.txt
-multeval-judge-openai @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-judge-openai
+multeval-judge-openai @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-judge-openai
     # via -r evals/requirements.txt
-multeval-lint @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-lint
+multeval-lint @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-lint
     # via -r evals/requirements.txt
-multeval-measurements @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-measurements
+multeval-measurements @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-measurements
     # via -r evals/requirements.txt
-multeval-pi @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-pi
+multeval-pi @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-pi
     # via -r evals/requirements.txt
-multeval-proxy @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-proxy
+multeval-proxy @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-proxy
     # via -r evals/requirements.txt
-multeval-std @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-std
+multeval-std @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-std
     # via
     #   -r evals/requirements.txt
     #   multeval-measurements
     #   multeval-proxy
-multeval-trace @ git+ssh://git@github.com/krimvp/multeval@b0b92110b259983834a2e36c666a57304579aa70#subdirectory=plugins/multeval-trace
+multeval-trace @ git+ssh://git@github.com/krimvp/multeval@b39dadbf99dff95ccb2eef09661618489124c56c#subdirectory=plugins/multeval-trace
     # via -r evals/requirements.txt
 opentelemetry-api==1.45.1
     # via anthropic
