@@ -6,7 +6,15 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 # Keys for paid runs live in evals/.env, which git ignores.
 if [[ -f evals/.env ]]; then set -a; . evals/.env; set +a; fi
-multeval() { uv run -q --no-project --with-requirements evals/requirements.lock.txt multeval "$@"; }
+# MULTEVAL_SRC names a local multeval checkout to use instead of the pinned commit.
+REQUIREMENTS=evals/requirements.lock.txt
+if [[ -n "${MULTEVAL_SRC:-}" ]]; then
+  REQUIREMENTS=evals/.build/requirements.local.txt
+  mkdir -p evals/.build
+  sed -E -e "s|^(multeval-[a-z-]+) @ git\\+ssh://[^#]*#subdirectory=(.*)$|\\1 @ file://$MULTEVAL_SRC/\\2|" \
+         -e "s|^(multeval-core) @ git\\+ssh://.*$|\\1 @ file://$MULTEVAL_SRC|" evals/requirements.txt >"$REQUIREMENTS"
+fi
+multeval() { uv run -q --no-project --with-requirements "$REQUIREMENTS" multeval "$@"; }
 
 usage() {
   cat <<'USAGE'
