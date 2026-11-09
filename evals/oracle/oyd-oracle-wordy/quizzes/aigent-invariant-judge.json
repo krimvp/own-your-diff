@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "883542f^",
+  "head": "883542f",
+  "target": "check(run) judges a run from its log alone: five engine invariants that every trial must keep, where one failure is a bug, and nine model behaviors measured as rates that skip when their precondition never happened. Cost is reported and never judged.",
+  "altitude": "design",
+  "incidental": [
+    "the names of individual checks",
+    "the TypeScript types of the case tables",
+    "the evidence strings"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Think about the whole change and every place it touches, and about the people who will run it every day in their work, and then tell me, in your own words and with as much detail as you can remember, what problem this change was written to solve for them.",
+      "options": [
+        {
+          "label": "It stops a failure that people hit before the change, so their work no longer breaks halfway through the day.",
+          "correct": true
+        },
+        {
+          "label": "It renames some code.",
+          "correct": false
+        },
+        {
+          "label": "It only adds new tests.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the failure people hit before the change",
+        "how the change stops it"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does this change make harder, and why was that cost worth it?",
+      "key_points": [
+        "what the change gives up",
+        "why the gain is worth more than the loss"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Which part of the old behavior does the change keep, and what does that protect?",
+      "key_points": [
+        "the behavior that stays the same",
+        "who depends on it"
+      ],
+      "attempts": []
+    }
+  ]
+}

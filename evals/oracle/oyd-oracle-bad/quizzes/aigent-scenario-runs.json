@@ -17,120 +17,146 @@
       "kind": "single",
       "category": "rationale",
       "relevance": "core",
-      "prompt": "Question 1",
-      "key_points": [
-        "the point"
-      ],
+      "prompt": "What problem does this change solve for the people who use it?",
       "options": [
         {
-          "label": "right",
+          "label": "It stops a failure that people hit before the change.",
           "correct": true
         },
         {
-          "label": "wrong",
+          "label": "It renames parts of the code and keeps the old behavior.",
+          "correct": false
+        },
+        {
+          "label": "It makes the tool faster and changes nothing people can see.",
           "correct": false
         }
-      ]
+      ],
+      "key_points": [
+        "the failure people hit before the change",
+        "how the change stops it"
+      ],
+      "attempts": []
     },
     {
       "id": "q2",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 2",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does this change make harder, and why was that cost worth it?",
       "key_points": [
-        "the point"
-      ]
+        "what the change gives up",
+        "why the gain is worth more than the loss"
+      ],
+      "attempts": []
     },
     {
       "id": "q3",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 3",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Which part of the old behavior does the change keep, and what does that protect?",
       "key_points": [
-        "the point"
-      ]
+        "the behavior that stays the same",
+        "who depends on it"
+      ],
+      "attempts": []
     },
     {
       "id": "q4",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 4",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "Where would a mistake in this change show up first, and who would notice it?",
       "key_points": [
-        "the point"
-      ]
+        "the first place the mistake shows",
+        "who sees it there"
+      ],
+      "attempts": []
     },
     {
       "id": "q5",
       "kind": "free",
       "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 5",
+      "relevance": "important",
+      "prompt": "A team uses this tool in a new way the change did not plan for. What happens to them?",
       "key_points": [
-        "the point"
-      ]
+        "what the change does in the new setup",
+        "what the team must do about it"
+      ],
+      "attempts": []
     },
     {
       "id": "q6",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 6",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does this change make harder, and why was that cost worth it?",
       "key_points": [
-        "the point"
-      ]
+        "what the change gives up",
+        "why the gain is worth more than the loss"
+      ],
+      "attempts": []
     },
     {
       "id": "q7",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 7",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Which part of the old behavior does the change keep, and what does that protect?",
       "key_points": [
-        "the point"
-      ]
+        "the behavior that stays the same",
+        "who depends on it"
+      ],
+      "attempts": []
     },
     {
       "id": "q8",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 8",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "Where would a mistake in this change show up first, and who would notice it?",
       "key_points": [
-        "the point"
-      ]
+        "the first place the mistake shows",
+        "who sees it there"
+      ],
+      "attempts": []
     },
     {
       "id": "q9",
       "kind": "free",
       "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 9",
+      "relevance": "important",
+      "prompt": "A team uses this tool in a new way the change did not plan for. What happens to them?",
       "key_points": [
-        "the point"
-      ]
+        "what the change does in the new setup",
+        "what the team must do about it"
+      ],
+      "attempts": []
     },
     {
       "id": "q10",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 10",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does this change make harder, and why was that cost worth it?",
       "key_points": [
-        "the point"
-      ]
+        "what the change gives up",
+        "why the gain is worth more than the loss"
+      ],
+      "attempts": []
     },
     {
       "id": "q11",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 11",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Which part of the old behavior does the change keep, and what does that protect?",
       "key_points": [
-        "the point"
-      ]
+        "the behavior that stays the same",
+        "who depends on it"
+      ],
+      "attempts": []
     }
   ]
 }

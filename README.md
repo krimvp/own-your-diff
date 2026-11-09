@@ -58,7 +58,7 @@ The git hook does not depend on any harness. It runs `quizgate` from `PATH` or `
 
 ## Quiz evals
 
-`evals/` measures the questions the skill writes, on real past changes, through [multeval](https://github.com/krimvp/multeval). See [`evals/README.md`](evals/README.md).
+`evals/` measures the questions the skill writes, on real past changes, through [multeval](https://github.com/krimvp/multeval). multeval grades each quiz plan for shape, plain words, and a judge's rubric, and records tokens and time. [`evals/QUALITY.md`](evals/QUALITY.md) shows the grades of each kept run, oldest first. See [`evals/README.md`](evals/README.md).
 
 ## Updating
 

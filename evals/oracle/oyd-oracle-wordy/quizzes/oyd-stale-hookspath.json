@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "4411927",
+  "head": "a2e3f05",
+  "target": "A clone whose core.hooksPath names a directory that no longer exists gets it unset at session start, so the hook is installed again. When core.hooksPath names a real directory, such as husky's, install writes nothing there and prints the line to add.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the selftest cases",
+    "the realpath flag used"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "Think about the whole change and every place it touches, and about the people who will run it every day in their work, and then tell me, in your own words and with as much detail as you can remember, what problem this change was written to solve for them.",
+      "options": [
+        {
+          "label": "It stops a failure that people hit before the change, so their work no longer breaks halfway through the day.",
+          "correct": true
+        },
+        {
+          "label": "It renames some code.",
+          "correct": false
+        },
+        {
+          "label": "It only adds new tests.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the failure people hit before the change",
+        "how the change stops it"
+      ],
+      "attempts": []
+    }
+  ]
+}

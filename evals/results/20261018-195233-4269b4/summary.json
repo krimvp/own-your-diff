@@ -1,0 +1,32 @@
+{
+  "run": "20261018-195233-4269b4",
+  "date": "2026-10-18",
+  "source": "backfilled from the kept files; the judge is evals/judge.py with an older rubric",
+  "plugin_version": null,
+  "commit": null,
+  "dirty": null,
+  "judge_model": null,
+  "subjects": {
+    "pi-glm": {
+      "attempts": 18,
+      "plan_pass": 0.722,
+      "skill_loaded": 1.0,
+      "judge_score": null,
+      "plain": {
+        "questions": 5.167,
+        "prompt_words": 33.839,
+        "prompt_words_max": 49.375,
+        "option_words": 19.808,
+        "option_words_max": 37.562,
+        "code_names": 1.766,
+        "giveaways": 2.056,
+        "fluff": 8.667
+      },
+      "usage": {
+        "duration_s": 300.67,
+        "input_tokens": 261861.5,
+        "output_tokens": 24153.333
+      }
+    }
+  }
+}

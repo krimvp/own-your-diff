@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "42c2cb8",
+  "head": "0389727",
+  "target": "A repo opts into the push gate with a tracked .own-your-diff marker. quizgate install writes the pre-push hook into the clone's own hooks directory instead of pointing core.hooksPath at a tracked .githooks dir, and quizgate sync keeps a copy of quizgate on PATH and installs the hook in opted-in clones that lack it.",
+  "altitude": "design",
+  "incidental": [
+    "the selftest file moving to the repo root",
+    "the usage text of quizgate",
+    "the wording edits in SKILL.md and agent-mode.md"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Think about the whole change and every place it touches, and about the people who will run it every day in their work, and then tell me, in your own words and with as much detail as you can remember, what problem this change was written to solve for them.",
+      "options": [
+        {
+          "label": "It stops a failure that people hit before the change, so their work no longer breaks halfway through the day.",
+          "correct": true
+        },
+        {
+          "label": "It renames some code.",
+          "correct": false
+        },
+        {
+          "label": "It only adds new tests.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the failure people hit before the change",
+        "how the change stops it"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does this change make harder, and why was that cost worth it?",
+      "key_points": [
+        "what the change gives up",
+        "why the gain is worth more than the loss"
+      ],
+      "attempts": []
+    }
+  ]
+}

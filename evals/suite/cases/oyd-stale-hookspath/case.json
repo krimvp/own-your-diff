@@ -11,6 +11,38 @@
     {
       "id": "plan",
       "grader": "script"
+    },
+    {
+      "id": "plain",
+      "grader": "exec",
+      "args": {
+        "command": [
+          "python3",
+          "plain_grade.py"
+        ]
+      }
+    },
+    {
+      "id": "judge",
+      "grader": "judge",
+      "args": {
+        "provider": "openai",
+        "model": "glm-5.3",
+        "rubric": [
+          "Every question in quiz.json tests a point about the target of the change that the case brief states",
+          "Every question sits at an altitude that the case brief allows, as the brief describes that altitude",
+          "No question asks about an incidental part of the change that the case brief lists",
+          "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+          "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+          "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last",
+          "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out",
+          "Every question can be answered by a person who understands what the change does and why, with the code closed: no question depends on recalling a function name, a file name, a flag, an exit code, or an exact value, unless that name or value is itself the point the author must own",
+          "Every prompt, option, and key point is plain English: short sentences, common words, one idea each, with no jargon the question does not need and no filler or marketing words"
+        ],
+        "reference_files": [
+          "brief.md"
+        ]
+      }
     }
   ]
 }

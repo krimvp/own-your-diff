@@ -1,5 +1,5 @@
 {
-  "suite": "evals/suite",
+  "suite": "evals/.build/oracle-suite",
   "loader": "native",
   "trials": 1,
   "workers": 4,
@@ -31,6 +31,21 @@
         {
           "name": "oyd-oracle-bad",
           "path": "evals/oracle/oyd-oracle-bad"
+        }
+      ]
+    },
+    {
+      "id": "oracle-wordy",
+      "harness": "command",
+      "model": "none",
+      "config": {
+        "command": "q=/opt/multeval/skills/oyd-oracle-wordy/quizzes/$(cat /etc/oyd-case).json; test ! -f \"$q\" || cp \"$q\" quiz.json",
+        "version": "0"
+      },
+      "skills": [
+        {
+          "name": "oyd-oracle-wordy",
+          "path": "evals/oracle/oyd-oracle-wordy"
         }
       ]
     }

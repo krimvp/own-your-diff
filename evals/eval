@@ -6,6 +6,11 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 # Keys for paid runs live in evals/.env, which git ignores.
 if [[ -f evals/.env ]]; then set -a; . evals/.env; set +a; fi
+# The judge calls an OpenAI-compatible endpoint. With no OpenAI key, it uses Ollama Cloud.
+if [[ -n "${OLLAMA_API_KEY:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
+  export OPENAI_API_KEY="$OLLAMA_API_KEY"
+  export OPENAI_BASE_URL="${OPENAI_BASE_URL:-https://ollama.com/v1}"
+fi
 # MULTEVAL_SRC names a local multeval checkout to use instead of the pinned commit.
 REQUIREMENTS=evals/requirements.lock.txt
 if [[ -n "${MULTEVAL_SRC:-}" ]]; then
@@ -19,22 +24,37 @@ multeval() { uv run -q --no-project --with-requirements "$REQUIREMENTS" multeval
 usage() {
   cat <<'USAGE'
 usage: evals/eval <command>
-  prove          run fixed good and bad quiz plans through the checks, no model, no cost
-  run [SPEC]     run a spec (default evals/run-ollama.json) into evals/runs, then judge it
-  judge RUN      judge the quiz plans of a run against each case's rubric
-  keep RUN       copy what a reviewer needs from a run into evals/results, for git
+  prove          run fixed good, bad, and wordy quiz plans through the free checks: no model, no cost
+  run [SPEC]     run a spec (default evals/run-ollama.json) into evals/runs, every check included
   compare REF    run the skill at REF against the working tree's skill
-  report RUN     print the report of a run
-  build          regenerate evals/suite and evals/oracle from evals/cases.json
+  report RUN     print the report of a run (extra options go to multeval report)
+  gate RUN       the report, failing when a mean misses the bar in evals/gate.json
+  diff RUN RUN   compare two runs, metric by metric
+  regrade RUN    grade a run again with the current plain, judge, trace, and usage checks
+  keep RUN       copy what a reviewer needs from a run into evals/results, and redo evals/QUALITY.md
+  quality        redo evals/QUALITY.md from evals/results
+  lint           lint the skills with multeval
+  build [ARGS]   regenerate evals/suite and evals/oracle from evals/cases.json
   lock           re-resolve multeval main into evals/requirements.lock.txt
 USAGE
 }
 
 latest_run() { ls -td evals/runs/*/ | head -n1; }
 
+gate_args() {
+  python3 - <<'PY'
+import json
+gate = json.load(open("evals/gate.json"))
+for flag in ("fail-under", "fail-over"):
+    for metric, value in gate.get(flag, {}).items():
+        print(f"--{flag}\n{metric}={value}")
+PY
+}
+
 cmd_prove() {
+  python3 evals/prove.py suite evals/.build/oracle-suite >/dev/null
   multeval run evals/run-oracle.json --out evals/runs >/dev/null
-  python3 evals/prove.py "$(latest_run)"
+  python3 evals/prove.py check "$(latest_run)"
 }
 
 case "${1:-}" in
@@ -42,19 +62,31 @@ case "${1:-}" in
   run)
     spec=${2:-evals/run-ollama.json}
     python3 evals/preflight.py "$spec"
-    multeval run "$spec" --out evals/runs
-    python3 evals/judge.py "$(latest_run)" ;;
-  judge) python3 evals/judge.py "${2:?usage: evals/eval judge RUN}" ;;
-  keep) python3 evals/keep.py "${2:?usage: evals/eval keep RUN}" ;;
+    multeval run "$spec" --out evals/runs ;;
   compare)
     ref=${2:?usage: evals/eval compare REF}
     rm -rf evals/.build/base && mkdir -p evals/.build/base
     git archive "$ref" skills/own-your-diff | tar -x -C evals/.build/base --strip-components=1
     python3 evals/preflight.py evals/run-compare.json
-    multeval run evals/run-compare.json --out evals/runs
-    python3 evals/judge.py "$(latest_run)" ;;
-  report) multeval report "${2:?usage: evals/eval report RUN}" ;;
-  build) evals/build ;;
+    multeval run evals/run-compare.json --out evals/runs ;;
+  report) shift; multeval report "${1:?usage: evals/eval report RUN}" "${@:2}" ;;
+  gate)
+    run=${2:?usage: evals/eval gate RUN}
+    mapfile -t args < <(gate_args)
+    multeval report "$run" "${args[@]}" ;;
+  diff) multeval compare "${2:?usage: evals/eval diff RUN_A RUN_B}" "${3:?usage: evals/eval diff RUN_A RUN_B}" ;;
+  regrade)
+    run=${2:?usage: evals/eval regrade RUN}
+    python3 evals/regrade.py "$run" evals/.build/regrade.json
+    multeval regrade "$run" evals/.build/regrade.json ;;
+  keep)
+    run=${2:?usage: evals/eval keep RUN}
+    mkdir -p evals/.build
+    multeval report "$run" --json >evals/.build/keep-report.json
+    python3 evals/keep.py "$run" evals/.build/keep-report.json ;;
+  quality) python3 evals/keep.py --quality ;;
+  lint) multeval lint skills ;;
+  build) shift; evals/build "$@" ;;
   lock) uv pip compile evals/requirements.txt -o evals/requirements.lock.txt ;;
   *) usage; exit 2 ;;
 esac

@@ -18,40 +18,50 @@
       "kind": "single",
       "category": "rationale",
       "relevance": "core",
-      "prompt": "Question 1",
-      "key_points": [
-        "the point"
-      ],
+      "prompt": "What problem does this change solve for the people who use it?",
       "options": [
         {
-          "label": "right",
+          "label": "It stops a failure that people hit before the change.",
           "correct": true
         },
         {
-          "label": "wrong",
+          "label": "It renames parts of the code and keeps the old behavior.",
+          "correct": false
+        },
+        {
+          "label": "It makes the tool faster and changes nothing people can see.",
           "correct": false
         }
-      ]
+      ],
+      "key_points": [
+        "the failure people hit before the change",
+        "how the change stops it"
+      ],
+      "attempts": []
     },
     {
       "id": "q2",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 2",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does this change make harder, and why was that cost worth it?",
       "key_points": [
-        "the point"
-      ]
+        "what the change gives up",
+        "why the gain is worth more than the loss"
+      ],
+      "attempts": []
     },
     {
       "id": "q3",
       "kind": "free",
-      "category": "rationale",
-      "relevance": "core",
-      "prompt": "Question 3",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Which part of the old behavior does the change keep, and what does that protect?",
       "key_points": [
-        "the point"
-      ]
+        "the behavior that stays the same",
+        "who depends on it"
+      ],
+      "attempts": []
     }
   ]
 }

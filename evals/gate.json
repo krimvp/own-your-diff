@@ -1,0 +1,17 @@
+{
+  "fail-under": {
+    "plan.pass": 0.8,
+    "trace.skill_activated": 0.9,
+    "judge.score": 0.85
+  },
+  "fail-over": {
+    "plain.prompt_words": 25,
+    "plain.option_words": 15,
+    "plain.code_names": 0.5,
+    "plain.giveaways": 0.5,
+    "plain.fluff": 2,
+    "usage.duration_s": 600,
+    "usage.input_tokens": 1000000,
+    "usage.output_tokens": 80000
+  }
+}

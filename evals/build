@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Build the multeval suite and the oracle skills from evals/cases.json.
 
-usage: evals/build [--repo NAME=PATH ...] [--out DIR] [--multeval-judge PROVIDER:MODEL]
+usage: evals/build [--repo NAME=PATH ...] [--out DIR] [--judge-model MODEL]
 
 Each case freezes a real change: the repo's tree at `base` becomes one root
 commit pushed to a bare origin, and the commits up to `head` are replayed on a
 branch, unpushed. The agent plans the quiz for them. Rebuilding is
 deterministic, so a diff of evals/suite after a rebuild is a real change.
+
+When a case's repo is not on this machine, its committed fixture (the base tree
+and the patch) stays as it is, and only the checks and case.json are written again.
 """
 import argparse
 import io
@@ -21,6 +24,9 @@ EVALS = Path(__file__).resolve().parent
 ROOT = EVALS.parent
 SKILL = ROOT / "skills" / "own-your-diff"
 EXCLUDE = {"aigent": [".agents", ".claude", "third_party"]}
+sys.dont_write_bytecode = True
+sys.path.insert(0, str(SKILL / "scripts"))
+from plain import code_names, giveaway, words  # noqa: E402
 
 INSTRUCTION = (
     "The commits on this branch are not pushed yet. Use the own-your-diff skill to plan "
@@ -78,6 +84,32 @@ ALTITUDE = {
     "trivial": "the intent and impact of the change, if anything",
 }
 
+# One rubric for every case. The case's own facts are in brief.md, which the judge
+# gets as a hidden reference file. So a rubric change regrades a run of many cases.
+RUBRIC = [
+    "Every question in quiz.json tests a point about the target of the change that the case brief states",
+    "Every question sits at an altitude that the case brief allows, as the brief describes that altitude",
+    "No question asks about an incidental part of the change that the case brief lists",
+    "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+    "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+    "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last",
+    "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out",
+    "Every question can be answered by a person who understands what the change does and why, with the code closed: no question depends on recalling a function name, a file name, a flag, an exit code, or an exact value, unless that name or value is itself the point the author must own",
+    "Every prompt, option, and key point is plain English: short sentences, common words, one idea each, with no jargon the question does not need and no filler or marketing words",
+]
+
+CHECK_FILES = {  # check dir name: source
+    "quizlint": SKILL / "scripts" / "quizlint",
+    "plain.py": SKILL / "scripts" / "plain.py",
+    "plain_grade.py": EVALS / "plain_grade.py",
+}
+PLAIN_CHECK = {"id": "plain", "grader": "exec", "args": {"command": ["python3", "plain_grade.py"]}}
+
+
+def judge_check(model):
+    return {"id": "judge", "grader": "judge", "args": {
+        "provider": "openai", "model": model, "rubric": RUBRIC, "reference_files": ["brief.md"]}}
+
 
 def git(repo, *args, binary=False):
     out = subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True)
@@ -98,54 +130,167 @@ def base_tar(repo, base, exclude):
     return buf.getvalue()
 
 
-def rubric(case):
-    alt = " or ".join(case["altitude"])
-    items = [
-        f"Every question in quiz.json tests a point about the target of the change: {case['target']}",
-        f"Every question sits at {alt} altitude: " + "; ".join(ALTITUDE[a] for a in case["altitude"]),
-        "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
-        "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
-        "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last",
-    ]
-    if case["incidental"]:
-        items.insert(2, "No question asks about these incidental parts of the change: " + "; ".join(case["incidental"]))
-    if case["max"] >= 2:
-        items.append("When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out")
-    return items
+def brief(case):
+    """The facts of one case for the judge. The agent never sees them."""
+    lines = ["# Case brief", "",
+             "This brief is for the judge of the quiz plan. The agent that wrote the plan never saw it.", "",
+             "## The target of the change", "", case["target"], "",
+             "## Altitudes that fit", ""]
+    lines += [f"- {a}: {ALTITUDE[a]}" for a in case["altitude"]]
+    lines += ["", "## Incidental parts", ""]
+    lines += [f"- {part}" for part in case["incidental"]] or ["- none"]
+    count = "no questions" if case["max"] == 0 else f"{case['min']} to {case['max']} questions"
+    lines += ["", "## Size", "", f"The plan holds {count}.", "",
+              "## Reading the criteria", "",
+              "A criterion about every question is met when quiz.json has no questions.",
+              "A criterion that starts with \"When\" is met when its condition does not hold.", ""]
+    return "\n".join(lines)
 
 
-def oracle_quiz(case, count):
-    def question(n, kind):
-        q = {"id": f"q{n}", "kind": kind, "category": "rationale", "relevance": "core", "prompt": f"Question {n}",
-             "key_points": ["the point"]}
-        if kind == "single":
-            q["options"] = [{"label": "right", "correct": True}, {"label": "wrong", "correct": False}]
-        return q
-    kinds = ["single"] + ["free"] * (count - 1) if count > 1 else ["free"] * count
+def build_fixture(case, repo, env):
+    base = git(repo, "rev-parse", "--short", case["base"]).strip()
+    head = git(repo, "rev-parse", "--short", case["head"]).strip()
+    shutil.rmtree(env, ignore_errors=True)
+    (env / "patches").mkdir(parents=True)
+    (env / "base.tar").write_bytes(base_tar(repo, base, EXCLUDE.get(case["repo"], [])))
+    patches = git(repo, "format-patch", "--no-signature", "--stdout", f"{base}..{head}")
+    (env / "patches" / "change.patch").write_text(patches)
+    return f"{case['repo']} {base}..{head}"
+
+
+def write_case(case, root, repo, judge_model):
+    env, check = root / "environment", root / "check"
+    if (repo / ".git").exists():
+        source = build_fixture(case, repo, env)
+    elif (env / "base.tar").is_file() and (env / "patches" / "change.patch").is_file():
+        source = f"{case['repo']} repo not at {repo}: kept the committed fixture"
+    else:
+        sys.exit(f"evals/build: case {case['id']} needs the {case['repo']} repo at {repo}, "
+                 f"and it has no committed fixture; pass --repo {case['repo']}=PATH")
+    (env / "Dockerfile").write_text(DOCKERFILE)
+    (env / "build-repo.sh").write_text(BUILD_REPO.format(branch=case["branch"], case_id=case["id"]))
+
+    shutil.rmtree(check, ignore_errors=True)
+    check.mkdir()
+    (check / "check.sh").write_text(CHECK)
+    (check / "expect.py").write_text(EXPECT)
+    for name, src in CHECK_FILES.items():
+        shutil.copy(src, check / name)
+    expect = {k: case[k] for k in ("min", "max", "altitude")}
+    (check / "expect.json").write_text(json.dumps(expect, indent=2) + "\n")
+    (check / "brief.md").write_text(brief(case))
+
+    checks = [{"id": "plan", "grader": "script"}, PLAIN_CHECK, judge_check(judge_model)]
+    tags = [case["repo"], *case["altitude"], "no-questions" if case["max"] == 0 else "questions"]
+    (root / "case.json").write_text(json.dumps(
+        {"instruction": INSTRUCTION, "tags": tags, "timeout_s": 1200, "checks": checks}, indent=2) + "\n")
+    return source
+
+
+# Oracle plans: fixed quiz plans that prove the plan check. Their words are plain and short,
+# so a good plan passes quizlint's word limits, and only the wordy set breaks them.
+CATEGORIES = {"design": ["rationale", "boundary", "failure", "extension"],
+              "mechanism": ["flow", "failure", "invalidation", "measurement"],
+              "trivial": ["rationale"]}
+OPENER = {
+    "prompt": "What problem does this change solve for the people who use it?",
+    "options": [("It stops a failure that people hit before the change.", True),
+                ("It renames parts of the code and keeps the old behavior.", False),
+                ("It makes the tool faster and changes nothing people can see.", False)],
+    "key_points": ["the failure people hit before the change", "how the change stops it"],
+}
+FOLLOW_UPS = [
+    ("What does this change make harder, and why was that cost worth it?",
+     ["what the change gives up", "why the gain is worth more than the loss"]),
+    ("Which part of the old behavior does the change keep, and what does that protect?",
+     ["the behavior that stays the same", "who depends on it"]),
+    ("Where would a mistake in this change show up first, and who would notice it?",
+     ["the first place the mistake shows", "who sees it there"]),
+    ("A team uses this tool in a new way the change did not plan for. What happens to them?",
+     ["what the change does in the new setup", "what the team must do about it"]),
+]
+WORDY_PROMPT = (
+    "Think about the whole change and every place it touches, and about the people who will "
+    "run it every day in their work, and then tell me, in your own words and with as much "
+    "detail as you can remember, what problem this change was written to solve for them."
+)
+WORDY_OPTIONS = [("It stops a failure that people hit before the change, so their work no longer breaks halfway through the day.", True),
+                 ("It renames some code.", False),
+                 ("It only adds new tests.", False)]
+
+
+def question(n, kind, category, relevance, prompt, key_points, options=None):
+    q = {"id": f"q{n}", "kind": kind, "category": category, "relevance": relevance, "prompt": prompt}
+    if options:
+        q["options"] = [{"label": label, "correct": correct} for label, correct in options]
+    q["key_points"] = key_points
+    q["attempts"] = []
+    return q
+
+
+def oracle_quiz(case, count, wordy=False):
+    altitude = case["altitude"][0]
+    categories = CATEGORIES[altitude]
+    questions = []
+    for n in range(1, count + 1):
+        category = categories[(n - 1) % len(categories)]
+        relevance = "core" if n == 1 else "important"
+        if n == 1:
+            prompt = WORDY_PROMPT if wordy else OPENER["prompt"]
+            options = WORDY_OPTIONS if wordy else OPENER["options"]
+            questions.append(question(n, "single", category, relevance, prompt, OPENER["key_points"], options))
+            continue
+        prompt, points = FOLLOW_UPS[(n - 2) % len(FOLLOW_UPS)]
+        questions.append(question(n, "free", category, relevance, prompt, points))
     return {"version": 1, "branch": case["branch"], "base": case["base"], "head": case["head"],
-            "target": case["target"], "altitude": case["altitude"][0], "incidental": case["incidental"],
-            "examinee": "human", "questions": [question(n, k) for n, k in enumerate(kinds, 1)]}
+            "target": case["target"], "altitude": altitude, "incidental": case["incidental"],
+            "examinee": "human", "questions": questions}
+
+
+def check_oracle_words():
+    """A good plan breaks no word limit, and the wordy one breaks two."""
+    texts = [OPENER["prompt"], *(label for label, _ in OPENER["options"]), *OPENER["key_points"]]
+    for prompt, points in FOLLOW_UPS:
+        texts += [prompt, *points]
+    assert all(len(words(t)) <= 20 for t in texts) and not any(code_names(t) for t in texts)
+    assert not giveaway([{"label": label, "correct": c} for label, c in OPENER["options"]])
+    assert len(words(WORDY_PROMPT)) == 50, len(words(WORDY_PROMPT))
+    assert all(len(words(label)) <= 20 for label, _ in WORDY_OPTIONS)
+    assert giveaway([{"label": label, "correct": c} for label, c in WORDY_OPTIONS])
+
+
+ORACLES = {
+    "good": (lambda c: c["min"], "the fewest questions the case allows, in short plain words."),
+    "bad": (lambda c: c["max"] + 1, "one question more than the case allows."),
+    "wordy": (lambda c: c["min"] or (1 if c["max"] >= 1 else None),
+              "the right number of questions, but a 50-word prompt and a correct option that its length gives away. "
+              "A case that allows no question has no wordy plan."),
+}
 
 
 def write_oracle(cases, out):
-    for name, pick in (("good", lambda c: c["min"]), ("bad", lambda c: c["max"] + 1)):
+    check_oracle_words()
+    for name, (pick, says) in ORACLES.items():
         skill = out / f"oyd-oracle-{name}"
         shutil.rmtree(skill, ignore_errors=True)
         (skill / "quizzes").mkdir(parents=True)
         (skill / "SKILL.md").write_text(
             f"---\nname: oyd-oracle-{name}\ndescription: Fixed {name} quiz plans that prove the eval checks.\n---\n\n"
-            f"The command subject copies quizzes/<case>.json to quiz.json. A {name} plan holds "
-            + ("the fewest questions the case allows.\n" if name == "good" else "one question more than the case allows.\n"))
+            f"The command subject copies quizzes/<case>.json to quiz.json. A {name} plan holds {says}\n")
         for case in cases:
-            (skill / "quizzes" / f"{case['id']}.json").write_text(json.dumps(oracle_quiz(case, pick(case)), indent=2) + "\n")
+            count = pick(case)
+            if count is None:
+                continue
+            quiz = oracle_quiz(case, count, wordy=name == "wordy")
+            (skill / "quizzes" / f"{case['id']}.json").write_text(json.dumps(quiz, indent=2) + "\n")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", action="append", default=[], metavar="NAME=PATH")
     ap.add_argument("--out", type=Path, default=EVALS / "suite")
-    ap.add_argument("--multeval-judge", metavar="PROVIDER:MODEL",
-                    help="also grade with multeval's judge, for an endpoint that enforces JSON schemas")
+    ap.add_argument("--judge-model", default="glm-5.3",
+                    help="the model of the judge check, on the OpenAI-compatible endpoint (default glm-5.3)")
     args = ap.parse_args()
 
     table = json.loads((EVALS / "cases.json").read_text())
@@ -154,43 +299,16 @@ def main():
     repos = {name: Path(path).expanduser().resolve() for name, path in repos.items()}
 
     out = args.out
-    shutil.rmtree(out / "cases", ignore_errors=True)
-    (out / "cases").mkdir(parents=True)
+    (out / "cases").mkdir(parents=True, exist_ok=True)
     (out / "suite.json").write_text(json.dumps({"name": "own-your-diff-quiz", "version": "0.1"}, indent=2) + "\n")
+    ids = {case["id"] for case in table["cases"]}
+    for stale in sorted((out / "cases").iterdir()):
+        if stale.name not in ids:
+            shutil.rmtree(stale)
 
     for case in table["cases"]:
-        repo = repos[case["repo"]]
-        if not (repo / ".git").exists():
-            sys.exit(f"evals/build: case {case['id']} needs the {case['repo']} repo at {repo}; pass --repo {case['repo']}=PATH")
-        base = git(repo, "rev-parse", "--short", case["base"]).strip()
-        head = git(repo, "rev-parse", "--short", case["head"]).strip()
-        root = out / "cases" / case["id"]
-        env, check = root / "environment", root / "check"
-        (env / "patches").mkdir(parents=True)
-        check.mkdir()
-
-        (env / "Dockerfile").write_text(DOCKERFILE)
-        (env / "build-repo.sh").write_text(BUILD_REPO.format(branch=case["branch"], case_id=case["id"]))
-        (env / "base.tar").write_bytes(base_tar(repo, base, EXCLUDE.get(case["repo"], [])))
-        patches = git(repo, "format-patch", "--no-signature", "--stdout", f"{base}..{head}")
-        (env / "patches" / "change.patch").write_text(patches)
-
-        (check / "check.sh").write_text(CHECK)
-        (check / "expect.py").write_text(EXPECT)
-        shutil.copy(SKILL / "scripts" / "quizlint", check / "quizlint")
-        expect = {k: case[k] for k in ("min", "max", "altitude")}
-        (check / "expect.json").write_text(json.dumps(expect, indent=2) + "\n")
-        (check / "rubric.json").write_text(json.dumps(rubric(case), indent=2) + "\n")
-
-        checks = [{"id": "plan", "grader": "script"}]
-        if args.multeval_judge:
-            provider, model = args.multeval_judge.split(":", 1)
-            checks.append({"id": "judge", "grader": "judge", "args": {
-                "provider": provider, "model": model, "rubric": rubric(case)}})
-        tags = [case["repo"], *case["altitude"], "no-questions" if case["max"] == 0 else "questions"]
-        (root / "case.json").write_text(json.dumps(
-            {"instruction": INSTRUCTION, "tags": tags, "timeout_s": 1200, "checks": checks}, indent=2) + "\n")
-        print(f"{case['id']}: {case['repo']} {base}..{head}")
+        source = write_case(case, out / "cases" / case["id"], repos[case["repo"]], args.judge_model)
+        print(f"{case['id']}: {source}")
 
     write_oracle(table["cases"], EVALS / "oracle")
 

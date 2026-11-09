@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "branch": "feat/plugin",
+  "base": "0389727",
+  "head": "a5f4dbc",
+  "target": "The skill ships as one plugin tree that Claude Code, Factory Droid, and Codex all read: a session-start hook runs quizgate sync, a PreToolUse guard denies an agent's git push --no-verify and core.hooksPath changes, and an installer adds the plugin to every harness on PATH and trusts the Codex hooks.",
+  "altitude": "design",
+  "incidental": [
+    "the JSON fields of plugin.json",
+    "the selftest cases",
+    "the timeout values in hooks.json",
+    "the exact JSON-RPC calls of codex-trust-hooks"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Think about the whole change and every place it touches, and about the people who will run it every day in their work, and then tell me, in your own words and with as much detail as you can remember, what problem this change was written to solve for them.",
+      "options": [
+        {
+          "label": "It stops a failure that people hit before the change, so their work no longer breaks halfway through the day.",
+          "correct": true
+        },
+        {
+          "label": "It renames some code.",
+          "correct": false
+        },
+        {
+          "label": "It only adds new tests.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the failure people hit before the change",
+        "how the change stops it"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does this change make harder, and why was that cost worth it?",
+      "key_points": [
+        "what the change gives up",
+        "why the gain is worth more than the loss"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Which part of the old behavior does the change keep, and what does that protect?",
+      "key_points": [
+        "the behavior that stays the same",
+        "who depends on it"
+      ],
+      "attempts": []
+    }
+  ]
+}
