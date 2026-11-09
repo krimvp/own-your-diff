@@ -12,6 +12,7 @@ do-not-write and AI-fluff lists of references/plain-english.md is a note to rere
 when the longer form is clearer. Notes exit 0.
 """
 import os
+import re
 import sys
 from html.parser import HTMLParser
 
@@ -71,7 +72,10 @@ def main(argv):
     parser = Prose()
     parser.feed(page[main_start:] if main_start >= 0 else page)
 
-    errors = ["a template placeholder {{...}} is still on the page"] if "{{" in page else []
+    # Code that `snippet` put on the page can hold braces of its own, so look outside it.
+    outside_code = re.sub(r'<figure class="ed">.*?</figure>|<pre\b.*?</pre>', "", page, flags=re.S)
+    left = re.findall(r"\{\{.*?\}\}|\{\{", outside_code, flags=re.S)
+    errors = [f"a template placeholder is still on the page: {' '.join(p.split())[:60]}" for p in left]
     notes = []
     counted = longest = 0
     for tag, text in parser.units:
