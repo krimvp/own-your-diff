@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "5e29438",
+  "head": "14bac80",
+  "target": "A repo opts into the quiz gate with a tracked marker file instead of a git setting in each clone; the session hook installs the pre-push hook in every clone that has the marker.",
+  "altitude": "design",
+  "incidental": [
+    "usage text of the quizgate commands",
+    "selftest moved to the top-level scripts directory",
+    "SKILL.md wording for the new install",
+    "agent-mode.md wording on spawning the examiners"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The old install set a git setting in each clone, pointing at a hooks directory the repo carried. Why did that design lose?",
+      "options": [
+        { "label": "The setting lived in one clone only, so a fresh clone pushed ungated.", "correct": true },
+        { "label": "Git refuses to run a hook from a directory the repo tracks.", "correct": false },
+        { "label": "The old hook could not tell which commits had a passed quiz.", "correct": false }
+      ],
+      "key_points": [
+        "The git setting lived in one clone's config, so it never reached a fresh clone.",
+        "A fresh clone pushed ungated until its author opted in there again."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A repo opts in once, and its author commits the marker file. What does every later clone of that repo get?",
+      "options": [
+        { "label": "The marker file, and a session hook that then installs the pre-push hook in that clone.", "correct": true },
+        { "label": "The marker file, and a git setting that each clone copies from the remote.", "correct": false },
+        { "label": "The pre-push hook itself, tracked in the repo like any other file.", "correct": false }
+      ],
+      "key_points": [
+        "The tracked marker file carries the opt-in to every clone.",
+        "The session hook installs the pre-push hook in every clone that has the marker.",
+        "The hook is never tracked; it lives in the clone's private hooks directory."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "Why does the hook run the gate from the author's personal bin directory, not straight from the plugin's install directory?",
+      "options": [
+        { "label": "The personal bin directory stays put across plugin updates, and a plain shell finds it.", "correct": true },
+        { "label": "Git only runs scripts that live under the author's home directory.", "correct": false },
+        { "label": "The plugin's install directory is not readable while a push is running.", "correct": false }
+      ],
+      "key_points": [
+        "The plugin's install path changes on every update, so a hook fixed to it would break.",
+        "The copy in the personal bin directory lets the gate run with no plugin session loaded."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A push runs where the hook cannot find the gate script anywhere it looks. What happens to the push?",
+      "options": [
+        { "label": "Blocked, with a message that says how to install the gate.", "correct": true },
+        { "label": "Allowed, because a push that cannot be checked must not be held up.", "correct": false },
+        { "label": "Allowed once, and the missing gate is noted for the next push.", "correct": false }
+      ],
+      "key_points": [
+        "The push is blocked, not allowed.",
+        "The gate fails closed: a push it cannot check never goes through.",
+        "The message tells the author how to install the gate."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A clone already has the author's own pre-push hook, one this change did not write. Which are true?",
+      "options": [
+        { "label": "Install refuses and prints the line the author must add.", "correct": true },
+        { "label": "The author's hook file is left unchanged.", "correct": true },
+        { "label": "Install adds the gate line to the author's hook for them.", "correct": false },
+        { "label": "Install moves the old hook aside and writes its own.", "correct": false }
+      ],
+      "key_points": [
+        "Install never overwrites a hook it did not write.",
+        "It prints the one line the author must add by hand.",
+        "Over its own hook, install changes nothing."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new teammate clones the opted-in repo on a fresh machine and pushes the same day. No session hook has run there yet. Is the push gated? What turns the gate on?",
+      "key_points": [
+        "No. The clone has the marker but no pre-push hook yet.",
+        "The session hook runs the sync command, which sees the marker and writes the hook; a hand-run opt-in does the same.",
+        "From then on, a push is blocked until a quiz covers its commits.",
+        "The same run puts a copy of the gate on the path for plain shells."
+      ],
+      "attempts": []
+    }
+  ]
+}

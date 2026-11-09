@@ -1,0 +1,81 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "33c4527",
+  "head": "b9696bd",
+  "target": "Session start repairs a stale repo-local hooks path that names a missing directory, and the gate never installs into a hooks directory another manager owns.",
+  "altitude": "mechanism",
+  "incidental": [
+    "selftest cases for the stale clone and the managed clone"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "A clone pulls the commit that deletes the tracked hooks directory. The clone's local hooks path still names it. What does a push from that clone do?",
+      "options": [
+        { "label": "It goes through, because git finds no pre-push hook to run.", "correct": true },
+        { "label": "It is blocked and told to run the own-your-diff skill.", "correct": false },
+        { "label": "It fails, because git reports the missing hooks directory.", "correct": false },
+        { "label": "It goes through, because git falls back to the default hooks directory.", "correct": false }
+      ],
+      "key_points": [
+        "git runs the pre-push hook from the directory the hooks path names, and that directory is gone",
+        "the pull deletes the directory but not the setting, which lives in the clone's config",
+        "no hook runs, so the push succeeds with no quiz and no error"
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "Session start runs in a clone whose local hooks path names a missing directory. Where does the gate's pre-push hook land, and what does session start change first?",
+      "options": [
+        { "label": "In the default hooks directory, after the stale value is unset.", "correct": true },
+        { "label": "In the directory the stale value named, after the gate recreates it.", "correct": false },
+        { "label": "Nowhere, until the human fixes the setting.", "correct": false },
+        { "label": "In the default hooks directory, with the stale value left in place.", "correct": false }
+      ],
+      "key_points": [
+        "session start unsets the repo-local value and says so in its output",
+        "git then uses its default hooks directory, where the gate installs the hook",
+        "recreating the named directory would leave the gate in untracked files a clean can delete"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The hooks path names a real directory owned by another hook manager. What does the gate do there, and what is the human told to do?",
+      "key_points": [
+        "the gate writes nothing into that directory",
+        "install refuses while that value is set, and session start says why",
+        "the human is told to call the gate from that manager's own pre-push hook",
+        "the directory belongs to another tool, so writing there could break it or be undone by it"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "invalidation",
+      "relevance": "important",
+      "prompt": "A teammate's machine-wide hooks path names a missing directory. The repo is opted in. Which of these hold in that clone?",
+      "options": [
+        { "label": "Session start unsets the value, because the directory is missing.", "correct": false },
+        { "label": "Session start keeps the value and shows a message about it.", "correct": true },
+        { "label": "No pre-push hook is installed, so a push skips the quiz.", "correct": true },
+        { "label": "A repo-local value naming a missing directory would be unset instead.", "correct": true }
+      ],
+      "key_points": [
+        "the repair unsets repo-local config only",
+        "a hooks path outside the repo belongs to the user, and the gate never changes it",
+        "with the value left set, no hook is installed, so a push skips the quiz"
+      ]
+    }
+  ]
+}

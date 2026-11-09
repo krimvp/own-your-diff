@@ -1,0 +1,147 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "5e29438",
+  "head": "14bac80",
+  "target": "A repo opts into the push gate with a tracked .own-your-diff marker instead of machine-local core.hooksPath. install writes the hook into the clone, and sync keeps a PATH copy of the gate so every opted-in clone gets gated.",
+  "altitude": "design",
+  "incidental": [
+    "selftest moved from skills/own-your-diff/scripts/ to scripts/, unchanged",
+    "SKILL.md and the usage text now describe install and sync",
+    "agent-mode.md wording: spawn each examiner fresh, with none of your context"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Why does the repo now opt in by committing a .own-your-diff file, instead of setting core.hooksPath to a .githooks dir carried in the tree?",
+      "options": [
+        { "label": "Every clone sees the opt-in, because the marker is tracked. core.hooksPath lived only in the clone where it was set.", "correct": true },
+        { "label": "Git ignores core.hooksPath during a push, so the old gate never ran.", "correct": false },
+        { "label": "The gate needs a tracked file to find its ledger under .git.", "correct": false },
+        { "label": "core.hooksPath cannot point at a directory inside the repository.", "correct": false }
+      ],
+      "key_points": [
+        "core.hooksPath is local config: it stayed in one clone and did not travel to fresh clones",
+        "the marker is tracked, so the opt-in travels with every clone and a session hook can install the gate wherever the marker is",
+        "the tree no longer carries a .githooks dir; the only gate artifact in the tree is the marker"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "An opted-in repo is cloned. What does its tracked tree carry from the gate, and where do the other pieces live?",
+      "options": [
+        { "label": "The tree carries only the marker. The hook lives in each clone's hooks dir, and the gate runs from outside the repo.", "correct": true },
+        { "label": "The tree carries the marker and the pre-push hook, as the old .githooks design did.", "correct": false },
+        { "label": "The tree carries the marker, the hook, and a copy of the gate.", "correct": false },
+        { "label": "The tree carries only the marker, and git downloads the hook from the plugin at push time.", "correct": false }
+      ],
+      "key_points": [
+        "the only gate artifact in the tracked tree is the marker",
+        "the hook is per-clone state, written into that clone's hooks dir, and never tracked",
+        "the gate binary lives outside the repo, at a stable location on the user's PATH"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "The pre-push hook runs, but it cannot find quizgate anywhere. What happens to the push, and why?",
+      "options": [
+        { "label": "The push is blocked, with a message that says where to get the gate. A missing gate must not let unquizzed work through.", "correct": true },
+        { "label": "The push goes through, because a missing gate is not the author's fault.", "correct": false },
+        { "label": "The hook asks the author to pass the quiz before the push continues.", "correct": false },
+        { "label": "The push goes through, and the hook notes the missing gate for the next sync.", "correct": false }
+      ],
+      "key_points": [
+        "the hook fails closed: it blocks the push and exits nonzero",
+        "the message points the author to where the gate comes from",
+        "the reason: a hooked clone must not push unquizzed work just because the gate went missing"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A teammate clones an opted-in repo on a fresh machine. Nothing has installed a hook in that clone yet. She pushes unquizzed work. Which of these hold?",
+      "options": [
+        { "label": "The clone has the marker but no pre-push hook, because the hooks dir never travels with a clone.", "correct": true },
+        { "label": "Git blocks the push, because the marker tells git that pushes need a quiz.", "correct": false },
+        { "label": "The push goes through, so the gate covers a clone only after install or sync has run there.", "correct": true },
+        { "label": "Running quizgate install in that clone would write the hook and close the gap.", "correct": true }
+      ],
+      "key_points": [
+        "the hooks dir is per-clone and never travels with the repo",
+        "git never reads the marker; the marker alone gates nothing",
+        "coverage in a clone comes from install or sync having run there",
+        "install closes the gap for that clone by writing the hook"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "quizgate install runs in a clone that already has the author's own pre-push hook. What does it do?",
+      "options": [
+        { "label": "It refuses to touch the file, and prints the one line the author must add.", "correct": true },
+        { "label": "It backs the file up and puts its own hook in its place.", "correct": false },
+        { "label": "It appends its own check to the end of the file.", "correct": false },
+        { "label": "It skips the clone silently and waits for the next sync.", "correct": false }
+      ],
+      "key_points": [
+        "the write path never overwrites a hook the author already has",
+        "it fails loudly and says which line to add so the author keeps control",
+        "a hook that already belongs to the gate is left alone"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "install and sync now do different jobs. In your own words: what is each job, and who runs it?",
+      "options": [],
+      "key_points": [
+        "install is the one-time opt-in: the author runs it once per repo, and it writes the marker to commit and the hook in that clone",
+        "sync is the recurring path: the plugin's session hook runs it, and it refreshes a stable copy of the gate on the user's PATH and quietly installs the hook in any opted-in clone that lacks one",
+        "the stable PATH copy exists because the plugin's install dir moves with updates, and the hook needs a place that does not move",
+        "the cost: the PATH copy can lag behind the real gate until the next sync"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A team opts a repo in and commits the marker. One teammate works with the plugin for a day. Another uses plain git, with no plugin, and pushes unquizzed work in her first hour. Which of these are true?",
+      "options": [
+        { "label": "The plugin teammate gets the hook from sync, without ever running install, and an unquizzed push is blocked.", "correct": true },
+        { "label": "The plain-git teammate's push goes through: her clone has the marker but no hook, and git never reads the marker.", "correct": true },
+        { "label": "Both teammates must set core.hooksPath before any push is gated.", "correct": false },
+        { "label": "Sync commits the marker in the plain-git teammate's clone, so her next push is blocked.", "correct": false }
+      ],
+      "key_points": [
+        "the marker is tracked, so it arrives with every clone, and it gates nothing by itself",
+        "sync installs the hook in opted-in clones, so plugin users are covered with no per-clone install",
+        "a plain git user has no hook until she runs install herself; the gate leans on the plugin for coverage",
+        "core.hooksPath is gone from the flow"
+      ],
+      "attempts": []
+    }
+  ]
+}

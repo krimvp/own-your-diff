@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "77f2e91",
+  "head": "d518ab6",
+  "target": "A secret or model key shorter than 8 characters is refused as a scenario problem before the first session opens, because the scrub replaces a raw value wherever it occurs — keys included — so a short one rewrites ordinary text, the result directory no longer reads back, and the run fails at exit 4 after the model calls were spent.",
+  "altitude": "design",
+  "incidental": [
+    "test fixtures in test/run.test.ts: a short secret and a short model key join the existing refusal test, which asserts every problem at its place and that the faux model made no call",
+    "test/cli.test.ts: the fake OLLAMA_API_KEY grows from 'unused' to 'sk-unused-key' so the existing directory-refusal test still passes the new check",
+    "the verification section of docs/design/eval-scenarios.md names the new refusal alongside the old ones"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "A run used a 1-character WEATHER_API_KEY and exited 4, after spending its model calls. What went wrong?",
+      "options": [
+        { "label": "The scrub skipped the 1-character value as too short to match safely, so the raw secret stayed in the log and the secret-free invariant failed the run.", "correct": false },
+        { "label": "The provider rejected the 1-character key on the first request, so the run ended in an error step.", "correct": false },
+        { "label": "The scrub replaced the value everywhere it occurred — in every string and every JSON key — so run.json held rewritten keys such as 's[LEAKED:WEATHER_API_KEY]enario' and readRun refused the directory at grading time.", "correct": true },
+        { "label": "The scenario parser refused the rewritten log because its steps no longer matched the scenario.", "correct": false }
+      ],
+      "key_points": [
+        "the scrub replaces each raw value wherever it occurs in the log — every string and every JSON key",
+        "a 1-character value occurs inside ordinary text, so the mark lands mid-word: 'scenario' became 's[LEAKED:WEATHER_API_KEY]enario'",
+        "run.json still parses as JSON, but no longer as a run: the rewritten keys are unknown fields, the scenario is missing, event types are unknown",
+        "the failure surfaced at grading, when the directory was read back, and the run had already spent its model calls"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The fix adds a 'shorter than 8 characters' problem to the env check runScenario already runs, for the scenario's secrets and the model key alike. Why refuse the value there, instead of teaching the scrub to tolerate short values?",
+      "options": [
+        { "label": "The scrub cannot see the environment; only runScenario knows a value is short, so the check has to live there.", "correct": false },
+        { "label": "A short value has no safe scrub: replacing it rewrites ordinary text, skipping it leaves the raw value in the log. Refusing it as a scenario problem keeps the log both readable and secret-free, and costs no model call.", "correct": true },
+        { "label": "Providers reject short keys anyway; refusing early only reports the same rejection before the first request instead of after it.", "correct": false },
+        { "label": "The scrub runs only on the finished log, so the earliest a short value could be caught is when the directory is written; the env check just moves the same error a few calls earlier.", "correct": false }
+      ],
+      "key_points": [
+        "the scrub's contract is to replace a raw value wherever it occurs, keys included; that blanket replace is what keeps every raw value out of the log",
+        "a short value cannot be scrubbed safely: replacing it corrupts ordinary text so the log no longer reads back, skipping it leaves the raw value in the log so secret-free fails",
+        "so the value cannot run at all, and the pre-flight check is where the run already refuses things that make it pointless — unset secrets, unknown names — before the first session opens, at exit 2, with no model call spent",
+        "the model key passes through the same check because the scrub holds its raw value too, so a short one would corrupt the log the same way"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Which of these are true of the new length check? Pick every true statement.",
+      "options": [
+        { "label": "It keeps raw secret values out of the run log — the scrub still does that, in every string and every key.", "correct": true },
+        { "label": "A value of 8 or more characters can still corrupt the result directory if those characters occur in the log's text.", "correct": true },
+        { "label": "It protects the run's model budget: a value that would wreck the log is refused before the first session opens.", "correct": true },
+        { "label": "It proves a run is safe: any scenario whose secrets pass the check will grade from its files.", "correct": false }
+      ],
+      "key_points": [
+        "the scrub, not the length check, keeps raw values out of the log; the check only refuses values that are likely to occur in ordinary text",
+        "the length is a cut on likelihood, not a proof: a longer value that occurs in the log's text still rewrites it the same way",
+        "what the check protects is the log's readability and the model budget — the run refuses before paying instead of failing at exit 4"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A team must run scenarios against a dev server whose API key is 'sk-dev' — six characters. Where does this requirement go, and what has to change?",
+      "key_points": [
+        "as it stands, the run refuses the key at exit 2 before the first session opens — the refusal is the guard working, not a bug",
+        "dropping or lowering the length check alone brings the old failure back: the scrub would still replace 'sk-dev' wherever those six characters occur, and the log would corrupt after the model calls",
+        "the change belongs upstream of the guard: issue a longer key — the cut assumes real keys are long — or rework the scrub so marking no longer depends on the value being rare",
+        "whatever changes, both contracts must hold: no raw value anywhere in the log, and the directory reads back as the run"
+      ],
+      "attempts": []
+    }
+  ]
+}

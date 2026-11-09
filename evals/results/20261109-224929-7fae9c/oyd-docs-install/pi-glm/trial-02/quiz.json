@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "3512cf9",
+  "head": "f5bef37",
+  "target": "Explain to users and contributors how to install the plugin, opt a repo in, and update it.",
+  "altitude": "trivial",
+  "incidental": [
+    "AGENTS.md: contributor notes stated as rules — run the selftest, validate the manifest, bump the version, retrust Codex hooks after edits",
+    "AGENTS.md: how hook scripts find the plugin root, and why they never read the harness root variable",
+    "CLAUDE.md: a symlink to AGENTS.md"
+  ],
+  "examinee": "human",
+  "questions": []
+}

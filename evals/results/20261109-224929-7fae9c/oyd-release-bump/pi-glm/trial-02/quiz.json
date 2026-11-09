@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "branch": "chore/release",
+  "base": "1494892",
+  "head": "45fcd6e",
+  "target": "Release the plugin as 0.2.0. The version field moves from 0.1.0 to 0.2.0 in both plugin manifests, together, so installs in each store pick up the release.",
+  "altitude": "trivial",
+  "incidental": [],
+  "examinee": "human",
+  "questions": []
+}

@@ -1,0 +1,138 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "93cc474",
+  "head": "c8cb37a",
+  "target": "Judge a run from its run log: engine invariants, where one failing run is a bug, model behaviors, measured as rates over the trials that had the chance, and cost, reported but never judged.",
+  "altitude": "design",
+  "incidental": [
+    "the exact token sums and ratios of the cost report",
+    "the small helpers: the JSON string walker, the argument and pattern matchers, the tests' evidence picker",
+    "the test fixtures: the faux model, the canary secret, the weather, clock and guard plugins",
+    "the parsing of each transcript message shape into the run view"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Before this change, the live test asserted a few properties by hand and logged the rest. Why does the report split its verdicts into invariants and behaviors?",
+      "options": [
+        { "label": "An invariant failure is an engine bug, and a behavior failure is data about the model.", "correct": true },
+        { "label": "Behaviors can fail safely, but an invariant failure stops the report from being written at all.", "correct": false },
+        { "label": "Invariants read the transcript, behaviors read the event stream, so the two need different judges.", "correct": false },
+        { "label": "A behavior failure becomes an engine bug once it repeats across many runs, so the split is bookkeeping.", "correct": false }
+      ],
+      "key_points": [
+        "Mixed together, an engine bug and a model mistake look alike, and each gets the wrong response.",
+        "One failing run proves an engine bug, so an invariant never waits for a rate.",
+        "A behavior is a bet on the model, judged per trial and read as a rate.",
+        "Cost is reported and never judged."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The judge takes only the run log as its input. What does that boundary buy?",
+      "options": [
+        { "label": "The live test, the CLI and the future grader all read the same files and get the same verdict.", "correct": true },
+        { "label": "Reading files is faster than keeping a whole run in memory.", "correct": false },
+        { "label": "A live judge would see unredacted events, so only the files are safe to read.", "correct": false }
+      ],
+      "key_points": [
+        "Any caller gets the same verdict from the same files: the live test, the CLI, the grader.",
+        "The grader judges runs it never saw happen, from the files alone."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "A behavior skips when the run never gave the model the chance to show it. What breaks if a skip counts as a failure?",
+      "options": [
+        { "label": "Rates would punish runs that gave no chance, and runs in different modes or scenarios would stop comparing.", "correct": true },
+        { "label": "Nothing breaks: the model still failed to show the behavior, so the rate should fall.", "correct": false },
+        { "label": "Skips would hide real model failures, because the report could no longer tell them apart.", "correct": false },
+        { "label": "The engine would log an invariant failure, because a skip and a failure are one kind.", "correct": false }
+      ],
+      "key_points": [
+        "A rate counts only the trials that had the chance to show the behavior.",
+        "A skip says the run gave no chance; it is not a loss by the model.",
+        "Native-mode runs never show dispatch recovery, so counting skips there would read as model failure."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "The grader will rate one behavior across many runs of the same scenario. What does it key each verdict on, and why is that key unique?",
+      "options": [
+        { "label": "The behavior's name and its step number; the scenario allows one expectation of each check per step.", "correct": true },
+        { "label": "The turn the behavior was judged in, which every run reaches in the same order.", "correct": false },
+        { "label": "The tool the behavior names, which is unique within the plugin set.", "correct": false },
+        { "label": "The prompt's text, hashed, so runs compare on what the model was asked.", "correct": false }
+      ],
+      "key_points": [
+        "Each verdict carries the behavior's name joined with its step number.",
+        "The scenario refuses a second expectation of the same check on one step, so keys stay unique."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The judges read the transcript and the event stream together. Name the two cases where the event stream alone would misjudge a run.",
+      "options": [],
+      "key_points": [
+        "No listener sees the records a session writes when it is created, so the plugins enabled at start come from the transcript.",
+        "In dispatch mode, a tool call rejected on its schema leaves no tool event, only an error result in the transcript."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new engine property joins the invariants. Which of these are true?",
+      "options": [
+        { "label": "The build fails until its test table carries both a passing case and a failing case.", "correct": true },
+        { "label": "The report gains a key for it, derived from the table that lists the invariants.", "correct": true },
+        { "label": "It skips on runs that never used the plugin it is about.", "correct": false },
+        { "label": "Scenarios must declare it on every prompt step, or the run skips it.", "correct": false }
+      ],
+      "key_points": [
+        "The invariants table is the list; the report's keys and the type come from it.",
+        "The test tables are typed by the check names, so a check without cases does not compile.",
+        "An invariant is judged on every run, never skips, and needs no declaration in the scenario."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A three-step run stops: the prompt of step 2 ends aborted mid-answer. What does the report say about the run, the invariants, and the behaviors of steps 2 and 3?",
+      "options": [],
+      "key_points": [
+        "The report marks the run incomplete, because not every scenario step ran.",
+        "The invariants are still judged on the steps that ran.",
+        "The behaviors of step 2 skip, because its prompt never finished.",
+        "The behaviors of step 3 skip, because the run never reached them."
+      ],
+      "attempts": []
+    }
+  ]
+}

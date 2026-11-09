@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "77f2e91",
+  "head": "d518ab6",
+  "target": "Refuse a secret or model key shorter than 8 characters as a scenario problem before the first session opens, because a short value makes the scrub corrupt the run log.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the design-doc lines in docs/design/eval-scenarios.md that record the new rule and the exit-4 story",
+    "test fixtures: run.test.ts now sets a short secret and a short model key and expects their places in the refusal, and cli.test.ts's fake model key grew past 8 characters so the directory refusal stays the only problem",
+    "the MIN_SECRET_LENGTH constant and its comment in src/eval/run.ts"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "A 1-character WEATHER_API_KEY broke a run after it had spent its model calls. What did that value do inside the run log?",
+      "options": [
+        { "label": "The value stayed raw in the log, so the secret-free invariant found a leak in run.json", "correct": false },
+        { "label": "The provider refused the 1-character key at the first model call, so the run ended in error", "correct": false },
+        { "label": "The scrub replaced the value wherever it occurred, JSON keys included, so keys such as scenario became s[LEAKED:WEATHER_API_KEY]enario and the result directory no longer parsed", "correct": true },
+        { "label": "The runner treated the short value as unset, so the scenario lacked a secret it had named", "correct": false }
+      ],
+      "key_points": [
+        "the scrub replaces each raw value wherever it occurs in the log, JSON keys included",
+        "a 1-character value occurs inside ordinary words and key names, so it rewrote the log's structure, not just its text"
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "measurement",
+      "relevance": "core",
+      "prompt": "Before the fix, that same short key ended a run at exit 4. After it, the run exits 2 before any model call. Why did the failure surface so late before, and why so early now?",
+      "options": [
+        { "label": "Exit 4 was the provider's own code for a rejected key; exit 2 is the runner's", "correct": false },
+        { "label": "The damage lands in the scrubbed log, and the run sees it only when it reads its result directory back to grade it; now the short value joins the other scenario problems, so the refusal comes before the first session opens", "correct": true },
+        { "label": "The model hid the short key in each reply, so only the grading at the end could see it", "correct": false },
+        { "label": "The fix moved the scrub before the first session, so an empty log is checked early", "correct": false }
+      ],
+      "key_points": [
+        "the CLI grades the files it just wrote, so the damage shows only when the run reads its result directory back",
+        "before the fix, nothing looked at the value's length: the run spent its model calls and failed at the read-back, an error no boundary named, which is exit 4",
+        "after the fix, the short value is a scenario problem reported with every other one, each at its place, and the refusal exits 2 before the first session opens"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The fix kept the scrub total: the raw value is still replaced wherever it occurs, JSON keys included. Which of these say why weakening the scrub, and keeping short secrets, would not have fixed the bug?",
+      "options": [
+        { "label": "The scrub is content-blind: it marks every exact occurrence, leak or coincidence, so a short value still rewrites ordinary text in string values", "correct": true },
+        { "label": "The result-directory reader checks JSON keys for raw secrets, so a leak in a key is caught at grading", "correct": false },
+        { "label": "A raw value that lands in a JSON key would stay unmarked, so the log could hold a raw secret that the mark-based leak check never sees", "correct": true },
+        { "label": "Marks in ordinary text are harmless, because secret-free fails only on raw values", "correct": false }
+      ],
+      "key_points": [
+        "the scrub cannot tell an occurrence that is a real leak from one that is ordinary text, so a short value still rewrites whatever it lands in",
+        "the log must hold no raw value anywhere, keys included, and secret-free judges by marks, so an occurrence the scrub skips stays raw and invisible to the check",
+        "refusing the input keeps the scrub total and the invariant whole"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "invalidation",
+      "relevance": "important",
+      "prompt": "A teammate sets WEATHER_API_KEY to a 9-character word that also appears in the scenario's prompt text. What does the run do, and what does that say about what the 8-character rule guarantees?",
+      "key_points": [
+        "the rule is a length threshold, not a judgment of content: a 9-character value passes, and the run opens sessions and spends its model calls",
+        "the scrub still replaces the value wherever it occurs, so the greeting in the log becomes a [LEAKED:WEATHER_API_KEY] mark",
+        "secret-free fails on any mark, so the run ends at a failed invariant, exit 1, not at an early refusal",
+        "the rule refuses the values most likely to collide with ordinary text; it lowers the odds of corruption, it does not promise that a value is safe"
+      ]
+    }
+  ]
+}

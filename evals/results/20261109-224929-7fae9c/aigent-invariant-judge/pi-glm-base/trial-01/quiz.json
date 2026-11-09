@@ -1,0 +1,202 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "93cc474",
+  "head": "c8cb37a",
+  "target": "check(run) judges a run so an engine bug and a model mistake no longer look alike: invariants pass or fail and never skip, behaviors are rates over the trials that had a chance, and cost is reported but never judged.",
+  "altitude": "design",
+  "incidental": [
+    "cost arithmetic: token sums, ratio rounding and per-step request grouping",
+    "the JSON-path walker that visits every string and key for secret-free",
+    "tool-name parsing: the plugin is the part before the double underscore",
+    "test plumbing: the faux scripts, the log mutation helpers and the pick evidence helper"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The live test used to assert three ad hoc properties and log the rest, so an engine bug and a model mistake looked alike. Why does check judge a run as two classes, invariants and behaviors?",
+      "options": [
+        { "label": "Invariants are checked without a model, so they are free, while behaviors need a paid run.", "correct": false },
+        { "label": "An invariant is an engine property every trial must keep, so one failure is an engine bug; a behavior is a bet on the model, measured as a rate, so one failure is a data point.", "correct": true },
+        { "label": "Invariants hold in native tool mode and behaviors in dispatch mode.", "correct": false },
+        { "label": "Invariants guard secrets and behaviors guard plugins.", "correct": false }
+      ],
+      "key_points": [
+        "a failing invariant names an engine bug the engine must fix",
+        "a failing behavior is a data point in a rate about the model, not a bug",
+        "the split exists because the old live test could not tell the two apart"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A model answers both weather prompts without ever enabling the weather plugin. The report shows discover@1 fail and use@1 skip. What does the skip mean for use's rate?",
+      "options": [
+        { "label": "The trial counts as a fail, because ignoring the tool is what the check bets against.", "correct": false },
+        { "label": "The trial counts as a pass, because the model cannot be blamed for what never ran.", "correct": false },
+        { "label": "use had no chance to show, so the trial is left out of the rate; only trials where the model enabled the plugin count.", "correct": true },
+        { "label": "The whole run drops out of every behavior's rate.", "correct": false }
+      ],
+      "key_points": [
+        "a skip is left out of the behavior's rate",
+        "a behavior skips when its precondition never happened, here the model never enabling the plugin",
+        "discover still fails on the same run, so the model is judged where it had a chance"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "extension",
+      "relevance": "core",
+      "prompt": "Months from now, the multeval grader needs aigent's verdicts on stored runs. Where does it get them, and what does it not need?",
+      "options": [
+        { "label": "It reads a result directory back into a run log and runs check on it; it needs no engine, session or model, and it gets the verdict the live test and the CLI would.", "correct": true },
+        { "label": "It runs the scenario again with a cheap model, because a run log is only valid live.", "correct": false },
+        { "label": "It reimplements the checks over the raw transcript, because check is live-test code.", "correct": false },
+        { "label": "It subscribes to session events and grades them as they stream.", "correct": false }
+      ],
+      "key_points": [
+        "check reads only the run log, so a stored result directory grades offline",
+        "every caller, the live test, the CLI and the grader, gets the same verdict from the same files",
+        "the grader needs no engine, session or model"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "check reads the transcript and the step events together. Which of these would it lose or misjudge if it saw only the events and never the transcript?",
+      "options": [
+        { "label": "The plugins a session started with: no listener can subscribe before the session is returned, so calls to them would look like enabled-before-call violations.", "correct": true },
+        { "label": "The plugins the model enabled during a prompt: those arrive only as transcript records.", "correct": false },
+        { "label": "A core__call_tool that was rejected before it ran: it leaves no tool event, only an error result in the transcript.", "correct": true },
+        { "label": "The final answer of a prompt: the transcript is the only place it is kept.", "correct": false }
+      ],
+      "key_points": [
+        "a session's creation records reach no listener, so its enabled-at-start set is read from the transcript",
+        "a rejected core__call_tool leaves an error result in the transcript and no tool event, which dispatch-recover needs",
+        "tool outcomes and turn ends live in the events, so the two sources are merged, not chosen between"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Two runs of the same scenario pass every behavior. One used ten times the tokens of the other. What does the report say about that?",
+      "options": [
+        { "label": "The expensive run fails a cost check, so cost is capped like a behavior.", "correct": false },
+        { "label": "The cost numbers appear in the report with no verdict attached; cost is reported to explain results, never judged, because cheap is not correctness.", "correct": true },
+        { "label": "The report leaves cost out, because tokens are an engine detail.", "correct": false },
+        { "label": "The expensive run's behaviors are skipped, because a costly model cannot be trusted.", "correct": false }
+      ],
+      "key_points": [
+        "cost is reported as numbers and never judged: no verdict keys on it",
+        "the verdicts are about correctness; cost is measurement for later analysis, such as the model comparison"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new behavior check, clarify, arrives: the model must ask the user a question before it calls a tool. Where does it go in this design, and what stops it shipping unjudged or untested?",
+      "options": [],
+      "key_points": [
+        "a scenario parser entry: its fields and the names it references, so scenarios can declare it",
+        "a judge case in checks.ts: the judge switch is exhaustive, so a check without a judge fails the build",
+        "a case in the test table, which is typed by the check names, so it ships with a passing and a failing case",
+        "it must own its precondition and its skip rule"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "No model script can make a correct engine break an invariant. How does the test suite give each invariant a failing case?",
+      "options": [
+        { "label": "It scripts the faux model to misbehave until the invariant trips.", "correct": false },
+        { "label": "It takes a correct run, injects one fault that stands for a named engine bug, and asserts the failing verdict's evidence names that bug.", "correct": true },
+        { "label": "It runs the engine with a buggy plugin until the invariant trips.", "correct": false },
+        { "label": "It builds the run log by hand, with no run behind it.", "correct": false }
+      ],
+      "key_points": [
+        "an invariant is an engine property, so no model script can break it on a correct engine",
+        "the failing case is a correct run with one injected fault, named for the engine bug it stands for",
+        "the passing case's evidence shows the invariant was exercised, so the pass is not vacuous"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "check meets a transcript message it does not know: an unknown role, or a known role with unexpected content. What does it do, and what would ignoring the message cost?",
+      "options": [
+        { "label": "It throws, because a check over a misread transcript would be wrong without saying so; ignoring would silently turn a misread into a wrong verdict.", "correct": true },
+        { "label": "It skips the message and judges the rest, because one odd message should not sink a report.", "correct": false },
+        { "label": "It reads the message as a system message, the one role with no content to misread.", "correct": false },
+        { "label": "It fails every invariant, because an unknown message proves the engine is broken.", "correct": false }
+      ],
+      "key_points": [
+        "an unknown or malformed message makes check throw",
+        "ignoring would silently produce a wrong verdict",
+        "the strictness keeps the checks honest when the transcript shape changes"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q9",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "use skips when the model never enables the tool's plugin. host-enable has no skip for a host that never enables. Why the difference?",
+      "options": [
+        { "label": "Host enables are recorded in a shape the check cannot see.", "correct": false },
+        { "label": "host-enable is an invariant, and invariants never skip.", "correct": false },
+        { "label": "The scenario format promises host-enable its enable step, and the parser rejects the scenario without it before any paid run; what the model does mid-run cannot be promised, so that becomes a skip.", "correct": true },
+        { "label": "A host that never enables is not a mistake, so there is nothing to judge.", "correct": false }
+      ],
+      "key_points": [
+        "setup the scenario format can promise is enforced at authoring time, before a paid run",
+        "preconditions that depend on what the model or the run did become skips",
+        "the run log carries the scenario, so a stored run keeps the same guarantee"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q10",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "check grades a stored result directory from a paid run. The report shows secret-free fail, use@1 skip, follow@1 fail, and every other invariant pass. Which of these hold?",
+      "options": [
+        { "label": "The engine let a raw secret value into the run log's data; the scrub replaced it with a mark, and that mark is the evidence.", "correct": true },
+        { "label": "use@1's trial is left out of use's rate, because its precondition never happened.", "correct": true },
+        { "label": "The scrub is broken: it should have removed every trace of the secret before check ran.", "correct": false },
+        { "label": "follow@1's failure is a data point about the model's answer, not an engine bug.", "correct": true }
+      ],
+      "key_points": [
+        "a failing invariant names an engine bug, whatever the model did",
+        "a skip leaves the rate, and a behavior failure is the model's data point",
+        "grading the stored files works because check reads only the run log"
+      ],
+      "attempts": []
+    }
+  ]
+}

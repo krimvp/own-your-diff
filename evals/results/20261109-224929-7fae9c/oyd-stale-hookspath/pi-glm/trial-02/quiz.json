@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "33c4527",
+  "head": "b9696bd",
+  "target": "Session start unsets a repo's hooks path when it names a missing directory, and the gate never writes into a hooks directory that another tool owns.",
+  "altitude": "mechanism",
+  "incidental": [
+    "selftest scenarios for the stale hooks path and the manager-owned hooks directory"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "A repo stops tracking its hooks directory, and a clone pulls that deletion. The clone's hooks path still names the deleted directory. Why does a push from that clone run with no gate?",
+      "options": [
+        { "label": "Git falls back to the default hooks directory, which has no gate hook in this clone.", "correct": false },
+        { "label": "Git looks for hooks only in the directory the hooks path names, and that directory is gone.", "correct": true },
+        { "label": "The pull removed the repo's opt-in marker, so the clone is not gated anymore.", "correct": false }
+      ],
+      "key_points": [
+        "Git runs hooks from the directory the hooks path names, and from nowhere else.",
+        "The named directory no longer exists, so git finds no pre-push hook and runs none.",
+        "The failure is silent: nothing errors, and the push goes through."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "In another clone, the hooks path names a real directory that a hook manager owns. What could go wrong if the gate put its hook there, and what does it do instead?",
+      "options": [],
+      "key_points": [
+        "Two tools would then fight over one hook file in that directory.",
+        "The manager may rewrite the file, so the gate could vanish without anyone noticing.",
+        "The gate writes nothing there and prints the line a human can add to the manager's pre-push hook.",
+        "Until a human adds that line, the clone's pushes run ungated, and the gate accepts that cost."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "flow",
+      "relevance": "important",
+      "prompt": "A clone's local hooks path names a deleted directory. The author runs the installer by hand, before session start has run. Which of these happen?",
+      "options": [
+        { "label": "The installer unsets the hooks path.", "correct": false },
+        { "label": "The clone is gated again once session start has run.", "correct": true },
+        { "label": "The installer writes its hook into the default hooks directory.", "correct": false },
+        { "label": "The installer prints the line a human can add to a pre-push hook.", "correct": true }
+      ],
+      "key_points": [
+        "Only session start unsets a stale hooks path; the installer never changes the config.",
+        "Any hooks path set in the config makes the installer refuse and print the line to add.",
+        "Session start then unsets the stale value and installs the gate's hook in the default hooks directory.",
+        "So the pushes are gated after session start, not after the hand-run install."
+      ],
+      "attempts": []
+    }
+  ]
+}

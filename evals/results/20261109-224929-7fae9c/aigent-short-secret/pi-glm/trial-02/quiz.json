@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "77f2e91",
+  "head": "d518ab6",
+  "target": "The runner refuses a secret or model key shorter than eight characters as a scenario problem, before the first session opens, so the scrub cannot corrupt the run log with a short value.",
+  "altitude": "mechanism",
+  "incidental": [
+    "test fixtures use secret and key values that meet the new floor, and cover a short pair",
+    "the design doc states the new refusal in the fail-before-paying invariant and the verification list"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Before this change, why did a one-letter secret value make the whole run fail at the end?",
+      "options": [
+        { "label": "The model refused the run, because it cannot sign calls with a one-letter key.", "correct": false },
+        { "label": "The scrub marks the letter wherever it appears, keys included, so the run's files stopped parsing.", "correct": true },
+        { "label": "The runner treated the short value as unset, and dropped it from the log.", "correct": false },
+        { "label": "The letter leaked into the log, and the leak check failed the run.", "correct": false }
+      ],
+      "key_points": [
+        "The scrub replaces the raw value wherever it appears in the log, keys included.",
+        "It cannot tell a real leak from the same letters inside an ordinary word.",
+        "A one-letter value rewrites many words and keys, so the run cannot read its own files back."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Before this change, a short secret failed the run at the end. Why does the runner now refuse it before the first session opens?",
+      "key_points": [
+        "The refusal stops the run before the first session opens, so no model call is spent.",
+        "The old failure came at the end, after the run had already spent model calls."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Which of these does the runner refuse before the first session opens?",
+      "options": [
+        { "label": "A model key of seven characters", "correct": true },
+        { "label": "A secret of exactly eight characters", "correct": false },
+        { "label": "A secret that is not set", "correct": true },
+        { "label": "A twenty-character secret whose value is a common word", "correct": false }
+      ],
+      "key_points": [
+        "The length floor also covers the model key, because the scrub reads it like any secret.",
+        "Only values shorter than eight characters are refused; eight itself is allowed.",
+        "A long value passes the floor, so a collision with ordinary text stays possible but unlikely."
+      ],
+      "attempts": []
+    }
+  ]
+}

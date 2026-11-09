@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "branch": "feat/plugin",
+  "base": "d8d9c93",
+  "head": "bf662f8",
+  "target": "Ship the gate as one plugin for Claude Code, Droid, and Codex, so every clone of an opted-in repo gets the gate with no manual setup and an agent cannot bypass it.",
+  "altitude": "design",
+  "incidental": [
+    "the rewritten selftest: scaffolding that covers the new hooks and the gate",
+    "manifest metadata: plugin names, version, owner, and descriptions",
+    "the installer's source override and its closing message",
+    "the message-by-message plumbing inside the Codex trust step"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The skill ships as one plugin. What lets the same package install into Claude Code, Droid, and Codex?",
+      "options": [
+        { "label": "All three read the same plugin manifests and the same hooks file.", "correct": true },
+        { "label": "The installer rewrites the hooks in each tool's own format.", "correct": false },
+        { "label": "The tools all run bash, so the packaging does not matter.", "correct": false }
+      ],
+      "key_points": [
+        "The three tools read the same plugin manifests and the same hooks declarations.",
+        "One shared format serves all three; per-tool copies would drift."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "A pre-push hook lives in each clone, not in the plugin. Why does the plugin install it when a session starts, not when the plugin is installed?",
+      "options": [
+        { "label": "Install time reaches the user once; session start reaches every clone as it opens.", "correct": true },
+        { "label": "Hooks written at install time would vanish with each plugin update.", "correct": false },
+        { "label": "Session start is the only hook event all three tools support.", "correct": false }
+      ],
+      "key_points": [
+        "The plugin is installed once per user, but the hook must exist in every clone.",
+        "Session start reaches each clone as it opens, so a fresh clone needs no setup.",
+        "Session start also keeps the gate tool on PATH."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The guard sees each shell command the agent wants to run. Which of these does it deny?",
+      "options": [
+        { "label": "A push that tells git to skip its hooks", "correct": true },
+        { "label": "A command that points git at a different hooks folder", "correct": true },
+        { "label": "A plain push of commits with no passed quiz", "correct": false },
+        { "label": "A command that only reads the hooks folder setting", "correct": false }
+      ],
+      "key_points": [
+        "The guard denies pushes that skip hooks and commands that move git's hooks folder.",
+        "A plain push passes the guard; the pre-push hook blocks it later.",
+        "Bypassing the gate is the human's call, never the agent's.",
+        "The guard checks command text, so it stops the plain bypasses, not every trick."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Codex skips a plugin's hooks until it trusts them. What does the installer do about this?",
+      "options": [
+        { "label": "It writes the trust entries Codex itself writes when you approve a hook.", "correct": true },
+        { "label": "It asks the user to approve each hook the first time it runs.", "correct": false },
+        { "label": "It tells Codex to run the hooks without trusting them first.", "correct": false }
+      ],
+      "key_points": [
+        "Codex runs a plugin hook only when its hash is on its trust list.",
+        "The installer writes the same trust entries the approval step writes.",
+        "Without this step, the hooks install but never run in Codex."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The session-start hook fails on a user's machine. What happens to their next session?",
+      "options": [
+        { "label": "The session starts normally; the hook's error never reaches it.", "correct": true },
+        { "label": "The session starts, but the plugin is listed as broken.", "correct": false },
+        { "label": "Session start fails until the user fixes the error.", "correct": false }
+      ],
+      "key_points": [
+        "The hook never fails the session; it swallows its own errors.",
+        "Worst case, the gate is missing in that clone, not the session."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Which of these does the plugin do?",
+      "options": [
+        { "label": "In a repo with the opt-in marker, session start installs the pre-push hook.", "correct": true },
+        { "label": "In a repo without the marker, session start still prints the gate warning.", "correct": false },
+        { "label": "The installer replaces a pre-push hook the repo already had.", "correct": false },
+        { "label": "When a repo already has a hook, the install fails and names the line to add.", "correct": true }
+      ],
+      "key_points": [
+        "Only a repo with the tracked opt-in marker gets the hook and the warning.",
+        "The marker is tracked in the repo, so it travels with every clone.",
+        "A repo without the marker sees no changes and no message.",
+        "A foreign pre-push hook is never replaced; the human is told what to add."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A fourth tool joins Claude Code, Droid, and Codex. It reads the same plugin format, but it distrusts plugin hooks as Codex does. What must the installer add for it?",
+      "options": [],
+      "key_points": [
+        "Add the tool to the installer's list; the existing package serves it unchanged.",
+        "Write the tool's trust entries for the hooks, as the installer does for Codex.",
+        "Without the trust step, the hooks install but never run there."
+      ],
+      "attempts": []
+    }
+  ]
+}

@@ -1,0 +1,190 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "dd72efd",
+  "head": "fb79950",
+  "target": "Let multeval drive aigent as a command and grade the run from the files it leaves: the hard-coded live test becomes scenario data, every run is recorded as a result directory, and the verdict on engine bugs and model bets comes from those files alone.",
+  "altitude": "design",
+  "incidental": [
+    "package.json and package-lock.json: the aigent command entry and the npm script that loads .env",
+    "test/boundary.test.ts: the import guard learns the new eval file names",
+    "test/scenarios/: the first scenario file and the fixture plugins it loads",
+    "the faux-model plumbing the new tests share"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "aigent run writes the result directory, then grades the files it just wrote, not the run in memory. What does the round trip prove?",
+      "options": [
+        { "label": "The files can drift from memory, and the check must catch the difference.", "correct": false },
+        { "label": "The check runs in a fresh process, so it cannot see the run in memory.", "correct": false },
+        { "label": "The directory alone is enough to grade the run, for a grader that was not there.", "correct": true },
+        { "label": "Reading the files back is cheaper than keeping the whole run in memory.", "correct": false }
+      ],
+      "key_points": [
+        "The files alone are enough to grade the run.",
+        "Every run proves it, because the command grades the files it just wrote.",
+        "multeval reads only the files, and it never watched the run."
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The old live test logged most of what it saw, so an engine bug and a model mistake looked alike. How does the report split them now?",
+      "options": [
+        { "label": "Invariants check the engine code, and behaviors check the model code.", "correct": false },
+        { "label": "Invariants must hold in every run; behaviors are rates over trials, and cost is never judged.", "correct": true },
+        { "label": "An invariant failure stops the run at once; a behavior failure is only logged.", "correct": false },
+        { "label": "Invariants hold in native mode, and behaviors are the bets of dispatch mode.", "correct": false }
+      ],
+      "key_points": [
+        "Invariants are engine properties every run must keep; one failure is an engine bug.",
+        "Behaviors are the design's bets on the model, measured as rates over trials.",
+        "Cost is reported and never judged.",
+        "The exit code carries the split: an engine bug fails it, and behaviors never do."
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A run stops at its first prompt, which ended in a provider error. The scenario expects the model to use a tool on that prompt and on a later one. Which expectations end in a skip?",
+      "options": [
+        { "label": "The invariants, because the run stopped early.", "correct": false },
+        { "label": "The use expectation on the failed prompt, because the prompt never finished.", "correct": true },
+        { "label": "The cost of the first prompt, because no answer came back.", "correct": false },
+        { "label": "The use expectation on the later prompt, because the run never reached it.", "correct": true }
+      ],
+      "key_points": [
+        "A behavior skips when its step never ran or its prompt ended early.",
+        "A behavior skips when its precondition never happened, such as an enable that never came.",
+        "A skip is left out of the behavior's rate, so the rate counts only trials that had the chance.",
+        "Invariants never skip."
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The engine hands the runner a raw secret, not the redacted form. What do the written files hold, and what can a grader learn?",
+      "options": [
+        { "label": "The raw secret, so only a key holder can audit the files.", "correct": false },
+        { "label": "A leak mark naming the secret; the grader sees the leak without the key.", "correct": true },
+        { "label": "Nothing; the runner drops any string that carried the secret.", "correct": false },
+        { "label": "The session's redacted mark, so the leak looks like a normal redaction.", "correct": false }
+      ],
+      "key_points": [
+        "No file holds the raw secret; the scrub leaves a mark that names it.",
+        "The leak mark differs from a normal redaction, so a leak never hides as one.",
+        "The secret-free invariant fails on the mark, so a leak is an engine bug.",
+        "A grader can find and name the leak without ever holding the key."
+      ]
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The runner joins neighboring text deltas into one string before the scrub runs. Why does the scrub need whole strings?",
+      "options": [
+        { "label": "The events file cannot hold two text events for one turn.", "correct": false },
+        { "label": "The run log should read as whole messages rather than as stream fragments.", "correct": false },
+        { "label": "A secret can arrive split across two deltas, and neither delta alone holds it.", "correct": true },
+        { "label": "The scrub runs faster on one long string than on many short ones.", "correct": false }
+      ],
+      "key_points": [
+        "The scrub replaces whole strings, so it must see a secret as one string.",
+        "A secret can be split across stream deltas; scrubbing each delta alone would miss it.",
+        "The joined text event is what the log and the files keep."
+      ]
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "The checks read the transcript and the session events together. Which of these can a check see only in the transcript?",
+      "options": [
+        { "label": "The tool calls that ran, with their results.", "correct": false },
+        { "label": "The plugins enabled when a session was created.", "correct": true },
+        { "label": "The enable records the model caused during a prompt.", "correct": false },
+        { "label": "A tool call the engine rejected before it ran.", "correct": true }
+      ],
+      "key_points": [
+        "Records written when a session is created reach no listener; only the transcript holds them.",
+        "A call rejected before it runs leaves no tool event, only an error result in the transcript.",
+        "A check that read only the events would misjudge what was enabled and what was rejected."
+      ]
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The runner dies while it writes the result directory. What is on disk, and what can a reader mistake for a run?",
+      "key_points": [
+        "The result directory is all or nothing: it exists only once whole.",
+        "A crash leaves only a sibling with a partial suffix, which no reader mistakes for a run.",
+        "The rename into place is the last step, so the directory never appears half-written."
+      ]
+    },
+    {
+      "id": "q8",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A scenario names a tool its plugin set lacks, and a secret that is unset. When does the run refuse it, and why then?",
+      "options": [
+        { "label": "After the first prompt fails, so the refusal carries the model's own error.", "correct": false },
+        { "label": "At the end, in the report, so the run still measures the failure.", "correct": false },
+        { "label": "Before the first session opens, so a typo costs no model call.", "correct": true },
+        { "label": "Never; the runner starts the session and skips the steps it cannot run.", "correct": false }
+      ],
+      "key_points": [
+        "Secrets, plugin sets and the names they rely on are checked before the first session opens.",
+        "A doomed or mistyped scenario costs no model call.",
+        "Every problem is reported at once, each at its place in the file, so one round of fixes.",
+        "The command also refuses an existing result directory before it reads the scenario."
+      ]
+    },
+    {
+      "id": "q9",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new engine property arrives that every run must keep, whatever the model does. Where does it go, and what must come with it?",
+      "key_points": [
+        "It goes into the invariants table; the report's invariant list comes from that table.",
+        "Both case tables are typed by the check names, so the build fails until the new check has a passing and a failing case.",
+        "Its failing case must assert the evidence that names the mistake."
+      ]
+    },
+    {
+      "id": "q10",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A run's last prompt times out, and an invariant failed on an earlier step. Which of these hold when the command finishes?",
+      "options": [
+        { "label": "The result directory is written, holding the steps that ran, and it is checked.", "correct": true },
+        { "label": "The timed-out prompt's behaviors count as failures, because the model let the timeout happen.", "correct": false },
+        { "label": "The command exits 1, because the invariant failure wins over the early stop.", "correct": true },
+        { "label": "The report says the run is not complete.", "correct": true }
+      ],
+      "key_points": [
+        "An invariant failure exits 1, which wins over the exit 3 of an early stop.",
+        "A run that stops early is still written and still checked, over the steps that ran.",
+        "The report says the run is not complete, so a caller can tell a stop from a bug.",
+        "The behaviors on the stopped prompt skip; a stop is not a model failure."
+      ]
+    }
+  ]
+}

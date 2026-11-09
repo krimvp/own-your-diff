@@ -1,0 +1,124 @@
+{
+  "version": 1,
+  "branch": "feat/plugin",
+  "base": "d8d9c93",
+  "head": "bf662f8",
+  "target": "Ship the gate as one plugin that Claude Code, Droid, and Codex all load, with one installer, so every clone of an opted-in repo gets the gate at session start.",
+  "altitude": "design",
+  "incidental": [
+    "manifest field values in the plugin files",
+    "selftest rework: moved to the repo root, isolated home and git config, new hook tests",
+    "hook timeouts and the shell-tool matcher in the hooks file",
+    "the JSON shape of the guard's deny reply"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Before this change, the skill reached a repo as copied files. Why ship it as one plugin for Claude Code, Droid, and Codex?",
+      "options": [
+        { "label": "The installer builds a package for each tool from the same source.", "correct": false },
+        { "label": "Claude Code and Droid share a layout, but Codex needs its hooks converted.", "correct": false },
+        { "label": "All three harnesses read the same plugin layout, so one copy serves them all.", "correct": true },
+        { "label": "A plugin can run hooks, but loose files in a repo cannot.", "correct": false }
+      ],
+      "key_points": [
+        "All three harnesses read the same plugin layout: one manifest and one hooks file.",
+        "One copy keeps the gate and the skill identical everywhere, with nothing to keep in sync."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "extension",
+      "relevance": "core",
+      "prompt": "A teammate clones a repo that opted in. No session has run there yet. When does the push gate reach that clone?",
+      "options": [
+        { "label": "On their first push, because git copies the hook from the repo's tracked files.", "correct": false },
+        { "label": "At their first session start, when the start hook syncs and installs the pre-push hook.", "correct": true },
+        { "label": "Right after the clone, because the opt-in marker carries the hook with it.", "correct": false },
+        { "label": "Never, because each clone needs a manual install of the gate.", "correct": false }
+      ],
+      "key_points": [
+        "At the first session start, the start hook runs the gate's sync, which installs the pre-push hook.",
+        "The opt-in marker travels with the repo; the hook arrives only with a session.",
+        "The start hook also tells the agent the repo is opted in."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The agent wants to run each of these shell commands. Which ones does the guard deny?",
+      "options": [
+        { "label": "A push told to skip the pre-push checks.", "correct": true },
+        { "label": "A commit told to skip the commit checks.", "correct": false },
+        { "label": "A config change to where git finds its hooks.", "correct": true },
+        { "label": "A config read of where git finds its hooks.", "correct": false }
+      ],
+      "key_points": [
+        "Denied: commands that push past the pre-push gate, or that move git's hooks away.",
+        "Allowed: reading the hooks path, and skipping commit-side checks, since neither reaches the remote.",
+        "The rule: skipping the gate is the human's call, never the agent's."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A session starts where the gate cannot run. Say the sync fails, or the repo never opted in. What happens to the session?",
+      "options": [
+        { "label": "The session start fails, and the hook is retried.", "correct": false },
+        { "label": "The session runs on. The start hook never fails a session.", "correct": true },
+        { "label": "The session warns the user and waits for a fix.", "correct": false },
+        { "label": "The session opens in a mode that blocks all pushes.", "correct": false }
+      ],
+      "key_points": [
+        "The session still starts: the start hook swallows the sync failure and stays quiet.",
+        "Outside a git repo, or without the opt-in marker, the hook prints nothing."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "Codex runs a plugin's hooks only after the user approves them in its own prompt. Why does the installer write the trust entries itself?",
+      "options": [
+        { "label": "The approval prompt cannot appear when the installer runs from a script.", "correct": false },
+        { "label": "Untrusted hooks never run in Codex, so the gate would silently not exist.", "correct": true },
+        { "label": "The hook files change on every install, so old approvals never stick.", "correct": false },
+        { "label": "Codex forbids a plugin from adding hooks before its first session.", "correct": false }
+      ],
+      "key_points": [
+        "Codex skips a plugin's hooks until the user marks them trusted, without telling anyone.",
+        "The installer writes the same trust entries the Codex prompt would write on approval.",
+        "Running the installer counts as the human approving, and only this plugin's hooks are trusted."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A repo opts in, but a teammate who never installed the plugin pushes to it from a plain terminal. What stops that push, and what does that show about the gate's reach?",
+      "options": [],
+      "key_points": [
+        "Nothing stops that push: the gate lives in the clone's pre-push hook, which only a session with the plugin installs.",
+        "The opt-in marker asks agent sessions to enforce; it does not enforce at the remote.",
+        "The design gates work done with an agent; a human pushing by hand keeps full control."
+      ],
+      "attempts": []
+    }
+  ]
+}

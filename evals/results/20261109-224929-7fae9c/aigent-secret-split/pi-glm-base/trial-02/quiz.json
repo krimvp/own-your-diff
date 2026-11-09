@@ -1,0 +1,163 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "194a788",
+  "head": "5b31d95",
+  "target": "A secret the model writes out across streamed text deltas must not reach listeners whole: the stream now holds back the last longest-secret-minus-one characters until more text arrives or the assistant message ends.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the mechanical hoist of the merged secrets map into a named const (the shared-map invariant it serves is quizzed)",
+    "the test helper's new provider-options parameter",
+    "the new tests' scaffolding: the secret sized against the faux provider's chunking, the emoji positioned so a cut lands inside it, and the timer pacing that lands the abort mid-stream"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Before this change, the adapter redacted each text delta on its own and sent it on to listeners. A secret the model wrote out across two deltas still reached a listener whole. Why did redacting each delta miss it?",
+      "options": [
+        { "label": "The redactor skips text while a reply is streaming and only runs once the reply finishes.", "correct": false },
+        { "label": "Neither delta contained the whole secret, and the redactor replaces a secret only where it appears whole in the text it is given. The listener joins the deltas, so the fragments rebuild the secret.", "correct": true },
+        { "label": "Streamed events were not redacted at all; only the transcript and the RunResult passed through redaction.", "correct": false }
+      ],
+      "key_points": [
+        "redaction replaces a secret only where it appears whole in the text handed to it",
+        "each delta carried only a fragment, so both deltas passed redaction clean",
+        "a listener that joins the deltas rebuilds the secret, which is why the leak showed up in the stream and not in the transcript or the RunResult, which hold whole text"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The fix holds text back inside the adapter, before it goes to the session's listeners, instead of asking each listener to scrub the text after it joins the deltas. What does placing the guard there protect?",
+      "options": [
+        { "label": "It keeps the raw fragments from ever reaching a listener: sent text cannot be taken back, and the adapter's stream is the one path every listener receives, so one guard covers them all.", "correct": true },
+        { "label": "It lets the adapter redact faster than a listener could.", "correct": false },
+        { "label": "It hides the secret list from listeners, which could not scrub on their own.", "correct": false },
+        { "label": "It keeps the secret out of the transcript, which listeners read back.", "correct": false }
+      ],
+      "key_points": [
+        "once a delta is dispatched, the listener owns the characters and can rejoin them, so the leak must be stopped before emission",
+        "every listener, a host or the eval runner, receives the same stream, so one guard in the adapter protects them all",
+        "a listener-side scrub cleans only that listener's joined copy, and only if it scrubs at all",
+        "the boundary the adapter sets: listeners can join the deltas they receive without knowing anything about secrets"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "On every push the buffer emits all but the last longest-secret-minus-one characters of the redacted text and keeps the rest. Why can the text it emits never become part of a secret later?",
+      "options": [
+        { "label": "The emitted text was redacted when it arrived, and redaction cannot be undone.", "correct": false },
+        { "label": "The engine re-checks the emitted text at the end of the message and can still recall it.", "correct": false },
+        { "label": "A secret that more text could still complete has at most longest - 1 characters in the stream, so it starts inside the held tail. Text before the tail either already matched a whole secret and was redacted, or can never match one.", "correct": true },
+        { "label": "Listeners keep only a sliding window of the stream, so early text cannot combine with later text.", "correct": false }
+      ],
+      "key_points": [
+        "an unfinished secret is a prefix of a known secret, so while more text can complete it, it holds at most longest - 1 characters",
+        "such a prefix must start within the last longest - 1 characters, which is exactly the held tail, so nothing unsafe is ever emitted",
+        "text before the tail is final: a secret starting there is either already complete and redacted, or impossible because it would be longer than the longest secret",
+        "the window is sized from the same merged secret map the redactor matches, fixed when the session starts, so no secret the redactor can match is longer than the window"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Suppose push redacted only the new delta, as the old code did, and appended it to the held text unchanged. What leak would that reopen, and why does redacting the held text and the new delta as one string close it?",
+      "options": [],
+      "key_points": [
+        "a secret can start in the held tail and finish in the new delta, and neither piece alone contains it whole",
+        "redacting the delta alone passes the fragment, so the joined stream would carry the secret to listeners",
+        "redacting the held text joined with the new delta sees the secret whole, because the cut guarantee keeps the start of any unfinished secret inside the held text",
+        "the held text is always stored redacted, so a secret completed earlier is already gone"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "measurement",
+      "relevance": "important",
+      "prompt": "The hold adds a cost to every streamed reply. What lag do listeners now see, what bounds it, and when does the held text finally reach them?",
+      "options": [
+        { "label": "Up to longest - 1 characters, one more when a cut would split a character, arrive late; they wait for more text or the end of the assistant message. The bound is the longest secret, so it is fixed and small next to a reply.", "correct": true },
+        { "label": "The whole reply is held back until the message ends, so listeners see nothing while it streams.", "correct": false },
+        { "label": "Nothing is delayed: the buffer only holds text when a secret actually appears in it.", "correct": false },
+        { "label": "The lag grows with the reply's length, since the buffer holds a share of every delta.", "correct": false }
+      ],
+      "key_points": [
+        "the last longest - 1 characters of the stream wait, plus one when a cut would split a surrogate pair",
+        "the bound is the longest secret, not the reply length, and it is the same for every reply",
+        "the held tail goes out on the next push or at the message's end, so the delay is short-lived",
+        "with no secrets configured, the buffer holds nothing back"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "invalidation",
+      "relevance": "important",
+      "prompt": "The buffer keeps text across deltas, and its hold spans a whole assistant message rather than one text block. What empties it, and why does that always happen before any text is lost?",
+      "options": [
+        { "label": "The next push empties it: each delta replaces the text held before it.", "correct": false },
+        { "label": "The end of the assistant message flushes the held tail to listeners. pi ends every assistant message this way, whether it finished, errored, or was aborted, so the held text always goes out.", "correct": true },
+        { "label": "The start of the next user prompt flushes it, so a message aborted mid-stream keeps its tail until then.", "correct": false },
+        { "label": "Nothing empties it during a run; the held text is merged into the transcript instead of being sent.", "correct": false }
+      ],
+      "key_points": [
+        "the end of the assistant message triggers a flush that emits the held tail and clears the buffer",
+        "pi sends that end event for every assistant message: finished, errored, or aborted",
+        "so a listener receives every character the transcript kept, even when the reply is cut short",
+        "the hold spans the whole message because pi emits nothing between two text blocks of one message, so a secret split across blocks would otherwise rejoin for a listener too"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Before emitting, the buffer steps the cut back by one when the character before it is a high surrogate. Which of these hold?",
+      "options": [
+        { "label": "The step-back can let a secret slip through, so the buffer must re-redact before the next push.", "correct": false },
+        { "label": "A delta never ends with the first half of a character.", "correct": true },
+        { "label": "For that push the buffer holds one character more than longest - 1, and the wider hold costs no safety.", "correct": true },
+        { "label": "A host writing the delta to a terminal would otherwise print replacement characters for the stranded halves.", "correct": true }
+      ],
+      "key_points": [
+        "a high surrogate is the first half of a character, so a cut after it strands the pair across two deltas",
+        "a host writing a delta that ends in half a character would print replacement characters",
+        "stepping the cut back keeps the pair whole in the held text; holding one character more only widens the window, so the guarantee holds"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "free",
+      "category": "flow",
+      "relevance": "important",
+      "prompt": "A model streams one assistant message in three text blocks. A secret starts near the end of the first block and finishes early in the second. The third block is a run of emoji, and the user aborts the reply in the middle of it, just after a cut lands between the two halves of one emoji. Walk what listeners receive, from the first delta to the abort.",
+      "options": [],
+      "key_points": [
+        "the secret's start stays in the held tail across the block boundary, because pi emits nothing between text blocks and the hold spans the whole message, so a listener cannot rejoin a secret split across blocks",
+        "when the second block completes the secret, the buffer redacts the held text joined with the new delta, so the whole secret is replaced before any of it is emitted",
+        "no listener sees a delta ending inside a surrogate pair: the cut steps back over the high surrogate and the character goes out whole",
+        "the abort still ends the message: pi sends the end event, the buffer flushes, and listeners receive every character the transcript kept"
+      ],
+      "attempts": []
+    }
+  ]
+}

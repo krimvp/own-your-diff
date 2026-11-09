@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "77f2e91",
+  "head": "d518ab6",
+  "target": "A run refuses a secret or model key shorter than 8 characters, before the first session opens.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the design page restating the new rule in its invariant and verification lines",
+    "the test that adds a short secret and a short key to the refused scenario",
+    "the CLI test's longer dummy key"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "A scenario's secret is set to three characters. What does the run do now?",
+      "options": [
+        { "label": "It runs the scenario, and the redaction keeps the saved run readable.", "correct": false },
+        { "label": "It reports the secret as a problem before the first session opens.", "correct": true },
+        { "label": "It sends the value to the model and records the failure in the log.", "correct": false },
+        { "label": "It writes the run, then fails when the saved files are read back.", "correct": false }
+      ],
+      "key_points": [
+        "A short secret or model key is reported as a scenario problem before the first session opens.",
+        "No model call is spent and nothing is written.",
+        "The model key is checked the same way as the scenario's secrets."
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "A one-character secret used to break the run at the very end, after the model had been called. Why?",
+      "key_points": [
+        "The redaction replaces each raw secret value wherever it occurs in the log, keys included.",
+        "A one-character value sits inside ordinary words, so the redaction rewrote words and keys.",
+        "The saved run then fails to read back, so the failure lands after the model calls are spent."
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A new scenario sets a secret whose value is the common word 'scenario', eight characters long. Which of these hold?",
+      "options": [
+        { "label": "The check rejects the value, because it matches ordinary words.", "correct": false },
+        { "label": "The length check passes, and the run starts.", "correct": true },
+        { "label": "The saved run is safe, because the value passed the check.", "correct": false },
+        { "label": "The redaction still rewrites the word wherever it occurs, keys included.", "correct": true }
+      ],
+      "key_points": [
+        "The check keys on length only, so an eight-character value passes it.",
+        "The redaction still rewrites the value wherever it occurs, including the log's keys.",
+        "The floor blocks degenerate short values, not every collision between a value and the run's text."
+      ]
+    }
+  ]
+}

@@ -77,10 +77,12 @@ Pick the examinee:
 List every point at the target's altitude that the author must own to stand behind the push, from the whole diff, before you write a question. A point you meet late in the diff can still be the most important one. Rate each point's relevance:
 
 - **`core`.** What the change is for, and the boundary or contract it sets. An author who misses it cannot defend the push.
-- **`important`.** How the parts hold together: a failure mode, an invariant, where the next requirement goes.
-- **`useful`.** A detail worth knowing that the push does not stand on.
+- **`important`.** How the parts hold together: a failure mode, an invariant, where the next requirement goes. The author needs it to fix or extend the change.
+- **`useful`.** A detail worth knowing that the push does not stand on. Which file or record holds a fact, an exit code, and the order of two internal steps are `useful` at most.
 
-Write one question per `core` and `important` point, 10 at most. Ask about a `useful` point only when the quiz would otherwise have no question. Stop when the points run out. Two points that one answer covers are one point. A fix of one bug carries one or two questions, and never more than three. A trivial change carries none, and incidental items carry none.
+Test each point: would a reviewer stop the push if the author could not explain it? If not, the point is `useful`.
+
+Write one question per `core` and `important` point, 10 at most. Ask about a `useful` point only when the quiz would otherwise have no question. Stop when the points run out. Two points that one answer covers are one point. Most changes carry 3 to 5 questions. Ten is a limit for a change that holds several designs, not a goal. A fix of one bug carries one or two questions, and never more than three. A trivial change carries none, and incidental items carry none.
 
 Ask outside in. Open with the `core` points, starting from what the change is for and its main boundary, then move inward to the mechanisms and details. Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.
 

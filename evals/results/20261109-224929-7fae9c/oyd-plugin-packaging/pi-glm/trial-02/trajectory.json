@@ -1,0 +1,684 @@
+{
+  "schema_version": "ATIF-v1.7",
+  "session_id": "01a1c28f-b374-70d5-a422-65962d38116e",
+  "agent": {
+    "name": "pi",
+    "version": "1.5.0",
+    "model_name": "glm-5.3",
+    "extra": {
+      "skills": [
+        "own-your-diff"
+      ]
+    }
+  },
+  "steps": [
+    {
+      "step_id": 1,
+      "timestamp": "2026-11-09T23:05:59.968Z",
+      "source": "user",
+      "message": "The commits on this branch are not pushed yet. Use the own-your-diff skill to plan the quiz for them, plan only: write the plan to quiz.json in this directory and stop. Nobody will answer questions in this run."
+    },
+    {
+      "step_id": 2,
+      "timestamp": "2026-11-09T23:05:59.987Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "The user wants me to use the own-your-diff skill to plan a quiz for unpushed commits on this branch. I need to read the skill file first, then look at the unpushed commits, and write a plan to quiz.json. Plan only - no quiz execution.\n\nLet me start by reading the skill file and checking the git status.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_le08e8jr",
+          "function_name": "read",
+          "arguments": {
+            "path": "/opt/multeval/skills/own-your-diff/SKILL.md"
+          },
+          "extra": {
+            "skill": "own-your-diff",
+            "category": "file_read"
+          }
+        },
+        {
+          "tool_call_id": "call_lhjnupfr",
+          "function_name": "bash",
+          "arguments": {
+            "command": "git log --oneline @{u}..HEAD 2>/dev/null || git log --oneline -20"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_le08e8jr",
+            "content": "---\nname: own-your-diff\ndescription: \"Before any push or PR: explain the unpushed change in an HTML walkthrough, then quiz the author until they show they own the design. The pre-push hook blocks commits without a passed quiz. Use when pushing, opening a PR, or when a push was blocked by own-your-diff.\"\n---\n\n# Own your diff\n\nThe author pushes only work they can explain. You write a walkthrough, the author reads it, an examiner quizzes them, and a pass unlocks the push. The quiz checks that the author understands the change at the right **altitude**: what it does, why, and what follows from it. It is not a memory test of the walkthrough or of the code.\n\nTools are in `scripts/`. Run each with no arguments for its commands.\n\n- `quizgate` is the gate. The pre-push hook calls `quizgate check`. `quizgate install` opts a repo in. Commit the `.own-your-diff` file it writes, and the plugin's session hook installs the git hook in every clone that has it.\n- `snippet` renders real git content as editor-style HTML blocks.\n- `plainlint` checks the walkthrough for leftover placeholders, and notes long sentences, long paragraphs, and words to replace.\n- `quizlint` checks a quiz file against [`references/quiz-file.md`](references/quiz-file.md).\n- `quizstats` counts questions and pass rates by category and kind across quiz files.\n\n## Steps\n\nAsked for the quiz plan only, as an eval does? Do steps 1 and 2, skip the walkthrough, and write the plan of step 4 for a human examinee to the path you were given. Stop when `quizlint --plan` passes on it. Ask nothing.\n\n### 1. Scope\n\nRun `quizgate pending`. That is the scope: the commits a push would send that have no passed quiz. Diff them with `git diff $(quizgate base) HEAD`. Read the commit messages, and the task that produced the change if this session or its transcript has it.\n\nDone when you can name the **target** of the task: the one thing the work set out to change.\n\n### 2. Pick the altitude\n\nThe target sets the altitude. A change can carry both kinds.\n\n- **Design altitude.** The default. The change introduces or reshapes an abstraction, a module boundary, a data shape, a protocol, a dependency, or how components talk. Cover the problem it solves, the shape chosen, how it fits the existing architecture, the alternatives and why they lost, the costs it adds, and what it makes easy or hard next.\n- **Mechanism altitude.** The target is one mechanism, for example LLM prompt-cache hits, retry and backoff, stream backpressure, or a bug's root cause. Go through that mechanism's ins and outs: inputs, state, invariants, what invalidates or breaks it, the root cause, why the fix works, and how it was measured. Stay above function names and signatures.\n- **Incidental.** Helpers, renames, plumbing, version bumps, and test scaffolding that serve the target. Give each one line and no question.\n- **Trivial.** The whole change is a typo, formatting, a version bump, or a one-line config change. Write a short walkthrough. The quiz usually has no questions.\n- **Docs.** The change only writes down what the code already does, or how to work on it. Treat it as trivial: the author owned that design when it was built. Notes for contributors, such as a check to run, a version to bump, or how a script finds its files, stay incidental even when a doc states them as rules. A doc is a target only when it sets a rule that changes what users of the system can rely on, and no code in the change sets it. That rule is then the target, at design altitude.\n\nDone when every hunk in the diff belongs to the target or to the incidental list.\n\n### 3. Write the walkthrough\n\nCopy `assets/explainer.html` to `$(quizgate dir)/<branch>-<short-sha>.html`. Write it as a short course: each lesson builds on the one before, and each one teaches a single idea. Fill in the template's lessons in order. Delete a lesson that has nothing to say, and renumber the rest.\n\nWrite for a reader who is new to this part of the code. Follow [`references/plain-english.md`](references/plain-english.md). Read it before you write. In short:\n\n- Say it in everyday words first. Go technical only when the reader needs the detail to follow the next step, change the code, or answer the quiz.\n- No AI fluff. Every sentence states a fact about this change. Cut throat-clearing, recaps, hype, hedges, and \"not just X, but Y\".\n- Write simple technical English, in the spirit of ASD-STE100 and Orwell's rules. One idea per sentence, 20 words or fewer, active voice, present tense.\n- Open each lesson with one sentence that says what it teaches.\n- Use the short, common word, and one word for one thing on the whole page.\n- Introduce one new term at a time, and define it in a plain sentence the first time it appears. Show the concrete case first, then name it, then give the rule.\n- Go from the top down: the system, then the part the change touches, then the code. Each lesson stays at one level. Never use a lower-level detail before the reader has the level above it.\n- Draw one diagram per level. The first shows the whole system with 3 to 7 boxes. Each diagram after it opens one box of the one before, and its caption says which box.\n- Cut every word that does no work.\n\n- Put code on the page only through `snippet` directives, each on its own line. Then run `snippet expand <file>`. Expanding again refreshes every block from git.\n  - `<!-- snippet tree -->` shows the changed files.\n  - `<!-- snippet diff PATH [HUNK...] -->` shows a diff, all hunks or the 1-based hunks named.\n  - `<!-- snippet file PATH START END [REV] -->` shows file lines in an editor block.\n- Show diffs where the target lives, and only the hunks that carry it. Use `file` blocks for code the reader needs whole, such as a new type or the core function. Incidental files appear only in the tree and in the \"Also in this change\" list.\n- Draw each diagram as an inline SVG with the template's `new`, `box`, `arrow`, and `lbl` classes. A diagram shows the real components, with plain nouns on boxes and plain verbs on arrows, and marks what is new.\n- Keep the quiz off the page.\n\nRun `plainlint <file>`. It fails on a template placeholder left on the page. It also prints a note for each long sentence, long paragraph, hard word, and AI-fluff phrase from the lists in `references/plain-english.md`. Reread each note, and fix the prose unless the longer form is clearer. Then reread the page once as the reader, with the checklist at the end of `references/plain-english.md`.\n\nOpen the file with `quizgate open <file>` and give the author its path.\n\nDone when the page renders with every directive expanded, `plainlint` passes and you reread its notes, and the author confirms they read it.\n\n### 4. Quiz\n\nPick the examinee:\n\n- **Human** whenever a human is in the session to answer. This is the default.\n- **Agent** only on an unattended run: a headless session, an autonomous or autopilot playbook, or the human said they are away. Follow [`references/agent-mode.md`](references/agent-mode.md) instead of the rest of this step. A slow human, or a human who declines the quiz, is not an unattended run.\n\nList every point at the target's altitude that the author must own to stand behind the push, from the whole diff, before you write a question. A point you meet late in the diff can still be the most important one. Rate each point's relevance:\n\n- **`core`.** What the change is for, and the boundary or contract it sets. An author who misses it cannot defend the push.\n- **`important`.** How the parts hold together: a failure mode, an invariant, where the next requirement goes.\n- **`useful`.** A detail worth knowing that the push does not stand on.\n\nWrite one question per `core` and `important` point, 10 at most. Ask about a `useful` point only when the quiz would otherwise have no question. Stop when the points run out. Two points that one answer covers are one point. A fix of one bug carries one or two questions, and never more than three. A trivial change carries none, and incidental items carry none.\n\nAsk outside in. Open with the `core` points, starting from what the change is for and its main boundary, then move inward to the mechanisms and details. Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.\n\nFor each question, list the key points a correct answer must cover. Every key point sits at the target's altitude. At design altitude, a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric. Keep the rubric to yourself until the quiz ends.\n\n#### Ask high, in plain words\n\nA question tests whether the author understands the change. It does not test whether they remember the code.\n\n- Ask what the change does, why it is built this way, what it costs, and what happens in a new case. An author who understands the change can answer with the code closed.\n- Go lower only when the author cannot own the point without the detail. At mechanism altitude, that detail is the mechanism's steps, its state, and what breaks it. A detail that only proves the author read the code gets no question.\n- Name things in plain words: \"the list of passed quizzes\", not `ledger.jsonl`. Use a name from the code only when the question is about that name. A name from the code is a function, a file, a flag, an exit code, or an exact value. The question is about the name when the author must know it to use or change the thing.\n- Write in the plain English of [`references/plain-english.md`](references/plain-english.md), with the words the walkthrough used.\n- A prompt asks one thing in one or two short sentences, 40 words at most. When the question needs a case, set it up in one sentence. Do not retell the walkthrough.\n- An option is one short sentence, 20 words at most. Give the options of a question the same form and about the same length. The correct option must not stand out by its length or its detail.\n- A key point is one short sentence. A question has 4 at most.\n\n`quizlint` fails a prompt, an option, or a key point over these limits, and a correct option much longer than the wrong ones. It prints a note for each name from the code and each word from the do-not-write lists. Reread each note. Put the plain words in, unless the question is about that name.\n\nCompare:\n\n- Low and hard to read: \"The process is killed while `writeRun` writes the result directory. What is on disk, and why can no reader mistake it for a run?\"\n- High and plain: \"The program stops halfway through saving a run. What does the next reader of that run see?\"\n\n#### Kinds of question\n\nAsk **transfer** questions. A transfer question makes the author apply the design to a case the walkthrough did not spell out:\n\n- Design. `rationale`: \"Why this abstraction over <the rejected alternative>?\" `failure`: \"What breaks if <assumption> stops holding?\" `extension`: \"A new <requirement> arrives. Where does it go, and what changes?\" `boundary`: \"What does this boundary protect the rest of the system from?\"\n- Mechanism. `flow`: \"Walk a request through <mechanism>. Where can it miss or fail?\" `invalidation`: \"What invalidates <cache or state>?\" `measurement`: \"Why did <the number> move, and what would move it back?\" `failure` fits here too.\n\nGive each question the one category it tests. Spread a quiz across categories rather than asking the same kind of question twice.\n\nMix three kinds:\n\n- **Single-select.** One correct option among 2 to 4. Lead the quiz with these. They frame a point quickly.\n- **Multi-select.** 3 or 4 options, any subset of them correct, for \"which of these hold or break\" cases. It passes only on the exact set.\n- **Free-form.** The author answers in their own words. Use it where the reasoning is the point.\n\nEnd the quiz with a multi-select or a free-form question that applies several points to one new case. That is where the pieces come together. Every wrong option is a plausible misreading of the change, never filler. Put options in random order and mark none of them.\n\nWrite the questions as a plan to `$(quizgate dir)/<branch>-<short-sha>.quiz.json`, in the shape of [`references/quiz-file.md`](references/quiz-file.md). Run `quizlint --plan` on it and fix what it reports before the first question.\n\nAsk one question at a time and wait for the answer. Use the harness's structured-question tool when it has one: `AskUserQuestion` in Claude Code, `AskUser` in Droid, `request_user_input` in Codex where it is enabled. Where the tool has no multi-select, or there is no tool, ask in chat with lettered options and say whether to pick one or several. Never answer for the author.\n\nAfter each select question, say which options were right and why in one or two plain sentences, so a wrong pick turns into a gotcha the author remembers. Grade each answer against its key points:\n\n- **Pass.** It covers the core point with sound reasoning, or picks the right options. Wording and depth beyond the point do not matter.\n- **Vague.** Ask one follow-up probe on the missing point.\n- **Wrong or still vague.** Explain the gap in two or three plain sentences. Then ask a new question that targets the same point from another angle.\n\nA probe or retry stays at the altitude of the question it follows. It tests the same key point in a new case, never a finer detail of how that point is implemented. At design altitude, \"the gate keys on diff content, not commits\" is the point. How a partial squash hashes is a mechanism detail, so it is out of bounds.\n\nDone when every question is passed, or a point fails three times. With no questions, done when the author confirms they read the walkthrough. On three failures, stop and record nothing. Tell the author which part to reread or go through with you. If the walkthrough was the problem, say the change may be too large or unclear, and suggest splitting it.\n\n### 5. Record\n\nAs the quiz runs, add each answer to its question in the quiz file as an attempt: the author's words or picks verbatim, your verdict, and what you told them. On a full pass, set `outcome` to `passed` and run `quizlint` on the file until it passes. Then run `quizgate record --by human`, or `--by agent` after agent mode.\n\nDone when `quizgate pending` prints nothing. Push only if you were asked to push.\n\n## Rules\n\n- A pass belongs to the examinee who earned it in this session. Run `quizgate record` only after that pass.\n- Push with the hook active. `--no-verify` is the human's call, never yours.\n- A blocked push routes back to step 1 for the commits the hook names. The ledger keys passes on `git patch-id`, so rewording, rebasing, or squashing quizzed commits needs no new quiz. New content does.\n- For a PR, draw the body from the walkthrough's Why, Scope, and Tradeoffs. The walkthrough and quiz file stay out of the tree.\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_lhjnupfr",
+            "content": "bf662f8 feat: install into every harness on PATH\n38de765 feat: ship as one plugin for Claude Code, Droid, and Codex\nd8d9c93 base\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 1505,
+        "completion_tokens": 128,
+        "cached_tokens": 1472,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 3,
+      "timestamp": "2026-11-09T23:06:01.007Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "The user asks for the quiz plan only. Per the skill: \"Asked for the quiz plan only, as an eval does? Do steps 1 and 2, skip the walkthrough, and write the plan of step 4 for a human examinee to the path you were given. Stop when `quizlint --plan` passes on it. Ask nothing.\"\n\nSo I need to:\n1. Run `quizgate pending` to determine scope.\n2. Pick the altitude.\n3. Write the plan to `quiz.json` in the current directory (/workspace/quiz.json), for a human examinee.\n4. Run `quizlint --plan` on it and fix what it reports.\n\nLet me first read the quiz-file.md reference to know the file shape, and find the scripts. The skill says tools are in `scripts/` relative to the skill directory. Let me check.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_v2aq2qam",
+          "function_name": "bash",
+          "arguments": {
+            "command": "ls /opt/multeval/skills/own-your-diff/scripts/ /opt/multeval/skills/own-your-diff/references/ /opt/multeval/skills/own-your-diff/assets/ 2>&1"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_5rwtihp2",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cd /opt/multeval/skills/own-your-diff/scripts && for s in quizgate snippet plainlint quizlint quizstats; do echo \"== $s ==\"; ./$s 2>&1 | head -40; done"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_v2aq2qam",
+            "content": "/opt/multeval/skills/own-your-diff/assets/:\nexplainer.html\n\n/opt/multeval/skills/own-your-diff/references/:\nagent-mode.md\nplain-english.md\nquiz-file.md\n\n/opt/multeval/skills/own-your-diff/scripts/:\nplain.py\nplainlint\nquizgate\nquizlint\nquizstats\nsnippet\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_5rwtihp2",
+            "content": "== quizgate ==\n/bin/bash: line 1: ./quizgate: Permission denied\n== snippet ==\n/bin/bash: line 1: ./snippet: Permission denied\n== plainlint ==\n/bin/bash: line 1: ./plainlint: Permission denied\n== quizlint ==\n/bin/bash: line 1: ./quizlint: Permission denied\n== quizstats ==\n/bin/bash: line 1: ./quizstats: Permission denied\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 5141,
+        "completion_tokens": 293,
+        "cached_tokens": 1600,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 4,
+      "timestamp": "2026-11-09T23:06:02.754Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "Scripts are not executable; they're probably Python scripts with shebangs. Let me check and run with python3 or bash.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_2kny2h37",
+          "function_name": "bash",
+          "arguments": {
+            "command": "head -3 /opt/multeval/skills/own-your-diff/scripts/quizgate /opt/multeval/skills/own-your-diff/scripts/quizlint /opt/multeval/skills/own-your-diff/scripts/snippet"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_2kny2h37",
+            "content": "==> /opt/multeval/skills/own-your-diff/scripts/quizgate <==\n#!/usr/bin/env bash\n# Push gate for the own-your-diff skill. A commit may be pushed only after its\n# author passed a quiz on it. Passes are stored as `git patch-id --stable`\n\n==> /opt/multeval/skills/own-your-diff/scripts/quizlint <==\n#!/usr/bin/env python3\n\"\"\"Check a quiz file against the shape in references/quiz-file.md.\n\n\n==> /opt/multeval/skills/own-your-diff/scripts/snippet <==\n#!/usr/bin/env bash\n# Render real git content as editor-style HTML blocks for an explainer.\n# Every block is one line of HTML, so `expand` can refresh it in place.\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 5605,
+        "completion_tokens": 86,
+        "cached_tokens": 5376,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 5,
+      "timestamp": "2026-11-09T23:06:03.492Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_3en20kdp",
+          "function_name": "bash",
+          "arguments": {
+            "command": "export PATH=\"$PATH:/opt/multeval/skills/own-your-diff/scripts\" && cd /workspace && bash quizgate 2>&1 | head -60"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        },
+        {
+          "tool_call_id": "call_pxuclbom",
+          "function_name": "read",
+          "arguments": {
+            "path": "/opt/multeval/skills/own-your-diff/references/quiz-file.md"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_3en20kdp",
+            "content": "usage: quizgate <command>\n  pending    unquizzed commits a push of HEAD would send, oldest first\n  base       commit the explainer diffs from (parent of the oldest pending commit)\n  dir        directory holding explainers, quiz transcripts, and the ledger\n  record --by human|agent\n             mark every pending commit, and their combined diff, as quizzed\n  open FILE  open an explainer in the browser\n  check      pre-push hook entry point; reads pushed refs on stdin\n  install    opt this repo in: write .own-your-diff and the pre-push hook\n  sync       copy quizgate to $QUIZGATE_BIN (default ~/.local/bin), and\n             install the hook in an opted-in repo that lacks it\n",
+            "extra": {
+              "is_error": false
+            }
+          },
+          {
+            "source_call_id": "call_pxuclbom",
+            "content": "# The quiz file\n\nOne JSON file per quiz, `$(quizgate dir)/<branch>-<short-sha>.quiz.json`. You write it as a **plan** before the first question, and you add each attempt and the outcome as the quiz runs. `scripts/quizlint --plan FILE` checks a plan. `scripts/quizlint FILE` checks a finished quiz. Evals and stats read this file, and a UI can render it, so keep to this shape.\n\n```json\n{\n  \"version\": 1,\n  \"branch\": \"feat/opt-in-marker\",\n  \"base\": \"42c2cb8\",\n  \"head\": \"0389727\",\n  \"target\": \"Repos opt into the gate with a tracked marker instead of core.hooksPath.\",\n  \"altitude\": \"design\",\n  \"incidental\": [\"usage text of quizgate\"],\n  \"examinee\": \"human\",\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"kind\": \"single\",\n      \"category\": \"rationale\",\n      \"relevance\": \"core\",\n      \"prompt\": \"Why does the hook run quizgate from ~/.local/bin and not from the plugin's install directory?\",\n      \"options\": [\n        { \"label\": \"The install directory changes with each plugin update\", \"correct\": true },\n        { \"label\": \"Git refuses to run a hook from outside the repo\", \"correct\": false },\n        { \"label\": \"The hook cannot read files in the plugin directory\", \"correct\": false }\n      ],\n      \"key_points\": [\"the cache path changes on every update\"],\n      \"attempts\": [\n        { \"answer\": [\"The install directory changes with each plugin update\"], \"verdict\": \"pass\" }\n      ]\n    }\n  ],\n  \"outcome\": \"passed\"\n}\n```\n\n- **Top level.** `target` is the one thing the change set out to do. `altitude` is `design`, `mechanism`, or `trivial`. `incidental` lists what gets no question. `examinee` is `human` or `agent`. `questions` holds 0 to 10 questions. `outcome` is `passed` or `failed`, and a plan has none. Agent mode adds `findings`, one object per finding with its round, evidence, and fix.\n- **Question.** `relevance` is `core`, `important`, or `useful`, and the questions run from most to least relevant, except the last. `kind` is `single`, `multi`, or `free`. A `single` question has 2 to 4 options with exactly one correct. A `multi` question has 3 or 4 options with at least one correct. A `free` question has no options. `key_points` is the rubric. `attempts` stays empty in a plan. A `useful` question appears only when the quiz has no `core` or `important` question.\n- **Words.** Ask at a high level, in plain short words. `quizlint` checks each question in a plan and in a finished quiz.\n  - A prompt has 40 words or fewer. Ask one thing in one or two short sentences.\n  - An option has 20 words or fewer. A key point has 25 words or fewer. A question has 4 key points or fewer.\n  - The correct option of a `single` question is not much longer than the wrong ones. Make the options about the same length.\n  - A word from the lists in `plain-english.md` is a note. So is a sentence of more than 20 words in a prompt.\n  - A code name in a prompt or option is a note. Code names are function, file, and flag names. Say what the thing does instead. Keep the name only when the question is about it.\n  - `quizlint --json` prints the problems, the notes, and the word counts as one JSON object.\n- **Category.** Each question has one. Design questions are `rationale` (why this over the alternative), `failure` (what breaks when an assumption stops holding), `extension` (where a new requirement goes), or `boundary` (what a boundary protects). Mechanism questions are `flow` (walk the mechanism, where it can fail), `invalidation` (what invalidates the state), `measurement` (why the number moved), or `failure`.\n- **Attempt.** One per answer, in order. A probe or a retry adds an attempt with its own `prompt`, and `kind` and `options` when they differ from the question's. `answer` is the author's words verbatim, or the list of labels they picked. `verdict` is `pass`, `vague`, or `wrong`. `feedback` is what you told them. Agent mode adds `round`.\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 5859,
+        "completion_tokens": 69,
+        "cached_tokens": 5632,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 6,
+      "timestamp": "2026-11-09T23:06:04.114Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "Now let me look at the pending commits and understand the change. Steps 1 and 2: run `quizgate pending`, diff from `quizgate base` to HEAD, read commit messages, and any task context available.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_lq1zys5h",
+          "function_name": "bash",
+          "arguments": {
+            "command": "export PATH=\"$PATH:/opt/multeval/skills/own-your-diff/scripts\" && cd /workspace && quizgate_pending() { :; }; bash quizgate pending && echo --- && bash quizgate base && echo --- && bash quizgate dir && echo --- && git rev-parse --abbrev-ref HEAD && git rev-parse --short HEAD"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_lq1zys5h",
+            "content": "38de765 feat: ship as one plugin for Claude Code, Droid, and Codex\nbf662f8 feat: install into every harness on PATH\n---\nd8d9c93afefbfc2f62bc48fb71b797205df64ab9\n---\n/workspace/.git/own-your-diff\n---\nfeat/plugin\nbf662f8\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 7123,
+        "completion_tokens": 125,
+        "cached_tokens": 5888,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 7,
+      "timestamp": "2026-11-09T23:06:05.220Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "Scope: two pending commits (38de765, bf662f8), base d8d9c93. Now let me read the diff and commit messages.",
+      "reasoning_content": "The scope is the two commits: 38de765 and bf662f8, diffing from d8d9c93 to HEAD. The plan path given is \"quiz.json in this directory\" \u2014 that's /workspace/quiz.json. Note that normally the plan goes to `$(quizgate dir)/<branch>-<short-sha>.quiz.json`, but the user explicitly asked to write the plan to quiz.json in this directory. The user's instruction takes precedence: write to /workspace/quiz.json.\n\nBranch is feat/plugin, short sha of head is bf662f8. So the file metadata: branch \"feat/plugin\", base \"d8d9c93\", head \"bf662f8\".\n\nNow let me look at the diff.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_j7sjdqgw",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cd /workspace && git log --format='%H%n%B' d8d9c93..HEAD && echo ======== && git diff --stat d8d9c93 HEAD"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_j7sjdqgw",
+            "content": "bf662f88647030a9cc3df90e90f1cf287d3bd13a\nfeat: install into every harness on PATH\n\nCodex skips plugin hooks until their hash is trusted, so the installer\nwrites the trust entries through codex app-server.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB\n\n38de76536ab92025de59ec6b1f2449dbc570c9cc\nfeat: ship as one plugin for Claude Code, Droid, and Codex\n\nAll three harnesses read .claude-plugin/ and hooks/hooks.json. The\nsession-start hook runs quizgate sync. The PreToolUse guard denies an\nagent's git push --no-verify and core.hooksPath changes. The selftest\nmoves to the repo root and covers the hooks.\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>\nClaude-Session: https://claude.ai/code/session_01AQXdCnr61gd6LLv441ZXZB\n\n========\n .claude-plugin/marketplace.json | 12 +++++++++\n .claude-plugin/plugin.json      |  7 +++++\n hooks/guard                     | 15 +++++++++++\n hooks/hooks.json                | 19 ++++++++++++++\n hooks/session-start             |  8 ++++++\n install.sh                      | 37 ++++++++++++++++++++++++++\n scripts/codex-trust-hooks       | 54 ++++++++++++++++++++++++++++++++++++++\n scripts/selftest                | 58 +++++++++++++++++++++++++++++++++--------\n 8 files changed, 199 insertions(+), 11 deletions(-)\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 7334,
+        "completion_tokens": 240,
+        "cached_tokens": 7232,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 8,
+      "timestamp": "2026-11-09T23:06:06.850Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_inm202sk",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cd /workspace && git diff d8d9c93 HEAD"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_inm202sk",
+            "content": "diff --git a/.claude-plugin/marketplace.json b/.claude-plugin/marketplace.json\nnew file mode 100644\nindex 0000000..4a59a0d\n--- /dev/null\n+++ b/.claude-plugin/marketplace.json\n@@ -0,0 +1,12 @@\n+{\n+  \"name\": \"own-your-diff\",\n+  \"description\": \"The own-your-diff plugin for Claude Code, Factory Droid, and Codex.\",\n+  \"owner\": { \"name\": \"krimvp\" },\n+  \"plugins\": [\n+    {\n+      \"name\": \"own-your-diff\",\n+      \"source\": \"./\",\n+      \"description\": \"Explain the unpushed change, quiz the author, and block pushes of unquizzed commits.\"\n+    }\n+  ]\n+}\ndiff --git a/.claude-plugin/plugin.json b/.claude-plugin/plugin.json\nnew file mode 100644\nindex 0000000..3e9e0b0\n--- /dev/null\n+++ b/.claude-plugin/plugin.json\n@@ -0,0 +1,7 @@\n+{\n+  \"name\": \"own-your-diff\",\n+  \"version\": \"0.1.0\",\n+  \"description\": \"Explain the unpushed change in an HTML walkthrough, quiz the author, and block pushes of unquizzed commits.\",\n+  \"author\": { \"name\": \"krimvp\" },\n+  \"repository\": \"https://github.com/krimvp/own-your-diff\"\n+}\ndiff --git a/hooks/guard b/hooks/guard\nnew file mode 100755\nindex 0000000..edaa459\n--- /dev/null\n+++ b/hooks/guard\n@@ -0,0 +1,15 @@\n+#!/usr/bin/env bash\n+# PreToolUse guard for shell tools. Bypassing the pre-push hook is the human's\n+# call, so an agent's command that skips or disables it is denied.\n+input=$(cat)\n+cmd=$(grep -o '\"command\"[[:space:]]*:[[:space:]]*\"\\([^\"\\\\]\\|\\\\.\\)*\"' <<<\"$input\" | head -n1)\n+\n+reason=\"\"\n+if [[ \"$cmd\" =~ git && \"$cmd\" =~ push && \"$cmd\" =~ --no-verify ]]; then\n+  reason=\"git push --no-verify skips the own-your-diff gate. Run the own-your-diff skill and pass the quiz instead. Only the human may push with --no-verify.\"\n+elif [[ \"$cmd\" =~ core\\.hooks[Pp]ath && ! \"$cmd\" =~ --get ]]; then\n+  reason=\"Changing core.hooksPath can disable the own-your-diff pre-push hook. Ask the human to make that change.\"\n+fi\n+\n+[[ -z \"$reason\" ]] && exit 0\n+printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"%s\"}}\\n' \"$reason\"\ndiff --git a/hooks/hooks.json b/hooks/hooks.json\nnew file mode 100644\nindex 0000000..55c4a49\n--- /dev/null\n+++ b/hooks/hooks.json\n@@ -0,0 +1,19 @@\n+{\n+  \"hooks\": {\n+    \"SessionStart\": [\n+      {\n+        \"hooks\": [\n+          { \"type\": \"command\", \"command\": \"\\\"${CLAUDE_PLUGIN_ROOT}/hooks/session-start\\\"\", \"timeout\": 10 }\n+        ]\n+      }\n+    ],\n+    \"PreToolUse\": [\n+      {\n+        \"matcher\": \"Bash|Execute\",\n+        \"hooks\": [\n+          { \"type\": \"command\", \"command\": \"\\\"${CLAUDE_PLUGIN_ROOT}/hooks/guard\\\"\", \"timeout\": 10 }\n+        ]\n+      }\n+    ]\n+  }\n+}\ndiff --git a/hooks/session-start b/hooks/session-start\nnew file mode 100755\nindex 0000000..cea68df\n--- /dev/null\n+++ b/hooks/session-start\n@@ -0,0 +1,8 @@\n+#!/usr/bin/env bash\n+# Runs at session start in every harness. Keeps quizgate current on PATH and\n+# installs the pre-push hook in opted-in clones. Never fails the session.\n+gate=\"$(cd \"$(dirname \"$0\")/..\" && pwd)/skills/own-your-diff/scripts/quizgate\"\n+\"$gate\" sync || true\n+top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0\n+[[ -e \"$top/.own-your-diff\" ]] || exit 0\n+echo \"This repo is opted into own-your-diff: a push of commits without a passed quiz is blocked. Run the own-your-diff skill before any push or PR.\"\ndiff --git a/install.sh b/install.sh\nnew file mode 100755\nindex 0000000..00e9f03\n--- /dev/null\n+++ b/install.sh\n@@ -0,0 +1,37 @@\n+#!/usr/bin/env bash\n+# Install the own-your-diff plugin into each harness named, or each one on PATH.\n+# OWN_YOUR_DIFF_SOURCE overrides the marketplace (a local clone path works).\n+set -euo pipefail\n+\n+HERE=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n+SOURCE=${OWN_YOUR_DIFF_SOURCE:-krimvp/own-your-diff}\n+ID=own-your-diff@own-your-diff\n+\n+claude_install() {\n+  claude plugin marketplace add \"$SOURCE\" || claude plugin marketplace update own-your-diff\n+  claude plugin install \"$ID\" --scope user\n+}\n+\n+droid_install() {\n+  droid plugin marketplace add \"$SOURCE\" || droid plugin marketplace update own-your-diff\n+  droid plugin install \"$ID\" --scope user\n+}\n+\n+codex_install() {\n+  codex plugin marketplace add \"$SOURCE\" || codex plugin marketplace upgrade own-your-diff\n+  codex plugin add \"$ID\"\n+  \"$HERE/scripts/codex-trust-hooks\"\n+}\n+\n+harnesses=(\"$@\")\n+if ((${#harnesses[@]} == 0)); then\n+  for h in claude droid codex; do command -v \"$h\" >/dev/null && harnesses+=(\"$h\"); done\n+fi\n+for h in \"${harnesses[@]}\"; do\n+  case \"$h\" in\n+    claude | droid | codex) echo \"== $h\"; \"${h}_install\" ;;\n+    *) echo \"unknown harness: $h (claude, droid, codex)\" >&2; exit 2 ;;\n+  esac\n+done\n+\"$HERE/skills/own-your-diff/scripts/quizgate\" sync\n+echo \"quizgate is in ${QUIZGATE_BIN:-$HOME/.local/bin}. Opt a repo in with: quizgate install\"\ndiff --git a/scripts/codex-trust-hooks b/scripts/codex-trust-hooks\nnew file mode 100755\nindex 0000000..2115896\n--- /dev/null\n+++ b/scripts/codex-trust-hooks\n@@ -0,0 +1,54 @@\n+#!/usr/bin/env python3\n+\"\"\"Trust the own-your-diff plugin hooks in Codex.\n+\n+Codex skips plugin hooks until their definition hash is trusted. This writes\n+the same hooks.state entries the Codex TUI writes when you approve them.\n+\"\"\"\n+import json\n+import os\n+import subprocess\n+import sys\n+\n+PLUGIN = \"own-your-diff@own-your-diff\"\n+\n+proc = subprocess.Popen(\n+    [\"codex\", \"app-server\"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True\n+)\n+\n+\n+def call(msg_id, method, params=None):\n+    msg = {\"jsonrpc\": \"2.0\", \"method\": method}\n+    if params is not None:\n+        msg[\"params\"] = params\n+    if msg_id is not None:\n+        msg[\"id\"] = msg_id\n+    proc.stdin.write(json.dumps(msg) + \"\\n\")\n+    proc.stdin.flush()\n+    if msg_id is None:\n+        return None\n+    for line in proc.stdout:\n+        reply = json.loads(line)\n+        if reply.get(\"id\") == msg_id:\n+            if \"error\" in reply:\n+                sys.exit(f\"codex app-server {method}: {reply['error']}\")\n+            return reply[\"result\"]\n+    sys.exit(f\"codex app-server closed before answering {method}\")\n+\n+\n+try:\n+    call(1, \"initialize\", {\"clientInfo\": {\"name\": \"own-your-diff\", \"version\": \"0\"}})\n+    call(None, \"initialized\")\n+    listed = call(2, \"hooks/list\", {\"cwds\": [os.getcwd()]})\n+    hooks = [h for entry in listed[\"data\"] for h in entry[\"hooks\"] if h.get(\"pluginId\") == PLUGIN]\n+    if not hooks:\n+        sys.exit(f\"no hooks found for {PLUGIN}; is the plugin installed?\")\n+    pending = {h[\"key\"]: {\"trusted_hash\": h[\"currentHash\"]} for h in hooks if h[\"trustStatus\"] != \"trusted\"}\n+    if pending:\n+        call(3, \"config/batchWrite\", {\n+            \"edits\": [{\"keyPath\": \"hooks.state\", \"value\": pending, \"mergeStrategy\": \"upsert\"}],\n+            \"reloadUserConfig\": True,\n+        })\n+    print(f\"trusted {len(pending)} of {len(hooks)} {PLUGIN} hook(s) in Codex\")\n+finally:\n+    proc.stdin.close()\n+    proc.terminate()\ndiff --git a/scripts/selftest b/scripts/selftest\nindex f89c0fc..0e6f186 100755\n--- a/scripts/selftest\n+++ b/scripts/selftest\n@@ -1,9 +1,9 @@\n #!/usr/bin/env bash\n-# Behavior tests for the push gate, through real `git push` into a bare remote.\n+# Behavior tests for the plugin: the push gate through real `git push` into a\n+# bare remote, the snippet renderer, and the harness hooks.\n set -euo pipefail\n \n-SKILL_DIR=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\n-REPO_ROOT=\"$(cd \"$SKILL_DIR/../../..\" && pwd)\"\n+ROOT=\"$(cd \"$(dirname \"$0\")/..\" && pwd)\"\n T=\"$(mktemp -d)\"\n trap 'rm -rf \"$T\"' EXIT\n pass=0 fail=0\n@@ -19,21 +19,34 @@ check() { # description expected-exit command...\n   fi\n }\n \n+export HOME=\"$T/home\" QUIZGATE_BIN=\"$T/home/.local/bin\"\n+PATH=\"$QUIZGATE_BIN:$(tr : '\\n' <<<\"$PATH\" | while read -r d; do [[ -x \"$d/quizgate\" ]] || printf '%s:' \"$d\"; done)\"\n+export GIT_CONFIG_GLOBAL=\"$T/gitconfig\" GIT_CONFIG_NOSYSTEM=1\n+git config --global user.email t@example.com\n+git config --global user.name t\n+git config --global init.defaultBranch main\n+gate=\"$ROOT/skills/own-your-diff/scripts/quizgate\"\n+snip=\"$ROOT/skills/own-your-diff/scripts/snippet\"\n+\n git init -q --bare \"$T/remote.git\"\n-git init -q -b main \"$T/work\"\n+git init -q \"$T/work\"\n cd \"$T/work\"\n-git config user.email t@example.com\n-git config user.name t\n-mkdir -p .agents/skills .githooks\n-cp -r \"$SKILL_DIR\" .agents/skills/\n-cp \"$REPO_ROOT/.githooks/pre-push\" .githooks/\n git remote add origin \"$T/remote.git\"\n-gate=.agents/skills/own-your-diff/scripts/quizgate\n commit() { echo \"$2\" >\"$1\"; git add -A; git commit -qm \"$3\"; }\n \n commit a.txt one \"root commit\"\n check ok \"push with no hook installed\" git push -q -u origin main\n \"$gate\" install >/dev/null\n+check ok \"install writes the opt-in marker\" test -f .own-your-diff\n+check ok \"install writes the pre-push hook\" test -x \"$(git rev-parse --git-path hooks)/pre-push\"\n+git add .own-your-diff && git commit -qm \"opt in\"\n+check blocked \"push is blocked while quizgate is not installed\" git push -q\n+cp \"$T/out\" \"$T/out.missing\"\n+check ok \"block message says how to install\" grep -q \"quizgate is not installed\" \"$T/out.missing\"\n+\"$gate\" sync\n+check ok \"sync puts quizgate in QUIZGATE_BIN\" cmp -s \"$gate\" \"$QUIZGATE_BIN/quizgate\"\n+\"$gate\" record --by human >/dev/null\n+check ok \"quizzed opt-in commit pushes\" git push -q\n \n commit a.txt two \"change a\"\n check blocked \"unquizzed commit is blocked\" git push -q\n@@ -80,7 +93,6 @@ check ok \"deleting a remote branch is never blocked\" git push -q origin --delete\n check blocked \"record names who passed\" \"$gate\" record\n check ok \"ledger keeps who passed\" grep -q $'\\thuman$' \"$(git rev-parse --git-common-dir)/own-your-diff/ledger\"\n \n-snip=.agents/skills/own-your-diff/scripts/snippet\n seq 1 20 >s.txt\n git add s.txt && git commit -qm \"twenty lines\" && \"$gate\" record --by agent >/dev/null && git push -q\n awk 'NR == 1 { $0 = \"<b>&\" } NR == 20 { $0 = \"last\" } 1' s.txt >s.new && mv s.new s.txt\n@@ -92,5 +104,29 @@ printf '<p>\\n  <!-- snippet diff s.txt -->\\n</p>\\n' >page.html\n check ok \"expand fills the directive\" grep -q '<!-- snippet diff s.txt --><figure class=\"ed\">' page.html\n check ok \"expand is idempotent\" cmp -s page.html page.first\n \n+git clone -q \"$T/remote.git\" \"$T/clone\"\n+check ok \"a fresh clone has no hook\" bash -c \"! test -e $T/clone/.git/hooks/pre-push\"\n+(cd \"$T/clone\" && \"$ROOT/hooks/session-start\" >\"$T/ctx\")\n+check ok \"session start installs the hook in an opted-in clone\" test -x \"$T/clone/.git/hooks/pre-push\"\n+check ok \"session start tells the agent the repo is opted in\" grep -q \"own-your-diff skill\" \"$T/ctx\"\n+(cd \"$T/clone\" && commit z.txt z \"clone change\")\n+check blocked \"the clone blocks an unquizzed push\" git -C \"$T/clone\" push -q\n+\n+git init -q \"$T/foreign\"\n+printf '#!/bin/sh\\nexit 0\\n' >\"$T/foreign/.git/hooks/pre-push\"\n+check blocked \"install leaves a foreign pre-push hook alone\" bash -c \"cd $T/foreign && $gate install\"\n+check ok \"the foreign hook is unchanged\" bash -c \"! grep -q own-your-diff $T/foreign/.git/hooks/pre-push\"\n+git init -q \"$T/plain\"\n+check ok \"session start says nothing outside opted-in repos\" bash -c \"cd $T/plain && [[ -z \\$($ROOT/hooks/session-start) ]]\"\n+\n+guard() { printf '{\"tool_name\":\"%s\",\"tool_input\":{\"command\":\"%s\"}}' \"$1\" \"$2\" | \"$ROOT/hooks/guard\"; }\n+denies() { guard \"$1\" \"$2\" | grep -q '\"permissionDecision\":\"deny\"'; }\n+check ok \"guard denies git push --no-verify from Bash\" denies Bash \"git push --no-verify origin main\"\n+check ok \"guard denies git push --no-verify from Execute\" denies Execute \"cd x && git push -u origin f --no-verify\"\n+check ok \"guard denies a core.hooksPath override\" denies Bash \"git -c core.hooksPath=/dev/null push\"\n+check ok \"guard allows a plain push\" bash -c \"[[ -z \\$(guard Bash 'git push -u origin main') ]]\"\n+check ok \"guard allows commit --no-verify\" bash -c \"[[ -z \\$(guard Bash 'git commit --no-verify -m x') ]]\"\n+check ok \"guard allows reading core.hooksPath\" bash -c \"[[ -z \\$(guard Bash 'git config --get core.hooksPath') ]]\"\n+\n echo \"$pass passed, $fail failed\"\n [[ $fail == 0 ]]\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 7960,
+        "completion_tokens": 23,
+        "cached_tokens": 7552,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 9,
+      "timestamp": "2026-11-09T23:06:07.486Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "reasoning_content": "Now let me understand the repo layout overall. Let me check what's in the repo root, the structure, and the pre-existing .githooks/pre-push, quizgate script behavior (sync, install), to fully understand the change's context. The selftest was at `scripts/selftest` at repo root \u2014 wait, the diff shows `scripts/selftest` at repo root changing. And quizgate is at `skills/own-your-diff/scripts/quizgate`. Let me look at the tree.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_y2gkvms5",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cd /workspace && git ls-files | head -50 && echo ==== && git show d8d9c93 --stat --format='%s' | head -30"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_y2gkvms5",
+            "content": ".claude-plugin/marketplace.json\n.claude-plugin/plugin.json\nhooks/guard\nhooks/hooks.json\nhooks/session-start\ninstall.sh\nscripts/codex-trust-hooks\nscripts/selftest\nskills/own-your-diff/SKILL.md\nskills/own-your-diff/assets/explainer.html\nskills/own-your-diff/references/agent-mode.md\nskills/own-your-diff/scripts/quizgate\nskills/own-your-diff/scripts/snippet\n====\nbase\n\n scripts/selftest                              |  96 +++++++++++++\n skills/own-your-diff/SKILL.md                 |  87 ++++++++++++\n skills/own-your-diff/assets/explainer.html    | 186 ++++++++++++++++++++++++++\n skills/own-your-diff/references/agent-mode.md |  41 ++++++\n skills/own-your-diff/scripts/quizgate         | 157 ++++++++++++++++++++++\n skills/own-your-diff/scripts/snippet          | 100 ++++++++++++++\n 6 files changed, 667 insertions(+)\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 11669,
+        "completion_tokens": 147,
+        "cached_tokens": 7936,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 10,
+      "timestamp": "2026-11-09T23:06:08.852Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "Now let me read the base-commit versions of the key scripts to understand the contracts this change builds on.",
+      "reasoning_content": "The repo is the own-your-diff project itself. The base commit established the skill, quizgate, snippet, and selftest. The two unpushed commits:\n\n1. **38de765 \"feat: ship as one plugin for Claude Code, Droid, and Codex\"** \u2014 adds:\n   - `.claude-plugin/marketplace.json` and `.claude-plugin/plugin.json` \u2014 plugin manifests so all three harnesses (Claude Code, Factory Droid, Codex) can load this repo as one plugin.\n   - `hooks/hooks.json` \u2014 hook definitions: SessionStart \u2192 session-start hook; PreToolUse matcher \"Bash|Execute\" \u2192 guard.\n   - `hooks/session-start` \u2014 runs `quizgate sync` (keeps quizgate current on PATH and installs the pre-push hook in opted-in clones), never fails the session; if repo has `.own-your-diff` marker, tells the agent the repo is opted in.\n   - `hooks/guard` \u2014 PreToolUse guard that denies an agent's `git push --no-verify` and `core.hooksPath` changes (but allows reading via --get). Only denies; the human's call stays theirs.\n   - selftest rework: moves to repo root (`$(dirname $0)/..` instead of the skill dir), adds isolation (HOME, QUIZGATE_BIN, GIT_CONFIG_GLOBAL), and covers the hooks + snippet renderer.\n\n2. **bf662f8 \"feat: install into every harness on PATH\"** \u2014 adds:\n   - `install.sh` \u2014 installs the plugin into each harness named, or each one found on PATH (claude, droid, codex). Uses marketplace add/update fallback, plugin install. For codex, additionally runs `scripts/codex-trust-hooks`. Finishes with `quizgate sync`.\n   - `scripts/codex-trust-hooks` \u2014 Codex skips plugin hooks until their definition hash is trusted; this script writes the same hooks.state trust entries the Codex TUI writes when you approve them, via `codex app-server` JSON-RPC (initialize, initialized, hooks/list, config/batchWrite with upsert merge).\n\nSo the target: **ship the skill as a single plugin that works across all three harnesses (Claude Code, Droid, Codex), with an installer that puts it into every harness on PATH, so any clone of an opted-in repo gets the pre-push hook at session start.**\n\nAltitude: this is a **design altitude** change. It introduces module boundaries (plugin manifest, hooks as a shared surface across harnesses, installer, trust bridging for Codex), a dependency (Codex app-server protocol), and reshapes how the gate reaches clones (session-start sync + hook install instead of relying on a copy of the skill in the repo).\n\nWait \u2014 let me reconsider. The base commit (d8d9c93) already shipped the skill, quizgate, snippet, selftest. The old selftest copied the skill into `.agents/skills/` and `.githooks/pre-push` into the work repo \u2014 meaning the old assumption was the repo itself carried the skill and hooks (like this /workspace repo is a plugin checkout). The new commits ship it as a plugin.\n\nKey design points to list (points the author must own):\n\n1. **What the change is for (core):** One plugin, three harnesses. All three harnesses (Claude Code, Factory Droid, Codex) read `.claude-plugin/` and `hooks/hooks.json`, so instead of per-harness packaging, one manifest serves all three. The gate travels with the session, not with the repo.\n\n2. **How the gate reaches new clones (core):** The session-start hook runs `quizgate sync`, which copies quizgate to `~/.local/bin` (QUIZGATE_BIN) and installs the pre-push hook in opted-in clones (those with `.own-your-diff`). So a fresh clone of an opted-in repo gets the hook at session start \u2014 no per-repo setup.\n\n3. **The trust boundary (core/important):** The gate blocks pushes of unquizzed commits. Bypassing (`git push --no-verify`, changing `core.hooksPath`) is the human's call, so the PreToolUse guard denies an *agent's* attempts at those, while leaving the human free (the guard only sees tool calls from the agent; it denies `--no-verify` pushes and `core.hooksPath` writes, but allows reads via `--get`, allows plain pushes, and allows `commit --no-verify`).\n\n4. **Session-start robustness (important):** The session-start hook never fails the session (`|| true`, `exit 0` on non-git), and only announces the opt-in when `.own-your-diff` exists. It must never break a session just because the gate can't run.\n\n5. **Codex trust mechanism (important):** Codex skips plugin hooks until their definition hash is trusted. The installer bridges this by writing the same hooks.state entries the TUI writes when a user approves them, through `codex app-server` (JSON-RPC: initialize \u2192 hooks/list \u2192 config/batchWrite upsert). Trust only pending, non-trusted hooks keyed by their current hash.\n\n6. **Installer design (important):** `install.sh` installs into each harness named, or every one found on PATH; `add` falls back to `update` (idempotent reinstall); after install it runs `quizgate sync` so the gate is on PATH right away.\n\n7. **Why deny only --no-verify pushes and hooksPath changes but not commit --no-verify (important):** The guard's boundary: the pre-push gate protects the remote; `commit --no-verify` doesn't touch the remote, and `core.hooksPath --get` is a read. The rule: deny what disables or skips the push gate, allow everything else.\n\n8. **Costs/tradeoffs:** The guard is a heuristic regex over the command string (`git`+`push`+`--no-verify` anywhere in the command, not necessarily in that order or even in the same command chain... actually it just checks the raw extracted command string for those substrings). Cost: false positives possible (e.g., a command string containing all three substrings in unrelated parts); also the guard reads only the first \"command\" field. Also trusting hooks for Codex automatically writes trust state \u2014 a security tradeoff: the installer pre-approves what the TUI would ask the human.\n\nHmm, but I should keep at the target's altitude. The target: ship as one plugin for all three harnesses + install into every harness on PATH. The design altitude covers: problem, shape chosen, fit with architecture, alternatives and why they lost, costs, what it makes easy/hard next.\n\nIncidental items:\n- `scripts/selftest` rework (test scaffolding) \u2014 incidental. But the selftest move from skill dir to repo root reflects the new layout... it's test scaffolding serving the target. Give it one line, no question.\n- The `.claude-plugin/marketplace.json` / `plugin.json` manifest fields themselves \u2014 incidental (plumbing). Though the *existence* of a single manifest is part of the target.\n- `scripts/codex-trust-hooks` \u2014 is this target or incidental? The commit message names it as the point of the second commit: \"Codex skips plugin hooks until their hash is trusted, so the installer writes the trust entries through codex app-server.\" That's part of the target \u2014 a design decision (auto-trust via app-server instead of asking the user to approve in the TUI). It's a mechanism within the design, but it carries a design decision: silently trusting the hooks. That's worth a question \u2014 it's a boundary/tradeoff: the guard protects against the agent disabling the gate, yet the installer itself bypasses Codex's human-approval trust prompt. That tension is a great failure/rationale question.\n\nLet me now decide the point list with relevance ratings:\n\n1. `core` \u2014 Why one plugin for all three harnesses works: all three read the same plugin layout (`.claude-plugin/` + `hooks/hooks.json`), so one manifest replaces per-harness packaging. Rationale category. Question: \"Why ship one plugin manifest instead of a package per harness?\" Key points: all three harnesses read the same plugin layout; one manifest keeps the gate and skill identical across harnesses; less to keep in sync.\n\n2. `core` \u2014 How the gate reaches a fresh clone of an opted-in repo: session-start hook runs sync, which installs the pre-push hook in clones that have the opt-in marker. This is the main contract change: the hook travels with the session, the opt-in travels with the repo. Category: extension or flow? It's design altitude, category could be `extension`: \"A new clone of an opted-in repo is opened. When does it get the push gate, and how?\" Key points: session start runs the gate sync; sync installs the pre-push hook in opted-in clones; the marker `.own-your-diff` carries the opt-in; the session-start hook also tells the agent the repo is opted in.\n\n3. `core` \u2014 The guard's boundary: an agent's `git push --no-verify` and `core.hooksPath` changes are denied because bypassing the gate is the human's call; plain pushes and reads are allowed. Category: `boundary`. Question: \"What commands does the guard deny, and why only those?\" Key points: deny agent pushes that skip the pre-push hook; deny changes to the hooks path; bypassing the gate is the human's call; reads (config --get) and commit --no-verify stay allowed.\n\n4. `important` \u2014 Session-start hook must never fail the session: failures fall back silently; outside a git repo or a non-opted-in repo it says nothing. Category: `failure`. Question: \"The session-start hook runs where the gate is broken or absent. What happens to the session?\" Key points: the session still starts; sync failures are ignored; no message outside opted-in repos. Hmm \u2014 that's somewhat about the mechanism, but it's the contract of the hook: it never breaks the host session. Design-level: the plugin must be harmless where it doesn't apply.\n\n5. `important` \u2014 Codex trust: Codex skips plugin hooks until their hash is trusted; the installer writes the trust entries the TUI would write on approval, via the app-server. Rationale/tradeoff: why auto-trust instead of letting the human approve in the TUI? Category: `rationale`. Key points: Codex would silently skip the hooks without trust; the installer writes the same entries the TUI writes; it only trusts hooks of this plugin that are not yet trusted, keyed by their current hash; the tradeoff is the user pre-approves on install.\n\n6. `important` \u2014 Installer shape: installs into every harness named, or every one found on PATH; add falls back to update so reinstall is safe; ends with sync so the gate is on PATH immediately. Category: `extension`? \"The user reinstalls after a plugin update. What does the installer do differently?\" Hmm. Maybe simpler: the idempotent reinstall is worth owning: `marketplace add` fails when already added, so it falls back to `update`/`upgrade`. Category: `failure`? That's more of a mechanism detail. Maybe fold installer into one question about why add-then-update.\n\n7. `important` \u2014 The tension: the guard denies the agent disabling the gate, yet the installer auto-trusts hooks in Codex, doing what the TUI would ask a human. Who holds the bypass call? Category: `failure` or `boundary`. Actually the design answer: install is a human action (run install.sh), so trust written there is the human's call, same as `--no-verify` being the human's call. That's a nice synthesis point for the final question.\n\nAlso possible `important`: the guard is text-matching on the command string, not parsing; cost is false denials possible (e.g., a shell script name containing the words), and it only inspects the first command field. Is that altitude-appropriate? At design altitude, \"the guard inspects the text of the agent's shell command\" is the shape chosen; a question about what it might wrongly deny is a `failure` question: \"What does the guard miss or over-deny?\" That may be too much of a mechanism detail. But the design cost matters: the guard greps for substrings anywhere in the command. Hmm, per skill: \"a point about one tool's setup step, a flag, or a config value is a mechanism detail, so it stays out of the rubric.\" The regex heuristic is the chosen shape though. I'd keep one question about the guard's scope (what it denies/allows) and maybe leave the heuristic out.\n\nAlso the selftest move: the old test copied the skill into `.agents/skills/` and hooks into `.githooks/` inside the work repo; the new test runs from the repo root with an isolated HOME. Incidental.\n\nNumber of questions: \"one question per core and important point, 10 at most.\" Let me pick ~6 questions:\n\n- q1 (single, rationale, core): Why one plugin for all three harnesses? \n- q2 (single, extension, core): Fresh clone of an opted-in repo \u2014 when/how does it get the gate?\n- q3 (multi, boundary, core): What does the guard deny vs allow? Multi-select fits \"which of these hold\". \n- q4 (single, failure, important): Session starts where gate is broken/absent \u2014 what happens to the session, what does the agent see?\n- q5 (single, rationale, important): Why does the installer write Codex trust entries itself?\n- q6 (free, failure, important): Final synthesis \u2014 new case applying several points: e.g., \"A teammate says the agent found a way around the gate in Codex: the hooks never ran after install. What happened, and how does the design answer it?\" Hmm.\n\nOr a better final multi/free: \"Your team's security reviewer worries the installer pre-approves Codex hooks that the TUI would ask the human to approve. Explain why the design accepts that, and who holds the bypass call in this system.\" That's a synthesis of guard boundary + trust + human's call. Category: boundary. Free-form. That's a good closer.\n\nWait \u2014 but I already have q5 covering Codex trust rationale. The closer could instead apply the opt-in contract to a new case: \"A repo opts in, a teammate clones it and never installs the plugin. What protects the repo's remote, and what doesn't?\" Hmm, that's interesting: if nobody in a clone has the plugin, nothing blocks the push \u2014 the opt-in marker only works in sessions where the plugin runs. Actually the pre-push hook is installed by sync into the clone's .git/hooks \u2014 but only when a session with the plugin runs there. If the teammate never runs a harness with the plugin, the push is not blocked. The design answer: the gate protects the remote only in sessions with the plugin; the opt-in is a convention, not remote enforcement. That's a `failure` question: what does the boundary not protect against. Good synthesis closer.\n\nLet me reconsider which is more valuable. The skill says: \"End the quiz with a multi-select or a free-form question that applies several points to one new case.\" The closer should pull pieces together: opt-in marker + session-start sync + guard + trust. The teammate-never-installs case applies: marker travels with repo, hook arrives at session start, guard only sees the agent's tool calls in harnesses where the plugin runs. A correct answer: the remote is not protected in that teammate's environment until a session with the plugin starts there; the marker alone blocks nothing; also CI or pushes outside a harness are unprotected. Good.\n\nLet me also double-check the guard details for accurate key points: \n- denies when cmd matches `git` AND `push` AND `--no-verify` anywhere in the first command string.\n- denies when cmd matches `core.hooksPath` (case-insensitive on the P) and NOT `--get`.\n- allows plain push, commit --no-verify, config --get core.hooksPath.\n- Outputs a JSON deny with a reason; exit 0 and empty output otherwise.\n- The reason text says: only the human may push with --no-verify; ask the human to change hooksPath.\n\nSession-start details:\n- locates gate relative to itself (plugin root)/skills/.../quizgate\n- `\"$gate\" sync || true` \u2014 never fails\n- top=$(git rev-parse --show-toplevel) \u2014 non-git \u2192 exit 0 silently\n- marker `.own-your-diff` present \u2192 echo announcement\n- Note: sync installs the pre-push hook in opted-in clones (per quizgate sync behavior \u2014 \"install the hook in an opted-in repo that lacks it\"). Let me verify quizgate's sync/install to get the contract right.\n\nLet me read the quizgate script quickly to be accurate about sync, install, and the marker, since key points must be accurate.\n\nAlso install.sh: for codex it runs codex-trust-hooks. And the final `quizgate sync` + hint about `quizgate install` to opt a repo in.\n\ncodex-trust-hooks: JSON-RPC over `codex app-server`: initialize (with clientInfo), initialized notification, hooks/list with cwds [cwd], filter hooks by pluginId, collect those with trustStatus != trusted, map key \u2192 {trusted_hash: currentHash}, config/batchWrite edit at keyPath hooks.state with mergeStrategy upsert, reloadUserConfig true. Print count. The point: Codex skips hooks until their definition hash is trusted; without this, the plugin's hooks silently don't run after install; the installer writes the same entries the TUI writes when the human clicks approve; only this plugin's hooks, only untrusted ones.\n\nWhy auto-trust instead of asking? Because otherwise the agent/user installs and the hooks silently don't run \u2014 a silent failure of the whole gate in Codex. The design treats running install.sh as the human's approval action. Tradeoff: the trust prompt the human would have seen in the TUI never appears; a security-conscious user might object.\n\nNow, let me verify quizgate sync/install behavior by reading the script.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_ppejos6t",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cd /workspace && git show d8d9c93:skills/own-your-diff/scripts/quizgate"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_ppejos6t",
+            "content": "#!/usr/bin/env bash\n# Push gate for the own-your-diff skill. A commit may be pushed only after its\n# author passed a quiz on it. Passes are stored as `git patch-id --stable`\n# values, so rebases, rewords, and squashes of quizzed work stay quizzed.\nset -euo pipefail\n\nEMPTY_TREE=$(git hash-object -t tree /dev/null)\nZERO=0000000000000000000000000000000000000000\n\nusage() {\n  cat <<'EOF'\nusage: quizgate <command>\n  pending    unquizzed commits a push of HEAD would send, oldest first\n  base       commit the explainer diffs from (parent of the oldest pending commit)\n  dir        directory holding explainers, quiz transcripts, and the ledger\n  record --by human|agent\n             mark every pending commit, and their combined diff, as quizzed\n  open FILE  open an explainer in the browser\n  check      pre-push hook entry point; reads pushed refs on stdin\n  install    opt this repo in: write .own-your-diff and the pre-push hook\n  sync       copy quizgate to $QUIZGATE_BIN (default ~/.local/bin), and\n             install the hook in an opted-in repo that lacks it\nEOF\n}\n\nstate_dir() {\n  local d\n  d=\"$(git rev-parse --path-format=absolute --git-common-dir)/own-your-diff\"\n  mkdir -p \"$d\"\n  echo \"$d\"\n}\n\nledger() { local f; f=\"$(state_dir)/ledger\"; touch \"$f\"; echo \"$f\"; }\n\ncommit_pid() { git show --no-color --format= \"$1\" | git patch-id --stable | cut -d' ' -f1; }\n\nrange_pid() { git diff --no-color \"$1\" \"$2\" | git patch-id --stable | cut -d' ' -f1; }\n\nquizzed() { grep -q \"^$1\"$'\\t' \"$(ledger)\"; }\n\n# Commits reachable from $1 that no remote has, oldest first. A commit with an\n# empty diff has no patch-id and needs no quiz.\nunpushed() { git rev-list --reverse --no-merges \"$1\" --not --remotes; }\n\nunquizzed() {\n  local c pid\n  for c in $(unpushed \"$1\"); do\n    pid=$(commit_pid \"$c\")\n    [[ -z \"$pid\" ]] && continue\n    quizzed \"$pid\" || echo \"$c\"\n  done\n}\n\ncmd_pending() { unquizzed HEAD | xargs -r git log --no-walk=unsorted --format='%h %s'; }\n\ncmd_base() {\n  local pending oldest\n  pending=$(unquizzed HEAD)\n  oldest=${pending%%$'\\n'*}\n  [[ -z \"$oldest\" ]] && { echo \"nothing pending\" >&2; exit 1; }\n  git rev-parse --verify -q \"$oldest^\" || echo \"$EMPTY_TREE\"\n}\n\ncmd_record() {\n  local by commits c pid base now\n  [[ \"${1:-}\" == --by && \"${2:-}\" =~ ^(human|agent)$ ]] || { echo \"usage: quizgate record --by human|agent\" >&2; exit 2; }\n  by=$2\n  commits=$(unquizzed HEAD)\n  [[ -z \"$commits\" ]] && { echo \"nothing pending\"; return; }\n  base=$(cmd_base)\n  now=$(date -u +%FT%TZ)\n  {\n    for c in $commits; do\n      printf '%s\\t%s\\t%s\\tcommit\\t%s\\n' \"$(commit_pid \"$c\")\" \"$(git rev-parse --short \"$c\")\" \"$now\" \"$by\"\n    done\n    pid=$(range_pid \"$base\" HEAD)\n    [[ -n \"$pid\" ]] && printf '%s\\t%s\\t%s\\trange\\t%s\\n' \"$pid\" \"$(git rev-parse --short HEAD)\" \"$now\" \"$by\"\n  } >>\"$(ledger)\"\n  echo \"recorded $(wc -w <<<\"$commits\") commit(s) as quizzed by $by\"\n}\n\ncmd_open() {\n  local f=${1:?usage: quizgate open FILE}\n  if command -v wslview >/dev/null; then wslview \"$f\"\n  elif command -v explorer.exe >/dev/null; then explorer.exe \"$(wslpath -w \"$f\")\" || true\n  elif command -v xdg-open >/dev/null; then xdg-open \"$f\"\n  elif command -v open >/dev/null; then open \"$f\"\n  else echo \"open $f in a browser\"\n  fi\n}\n\ncmd_check() {\n  local local_ref local_sha remote_ref remote_sha missing=\"\"\n  while read -r local_ref local_sha remote_ref remote_sha; do\n    [[ \"$local_sha\" == \"$ZERO\" ]] && continue\n    missing+=$(unquizzed \"$local_sha\")$'\\n'\n  done\n  missing=$(sort -u <<<\"$missing\" | sed '/^$/d')\n  [[ -z \"$missing\" ]] && exit 0\n  {\n    echo \"own-your-diff: push blocked. These commits have no passed quiz:\"\n    xargs git log --no-walk --format='  %h %s' <<<\"$missing\"\n    echo \"Ask your agent to run the own-your-diff skill, read the explainer, and pass the quiz.\"\n  } >&2\n  exit 1\n}\n\nHOOK_TAG=\"# own-your-diff pre-push hook\"\n\nhook_path() { echo \"$(git rev-parse --path-format=absolute --git-path hooks)/pre-push\"; }\n\nwrite_hook() {\n  local hook\n  hook=$(hook_path)\n  grep -qF \"$HOOK_TAG\" \"$hook\" 2>/dev/null && return\n  if [[ -e \"$hook\" ]]; then\n    echo \"own-your-diff: $hook already exists. Add this line to it: quizgate check || exit 1\" >&2\n    return 1\n  fi\n  mkdir -p \"$(dirname \"$hook\")\"\n  cat >\"$hook\" <<'HOOK'\n#!/bin/sh\n# own-your-diff pre-push hook\ngate=$(command -v quizgate || echo \"$HOME/.local/bin/quizgate\")\n[ -x \"$gate\" ] || { echo \"own-your-diff: push blocked. quizgate is not installed, see https://github.com/krimvp/own-your-diff\" >&2; exit 1; }\nexec \"$gate\" check\nHOOK\n  chmod +x \"$hook\"\n  echo \"installed $hook\"\n}\n\ncmd_install() {\n  local marker\n  marker=\"$(git rev-parse --show-toplevel)/.own-your-diff\"\n  [[ -e \"$marker\" ]] || { echo \"Pushes from this repo need a passed own-your-diff quiz.\" >\"$marker\"; echo \"wrote $marker, commit it\"; }\n  write_hook\n}\n\ncmd_sync() {\n  local bin=${QUIZGATE_BIN:-$HOME/.local/bin} top\n  mkdir -p \"$bin\"\n  cmp -s \"$0\" \"$bin/quizgate\" || install -m 755 \"$0\" \"$bin/quizgate\"\n  top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0\n  [[ -e \"$top/.own-your-diff\" ]] && write_hook >/dev/null || true\n}\n\ncase \"${1:-}\" in\n  pending) cmd_pending ;;\n  base) cmd_base ;;\n  dir) state_dir ;;\n  record) shift; cmd_record \"$@\" ;;\n  open) shift; cmd_open \"$@\" ;;\n  check) cmd_check ;;\n  install) cmd_install ;;\n  sync) cmd_sync ;;\n  *) usage; exit 2 ;;\nesac\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 12039,
+        "completion_tokens": 3965,
+        "cached_tokens": 11776,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 11,
+      "timestamp": "2026-11-09T23:06:34.124Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "I have the full picture of both commits. Before writing the plan, let me check the plain-English rules that quizlint enforces.",
+      "reasoning_content": "Now I understand the full picture. Let me also quickly check the pre-push hook behavior on missing quizgate (the hook blocks if quizgate is not installed \u2014 interesting: `check blocked \"push is blocked while quizgate is not installed\"`). And in the selftest: after install, the marker is committed, push is blocked because quizgate is not on PATH in the test env... wait, the pre-push hook uses `command -v quizgate || echo $HOME/.local/bin/quizgate` and exits 1 with \"quizgate is not installed\" if missing. So a push from a clone where quizgate isn't on PATH is blocked with instructions. That's the contract: opted-in repo + hook \u2192 push needs quizgate available.\n\nNow, the two commits:\n\n**Commit 1 (38de765): ship as one plugin for Claude Code, Droid, and Codex.**\n- `.claude-plugin/marketplace.json` + `plugin.json`: the repo doubles as one plugin; all three harnesses read this layout.\n- `hooks/hooks.json`: SessionStart and PreToolUse (matcher \"Bash|Execute\") hook wiring, `${CLAUDE_PLUGIN_ROOT}` env var, 10s timeouts.\n- `hooks/session-start`: sync || true; announce opt-in; never fail.\n- `hooks/guard`: deny agent's `git push --no-verify` and non-get `core.hooksPath` commands; allow the rest.\n- selftest: moved to repo root, isolated env (HOME, QUIZGATE_BIN, git config), tests install/sync/record/clone/foreign-hook/guard.\n\n**Commit 2 (bf662f8): install into every harness on PATH.**\n- `install.sh`: per-harness install functions (claude, droid, codex), add-then-update fallback, default = every harness on PATH, ends with quizgate sync, hint to opt in.\n- `scripts/codex-trust-hooks`: trusts the plugin's hooks in Codex via app-server JSON-RPC so they actually run without the TUI approval round-trip.\n\nTarget: \"Ship the skill as a single plugin that works in all three harnesses, with an installer that reaches every one of them, so the gate reaches any clone of an opted-in repo at session start.\"\n\nAltitude: design (mostly). The Codex trust bit has mechanism flavor, but the design decision (auto-write trust entries at install time vs. leave the human to approve in the TUI) is a design tradeoff. The skill says a change can carry both kinds. I'll set altitude \"design\" and frame the Codex trust question at design altitude (why the installer writes trust itself, what it trades away), not as a JSON-RPC walkthrough.\n\nHmm, but wait. Should altitude be \"mechanism\" for the codex-trust part? The question \"Why does the installer write Codex trust entries through the app-server?\" \u2014 the design-level point: Codex skips plugin hooks until their hash is trusted; without trust the hooks silently never run, so the gate silently fails in Codex. The installer writes the same entries the TUI writes on approval, so running install counts as the human approving. That's design: dependency/protocol + tradeoff. The app-server details (initialize, hooks/list, config/batchWrite, upsert) are mechanism details below the rubric. Good.\n\nIncidental list:\n- marketplace.json/plugin.json field values (manifest plumbing)\n- selftest rework: moved to repo root, isolated HOME/config, covers hooks (test scaffolding)\n- the sync/quizgate scripts unchanged (no changes there actually)\n- guard's exact JSON output shape\n\nNow, questions. Let me list points with relevance:\n\n1. **Why one plugin for all three harnesses** \u2014 all three read `.claude-plugin/` and `hooks/hooks.json`; one manifest serves all; the alternative (per-harness packaging) loses because it duplicates and drifts. \u2192 core, rationale.\n\n2. **How the gate reaches a fresh clone** \u2014 the opt-in marker travels with the repo; the session-start hook runs sync, which installs the pre-push hook in opted-in clones; the announcement tells the agent. \u2192 core, extension. This is the contract: opt-in is carried by the repo, enforcement arrives with a session that has the plugin.\n\n3. **The guard's boundary** \u2014 deny the agent's push-that-skips-the-hook and hooks-path changes; allow plain pushes, reads, commit --no-verify; bypassing the gate is the human's call. \u2192 core, boundary. Multi-select works: \"Which of these does the guard deny?\"\n\n4. **Session-start never fails the session** \u2014 sync failure ignored; outside git or outside opted-in repos, silent. The plugin must never break the host. \u2192 important, failure.\n\n5. **Codex trust tradeoff** \u2014 without trust entries, Codex silently skips the hooks; installer writes what the TUI would write on approval; install counts as the human approving; only this plugin's untrusted hooks, keyed by current hash. Tradeoff: the user pre-approves without seeing the prompt. \u2192 important, rationale. \n\nHmm wait \u2014 is 5 core or important? The second commit's whole point is that Codex would otherwise silently skip the hooks. The commit message says so. \"What the change is for\" for commit 2 is: install into every harness on PATH, and make it actually work in Codex. I'd say the Codex trust decision is core to commit 2... but the overall target spans both commits. I'll rate it important; the one-plugin shape and the clone-reaching contract are the core. Actually, let me think about what an author must own to defend the push: if Codex silently skips untrusted hooks, the gate silently doesn't exist in Codex \u2014 that's a failure mode an author must know. I'll keep it `important` but make sure a question covers it.\n\n6. **What the boundary does NOT protect** \u2014 a teammate who never installs the plugin, or a push from outside a harness (plain terminal/CI), is not blocked: the marker is a convention; enforcement only exists where the hook was installed by a session. \u2192 important, failure. This is the closer: applies several points to a new case.\n\nAlso candidate: the installer's add-then-update fallback (idempotent reinstall) \u2014 useful at best, mechanism detail-ish. Skip; or fold into incidental? No, it's a small design touch (\"marketplace add fails when already added, so fall back to update\"). I'd rate it useful; skip since we have core/important questions.\n\nAlso candidate: pre-push hook blocks when quizgate is missing from PATH (with install hint) rather than allowing \u2014 \"fail closed\". That's an important failure-mode design: the gate fails closed, not open. Was that in base or new? write_hook is in base (quizgate). The new selftest tests it, but the behavior is base. The pending diff includes the selftest line testing it. The behavior predates the change, so a question on it tests the base, not the diff. Skip it. But wait \u2014 the ledger and hook live in `.git` / common dir, not tracked; the marker is tracked. That's base design too.\n\nHmm, one more thing worth checking: \"install leaves a foreign pre-push hook alone\" \u2014 write_hook refuses to overwrite a foreign hook (base behavior). Skip.\n\nWhat about the guard only sees shell-tool commands (matcher \"Bash|Execute\") \u2014 a WebFetch or other tool can't push. Fine, not question-worthy. The guard greps the raw command text for substrings \u2014 could over-deny (e.g., `echo git push --no-verify` in a heredoc, or a filename containing those words) or under-deny (e.g., `git push --no-verify=true`? actually that contains --no-verify; `git -c core.hooksPath= push`? contains core.hooksPath and no --get \u2192 denied; obfuscation `git push --no$(echo )verify`? would slip). Design cost: it's a text match, so it's a bump, not a wall; it raises the bar and the human keeps the final call. Is that a point worth a question? \"What can slip past the guard, and why is that accepted?\" \u2014 that's a genuine design cost. I'd rate it important. But 10 max; I have 6 so far. Let me consider adding it as a single-select or multi.\n\nActually, I think the guard's cost is a strong `failure`/boundary point: the guard is a substring match over one command string, so a rewritten command can slip past; the design accepts this because the guard is a backstop while the real gate is the pre-push hook. That's worth owning \u2014 it's \"what does this boundary not protect against\" applied to the guard. But my closer (#6) is already a \"what doesn't the boundary protect\" question at the system level. Two such questions would be repetitive categories. Let me structure:\n\n- q1: single, rationale, core \u2014 one plugin for all three harnesses.\n- q2: single, extension, core \u2014 fresh clone: when/how does the gate arrive.\n- q3: multi, boundary, core \u2014 which commands the guard denies/allows (multi-select, exact set).\n- q4: single, failure, important \u2014 session-start where gate broken/absent: session still fine, what the agent sees.\n- q5: single, rationale, important \u2014 why the installer writes Codex trust itself.\n- q6: free, failure, important \u2014 closer: teammate never installs the plugin (or pushes from a terminal/CI); what's protected, what isn't; who holds the bypass call.\n\nSix questions, spread across categories: rationale, extension, boundary, failure, rationale, failure. Two rationale and two failure... The skill says \"Spread a quiz across categories rather than asking the same kind of question twice.\" Hmm. Let me vary: q5 could be `boundary`? \"Why does the installer write the trust entries that the TUI prompts for?\" \u2014 that's rationale (why this over letting the human approve in the TUI). q4 is failure (what happens when the gate is broken). q6 failure. Maybe make q4 an `extension`? No \u2014 q2 is extension. \n\nOptions: q1 rationale, q2 extension, q3 boundary, q4 failure, q5 rationale, q6 boundary (what the whole boundary protects and does not). The closer as boundary: \"the plugin's enforcement is a convention\" \u2014 what does this design protect the remote from, and what slips past. Categories then: rationale, extension, boundary, failure, rationale, boundary. Still two rationale and two boundary, but across 6 questions with 4 distinct categories, that's reasonable spread. Alternatively make q5 multi about what the trust script does/doesn't do... but at design altitude, the \"why auto-trust\" is the point. Keep rationale.\n\nHmm, also should q1 be single-select? \"Why does one plugin manifest serve all three harnesses?\" Options:\n- All three harnesses read the same plugin layout: the manifest and the hooks file. (correct)\n- Each harness vendors the plugin from its own marketplace copy. (wrong)\n- The installer compiles a harness-specific package at install time. (wrong)\n- Claude Code and Droid share a layout, Codex needs a translated one. (wrong)\n\nWait, is the fact \"all three read .claude-plugin/ and hooks/hooks.json\" accurate? The commit message says exactly: \"All three harnesses read .claude-plugin/ and hooks/hooks.json.\" Good \u2014 that's the design claim. The author must own it: one layout, three harnesses; the alternative (per-harness packaging) loses because it duplicates the plugin and they drift.\n\nq2 (extension, core): \"A teammate clones a repo that has the opt-in marker. Neither of you has touched that clone before. When does the push gate first appear there?\" Options:\n- At their first session start: the start hook syncs, which installs the pre-push hook in the opted-in clone. (correct)\n- Never: the hook must be installed by hand in each clone. (wrong)\n- On their first push: git installs the hook from the repo's settings. (wrong \u2014 actually git doesn't)\n- On install: the marker installs the hook when the repo is cloned. (hmm \u2014 the marker is just a file; quizgate install writes the hook, but a fresh clone gets it from session-start sync)\n\nKeep 4 options, same length-ish. Key points: session-start hook runs the gate sync at session start; sync installs the pre-push hook in clones with the opt-in marker; the marker travels with the repo; the hook then blocks pushes of unquizzed commits.\n\nWait, subtlety: sync installs the hook in an opted-in repo \"that lacks it\" \u2014 write_hook checks for the tag and skips if already own hook, errors if foreign. Also sync requires quizgate copied to QUIZGATE_BIN. And the announcement is printed. Fine.\n\nq3 (multi, boundary, core): \"Which of these shell commands does the guard deny?\" Options:\n- A push that skips the pre-push hook. (correct)\n- A change to where git looks for hooks. (correct)\n- A commit that skips the commit hook. (wrong \u2014 allowed)\n- A read of where git looks for hooks. (wrong \u2014 allowed)\n\nThat's a clean multi with exact set {1,2}. In plain words per the skill: avoid `--no-verify`/`core.hooksPath` names? The skill says use a code name only when the question is about that name. \"git push --no-verify\" \u2014 hmm, the name is the thing here. I could phrase options in plain words as above. But the author must recognize the actual commands... The question is about the guard's boundary, which is defined by these two patterns. Plain words: \"A push told to skip the pre-run checks.\" Let me phrase carefully but plainly:\n\n- \"git push --no-verify\" \u2192 \"A push that skips the pre-push checks\" \u2014 plain enough. Actually \"--no-verify\" is the name; the boundary is exactly \"skips the gate\" vs \"reads config\". I'll use semi-plain: \"A push run with the skip-checks flag\" hmm. Let me write:\n\nPrompt: \"The agent wants to run these shell commands. Which does the guard deny?\" Options:\n1. \"A git push told to skip the pre-push checks.\" (correct)\n2. \"A git config that changes the hooks path.\" (correct)\n3. \"A git commit told to skip the commit checks.\" (wrong)\n4. \"A git config that only reads the hooks path.\" (wrong)\n\nquizlint will note \"git\" maybe? Code names are function/file/flag names. \"git push\", \"git config\" are commands \u2014 probably fine as they're not file names. The flag `--no-verify` \u2014 I'm avoiding naming it. Good. Key points: the guard denies pushes that skip the pre-push gate; it denies changes to the hooks path; reading the hooks path stays allowed; commit-side skip stays allowed because it does not touch the remote. Plus the underlying reason: bypassing the gate is the human's call. 4 key points max:\n\n1. \"Denied: pushes that skip the pre-push gate, because that gate is the whole point.\"\n2. \"Denied: changes to where git finds its hooks.\"\n3. \"Allowed: reads of the hooks path, and commit-side skip flags.\"\n4. \"The rule: only the human may bypass the gate.\"\n\nHmm key points are what a correct answer must cover. For a multi-select, the answer is the exact set; key points should describe why. Keep 3-4 short key points.\n\nq4 (single, failure, important): \"A session starts in a repo where the gate cannot run \u2014 say the sync fails, or the repo is not opted in. What does the session do?\" Options:\n- \"The session runs on. The hook never fails a session, and stays quiet outside opted-in repos.\" (correct)\n- \"The session warns the user and waits.\" (wrong)\n- \"The session start fails and the harness retries.\" (wrong)\n- \"The session starts read-only.\" (wrong)\n\nCorrect option must not stand out by length. Let me compress: \"The session runs on. The start hook never fails a session.\" Hmm but also \"stays silent outside opted-in repos\". Let me make options similar length:\n\n- correct: \"The session runs on; the hook never fails it, and says nothing outside opted-in repos.\"\n- \"The session halts until the gate can run.\"\n- \"The session warns the user about the missing gate.\"\n- \"The harness retries the hook until it succeeds.\"\n\nLengths: correct is 15 words; others ~7-8. quizlint checks \"correct option much longer than the wrong ones\". Need balance. Let me write:\n\n- correct: \"The session runs on. The hook fails silently.\" \u2014 but that loses the \"quiet outside opted-in repos\" bit; key points carry it. Option: \"The session runs on; the hook swallows the failure.\"\n- \"The session warns the user and waits.\"\n- \"The session fails to start until the gate works.\"\n- \"The harness retries the start hook until it passes.\"\n\n~8-9 words each. Good.\n\nKey points: \"The session still starts \u2014 the start hook must never break it.\"; \"Sync failures are ignored, and non-git directories exit quietly.\"; \"The opt-in announcement prints only in opted-in repos.\"\n\nWait \u2014 is the announcement behavior part of the failure question? The question is about the failure mode. Key point 3 is about what the agent sees in opted-in repos: the announcement. Eh \u2014 keep key points focused: never fails the session; silent where not applicable; announced when opted in. 3 points, fine.\n\nq5 (single, rationale, important): \"Codex would run the plugin's hooks only after the user approves them in its UI. Why does the installer write the trust entries itself?\" Options:\n\n- \"Without trust, Codex skips the hooks silently, so the gate would not exist there.\" (correct-ish)\n- \"The UI approval flow is broken in headless installs.\" (wrong)\n- \"The hook hashes change on every install, so approval never sticks.\" (wrong)\n- \"Codex forbids plugins from running hooks on first install.\" (wrong)\n\nHmm, correct answer should also carry: the installer writes exactly what the TUI would write; running install counts as the human approving. Key points:\n1. \"Codex skips plugin hooks until their hash is trusted; untrusted means silently off.\"\n2. \"The installer writes the same trust entries the UI would write on approval.\"\n3. \"Running the install counts as the human approving; only this plugin's hooks get trusted.\"\n\nThat's the design tradeoff. Option lengths: correct 14 words vs others ~8. Balance:\n\n- correct: \"Untrusted hooks never run in Codex, so the gate would silently not exist.\" (13)\n- \"The Codex approval prompt is broken in headless mode.\" (8)\n- \"The hook hashes change on every install and need rewriting.\" (9)\n- \"Codex blocks new plugins from adding hooks.\" (7)\n\nHmm, correct is 13 vs wrong ~8. \"not much longer\" \u2014 quizlint checks this. Let me trim: \"Untrusted hooks never run, so the gate would silently not exist.\" \u2014 11 words. Others 7-9. Maybe okay. Or make wrongs a bit longer. I'll aim for correct \u2264 ~1.3x median. Let me write final options later and run quizlint to check.\n\nq6 (free, boundary, important): closer. \"A repo opts in. A teammate who never installed the plugin pushes to it from a plain terminal. What stops them, and what does that say about who this design protects the remote from?\" Hmm, that's two things. Prompt limit 40 words, one or two short sentences. \n\nSimpler: \"A repo opts in, but a teammate pushes to it from a plain terminal, outside any harness. What stops that push, and what does that show about the design's reach?\" \u2014 30 words. Key points:\n1. \"Nothing blocks that push: the gate lives in the clone's installed hook, which arrives only in a session with the plugin.\"\n2. \"The opt-in marker is a convention; remote-side, nothing is enforced.\" \n3. \"The design gates agent sessions, not every push; the human outside a harness keeps full control.\"\n\nGood synthesis: opt-in travels with repo; enforcement arrives at session start; human bypass is by design.\n\nNow \u2014 also worth checking: should any question be about install.sh's \"every harness on PATH\" default + per-harness fallback? The commit title is \"install into every harness on PATH\". The design point: install once, reach every harness present; unknown harness names error. Is that core? It's the target of commit 2 along with codex trust. A question: \"Why does the installer target every harness found on PATH rather than asking which one you use?\" Answer: one command for a team with mixed harnesses; the plugin is identical everywhere; missing harnesses are skipped, not errors. That's... fine, but weaker than the codex-trust point. I have 6 questions; cap is 10. Points list: is \"install reaches every harness on PATH\" a point the author must own? Mildly. I could rate it useful and add one question only \"when the quiz would otherwise have no question\" \u2014 not the case. Skip.\n\nOne more possible important point: hooks.json matcher \"Bash|Execute\" \u2014 the guard covers both harness tool names. Mechanism detail. Skip.\n\nAnd the timeouts (10s) \u2014 mechanism detail, skip.\n\nAnd \"the guard reads only the first command field\" \u2014 mechanism detail. Skip.\n\nSo 6 questions: 3 core, 3 important. Order: core first (q1 rationale, q2 extension, q3 boundary), then important (q4 failure, q5 rationale), closer q6 can be important/boundary and is allowed to be less relevant-positioned (\"Only the closing question may follow a less relevant one\"). Hmm wait, the rule: \"Order the quiz by relevance, most relevant first. Only the closing question may follow a less relevant one.\" So q1-q3 core, q4-q5 important, q6 important closer. Ordering within: fine.\n\nAlso the skill says: \"Lead the quiz with single-select. They frame a point quickly.\" q1, q2 single; q3 multi; q4, q5 single; q6 free. Good mix: 4 single, 1 multi, 1 free.\n\nAlso: \"A fix of one bug carries one or two questions\" \u2014 not a bug fix; fine.\n\nIncidental list: [\"manifest field values in .claude-plugin/\", \"selftest rework: moved to the repo root, isolated HOME and git config, new hook tests\", \"timeout and matcher values in hooks.json\", \"the guard's JSON reply shape\"]. Good.\n\nTarget statement: \"Ship the skill as one plugin that Claude Code, Droid, and Codex all load, and install it into every harness on PATH so every clone of an opted-in repo gets the gate at session start.\"\n\nHmm, target should be \"the one thing the work set out to change\". Both commits: (1) ship as one plugin for all three; (2) install into every harness on PATH. The combined target: \"The skill ships as one plugin that all three harnesses load, and one installer puts it into every harness on PATH, so the gate reaches any clone at session start.\" Keep it one sentence, plain: \"Ship the gate as one plugin that all three harnesses load, with an installer that puts it into every harness on PATH, so any clone of an opted-in repo gets the gate at session start.\"\n\nNow the file: user said \"write the plan to quiz.json in this directory\" \u2192 /workspace/quiz.json. Normally it'd be `$(quizgate dir)/feat/plugin-bf662f8.quiz.json` = /workspace/.git/own-your-diff/feat/plugin-bf662f8.quiz.json. The user's instruction overrides: quiz.json in this directory. But hmm \u2014 quizlint might need the branch/head/base fields; I'll include branch feat/plugin, base d8d9c93, head bf662f8.\n\nExaminee: human (\"plan for a human examinee\").\n\nQuestion IDs: q1..q6.\n\nNow, quizlint word limits: prompt \u2264 40 words; options \u2264 20 words; key points \u2264 25 words each, \u2264 4 per question; sentence \u2264 20 words in prompt (note if over); plain-english word lists; code names flagged (function, file, flag names). Let me avoid: \"utilize\", \"leverage\", file names like `hooks.json`, `install.sh`, `session-start`, `codex-trust-hooks`, flags like `--no-verify`, `--get`. Hmm \u2014 but for q3, \"git push --no-verify\" \u2014 I phrased in plain words. For q5, \"Codex\" is a product name, fine; \"app-server\" is a command name \u2014 avoid.\n\nLet me read plain-english.md do-not-write lists to be careful.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_6yv7wo6t",
+          "function_name": "read",
+          "arguments": {
+            "path": "/opt/multeval/skills/own-your-diff/references/plain-english.md"
+          },
+          "extra": {
+            "category": "file_read"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_6yv7wo6t",
+            "content": "# Plain English for the walkthrough\n\nThe reader is new to this part of the code. They are smart but busy. Write so that they understand each sentence the first time they read it. The model is ASD-STE100 (Simplified Technical English) and Orwell's six rules.\n\n## Sentences\n\n- One idea per sentence. Keep a sentence to 20 words or fewer. `plainlint` notes longer ones.\n- Use the active voice. Name who does what: \"the hook runs `quizgate`\", not \"`quizgate` is run\".\n- Use the present tense for what the code does: \"the gate blocks the push\".\n- Put the main point first. The reason or condition comes after it.\n- Give steps as a numbered list, one action per step, in the order they happen.\n- Keep a paragraph to 5 sentences or fewer.\n\n## Words\n\n- Use the short, common word. Use the words a colleague would say aloud at a whiteboard.\n- One word for one thing. If you call it \"the ledger\" once, call it \"the ledger\" every time. Never switch to \"the record\" or \"the store\".\n- One meaning for one word. Do not use \"check\" for both the hook and the act of reading a file.\n- Use a noun for a thing and a verb for an action. Write \"the hook checks the file\", not \"the hook performs a check of the file\".\n- Name the real thing. Write \"the pre-push hook\", not \"the mechanism\" or \"the component\".\n- No metaphor, idiom, or marketing words. A word from the list below is a note in `plainlint`.\n\n| Do not write | Write |\n|---|---|\n| utilize, leverage | use |\n| facilitate, enable | let, help, make possible |\n| orchestrate | run, call in order |\n| robust, seamless | say what it handles: \"works when the network fails\" |\n| ensure | make sure |\n| in order to | to |\n| prior to, subsequent to | before, after |\n| a number of | some, or the number |\n| paradigm, synergy, holistic | say the real thing |\n| essentially, basically, simply, just | delete it |\n\n## Simple first, technical only when needed\n\nSay what happens in everyday words first. Add the technical term or detail only when the reader needs it.\n\n- Start with what the change does for a person: \"Before, you could push code nobody had read. Now the push stops until you pass a short quiz.\"\n- Then give the technical version, if the reader needs it: \"The pre-push hook runs `quizgate check`, which looks up each commit in the ledger.\"\n- A technical detail earns its place only if the reader needs it to follow the next step, to change the code, or to answer the quiz. If not, cut it.\n- Give a number, a file, or a line of code instead of an adjective. \"Pushes now take 40 ms longer\", not \"a small cost\".\n- Never explain a simple thing with a hard word. If a 12-year-old could follow the plain version, use the plain version.\n\n## No AI fluff\n\nAI fluff is text that sounds smart but tells the reader nothing. Every sentence must say a fact about this change: what it does, why, what it costs, or what can go wrong. A sentence you could paste into a walkthrough of a different change is fluff. Delete it.\n\nDo not write:\n\n- **Throat-clearing.** \"Let's dive in\", \"In this section we will explore\", \"It's worth noting that\", \"It is important to understand\". Say the thing.\n- **Summaries of what you just said.** \"In summary\", \"In short\", \"Overall\", \"To recap\". The page is short. The reader remembers.\n- **Praise and hype.** \"elegant\", \"powerful\", \"clean\", \"crucial\", \"game-changer\", \"best practice\". Say what it does and let the reader judge.\n- **Empty contrast.** \"This isn't just X, it's Y.\" \"Not only X, but also Y.\" Say Y.\n- **Lists of three for rhythm.** \"fast, safe, and simple\". Keep only the items that are true and matter, with evidence.\n- **Hedges.** \"may help\", \"can potentially\", \"aims to\", \"is designed to\". Say what the code does. If you do not know, say so once and plainly.\n- **Vague nouns.** \"landscape\", \"ecosystem\", \"journey\", \"realm\", \"tapestry\", \"space\" (for \"area\"). Name the real thing.\n- **Grand verbs.** \"delve\", \"unlock\", \"empower\", \"elevate\", \"streamline\", \"harness\", \"foster\", \"underscore\", \"navigate\". Use the plain verb.\n- **Dashes for drama.** An em dash (\u2014) to set up a reveal. Use a period.\n\n`plainlint` notes the words and phrases it can find from these lists. It cannot find all fluff. Reread each sentence and ask: \"What fact does this tell the reader?\" No fact, no sentence.\n\n## New terms\n\n- Introduce a new term only when the reader needs it, and only one new term at a time.\n- Define it in one plain sentence the first time it appears: \"A **patch-id** is a hash of what a commit changes, not of its message or date.\"\n- Show it before you name it. First the concrete case, then the name, then the rule.\n- If the page needs more than 5 new terms, list them in the \"Words on this page\" box at the top.\n- Do not use a term from the code (a class, a flag, a file name) as if the reader knows it. Say what it is the first time.\n\n## Order: from the top down\n\nExplain from the outside in, and never skip a level.\n\n1. **The system.** What the whole system does, who uses it, and which part this change touches. No code.\n2. **The part.** The parts inside the touched area, and how they talk. Mark what is new or changed.\n3. **The code.** The functions, data, and lines that carry the change.\n\nA reader must understand a level before the next one starts. Each lesson stays at one level. A lesson at a lower level starts by saying which box of the level above it opens.\n\n## Diagrams\n\n- Draw one diagram per level, from the top down. The first diagram shows the whole system. Each diagram after it opens one box of the diagram before it, and its caption says which.\n- Put 3 to 7 boxes in a diagram. More boxes mean you need another level.\n- Label each box with a plain noun (\"pre-push hook\", \"ledger file\"). Label each arrow with a plain verb (\"reads\", \"blocks\", \"writes\").\n- Mark the new and changed parts with the `new` class. Everything else uses `box`.\n- Arrows go left to right or top to bottom, in the order things happen.\n- The caption says in one sentence what to notice.\n\n## Check before you hand it over\n\nRead the page as the reader. For each lesson, ask:\n\n- Does it teach one idea, and does its first sentence say which idea?\n- Does it use a word that the page has not yet explained?\n- Does every sentence tell a fact about this change? Is any of it AI fluff?\n- Did it go technical only where the reader needs it?\n- Can I cut a word, a sentence, or the whole lesson and lose nothing?\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 17667,
+        "completion_tokens": 5427,
+        "cached_tokens": 16000,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 12,
+      "timestamp": "2026-11-09T23:07:29.690Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "I have the full picture. The target: ship the skill as one plugin all three harnesses load, with an installer that reaches every harness on PATH, so clones of opted-in repos get the gate at session start. Design altitude, with the selftest rework and manifest plumbing as incidental. Writing the plan now.",
+      "reasoning_content": "Now I'll write the quiz plan. Let me draft the questions carefully, respecting the limits:\n\n- prompt \u2264 40 words, sentences \u2264 20 words, one or two short sentences.\n- options \u2264 20 words, same form/length, correct not much longer.\n- key points \u2264 25 words each, \u2264 4 per question.\n- No code names (function, file, flag names) unless the question is about them.\n- Categories: design = rationale, failure, extension, boundary.\n\nDraft:\n\n**q1** \u2014 single, rationale, core.\nPrompt: \"The skill already worked as files in a repo. Why ship it as one plugin that all three harnesses load?\" (20 words)\nOptions:\n1. \"All three harnesses read the same plugin layout, so one copy serves them all.\" (13) \u2014 correct\n2. \"Each harness needs its own package, and one file can point to all three.\" \u2014 wrong, hmm. Make plausible: \"The installer builds a package for each harness from the same source.\" (12)\n3. \"Claude Code and Droid share a layout; Codex needs its hooks converted.\" (12)\n4. \"A plugin can run hooks, but loose files in a repo cannot.\" (12)\n\nGood: all ~12-13 words. Correct is plausible among them.\n\nKey points:\n- \"All three harnesses read the same plugin layout: one manifest and one hooks file.\"\n- \"One copy keeps the gate and the skill identical everywhere, with nothing to keep in sync.\"\n\n**q2** \u2014 single, extension, core.\nPrompt: \"A teammate clones a repo that opted in. No session has run there yet. When does the push gate reach that clone?\" (22 words)\nOptions:\n1. correct: \"At their first session start, the start hook syncs and installs the pre-push hook there.\" (15)\n2. \"On their first push, git copies the hook from the repo's tracked files.\" (13)\n3. \"Never; each clone needs a manual install of the gate.\" (9)\n4. \"Right after the clone, because the opt-in marker carries the hook with it.\" (13)\n\nKey points:\n- \"Session start runs the gate's sync, which installs the pre-push hook in an opted-in clone.\"\n- \"The opt-in marker travels with the repo; the hook does not.\"\n- \"The start hook also tells the agent the repo is opted in.\"\n\nHmm, \"pre-push hook\" \u2014 is that a code name? It's a git concept, plain enough. \"the opt-in marker\" \u2014 fine, plain.\n\n**q3** \u2014 multi, boundary, core.\nPrompt: \"The agent asks to run these shell commands. Which does the guard deny? Pick all that apply.\" \u2014 quizlint will say \"Pick all that apply\" is fine? It's needed to say whether to pick one or several... that instruction is for chat, not the plan file. But the plan's prompt should probably state it's multi. The quiz-file example for single doesn't say \"pick one\". Keep prompt short; kind says multi. I'll write: \"The agent wants to run each of these shell commands. Which ones does the guard deny?\" (17 words)\n\nOptions:\n1. \"A push told to skip the pre-push checks.\" (8) \u2014 correct\n2. \"A config change to where git finds its hooks.\" (10) \u2014 correct\n3. \"A commit told to skip the commit checks.\" (8) \u2014 wrong\n4. \"A config read of where git finds its hooks.\" (10) \u2014 wrong\n\nNice symmetry: 8/10/8/10. Correct set = {1,2}.\n\nKey points:\n- \"Denied: commands that push past the pre-push gate, or that move git's hooks away.\"\n- \"Allowed: reading the hooks path, and skipping commit-side checks, since neither reaches the remote.\"\n- \"The rule: skipping the gate is the human's call, never the agent's.\"\n\n3 key points \u2264 4. Each \u2264 25 words. Good.\n\n**q4** \u2014 single, failure, important.\nPrompt: \"A session starts where the gate cannot run: the sync fails, or the repo is not opted in. What happens to the session?\" (24 words, two sentences? It's one sentence with a colon; 24 words. Sentences \u2264 20 words each \u2014 \"A session starts where the gate cannot run: the sync fails, or the repo is not opted in.\" is one sentence of 21 words. Split: \"A session starts where the gate cannot run. Say the sync fails, or the repo never opted in. What happens?\" \u2014 3 short sentences, 24 words total. Prompt \u2264 40 words, sentences \u2264 20. Good.\n\nOptions:\n1. correct: \"The session runs on. The start hook never fails a session.\" (11)\n2. \"The session warns the user and waits for a fix.\" (10)\n3. \"The session start fails, and the harness retries the hook.\" (10)\n4. \"The session opens in a mode that blocks all pushes.\" (10)\n\nKey points:\n- \"The session always starts: the start hook swallows sync failures and exits quietly.\"\n- \"Outside a git repo, or without the opt-in marker, it prints nothing.\"\n- \"In an opted-in repo it still announces the opt-in.\"\n\nHmm, third key point \u2014 the question is about \"gate cannot run\" cases. Key point 3 about announcement in opted-in repos: the announcement happens when marker exists even if sync failed. Eh, keep 2 key points? \"A question has 4 at most\" \u2014 2 is fine. Let me keep 3 but make the third: \"The cost of never failing: a broken gate hides until a push is blocked.\" Hmm, that's an inference... Actually is that true? If sync fails, no hook installed, push not blocked \u2192 gate silently absent. That's a real consequence. But as a key point for a correct answer \u2014 maybe. I'll keep it to 2 clean key points:\n1. \"The session still starts: the start hook swallows the sync failure and stays quiet.\"\n2. \"The hook never fails a session, and prints nothing outside opted-in repos.\"\n\nGood.\n\n**q5** \u2014 single, rationale, important.\nPrompt: \"Codex runs a plugin's hooks only after the user approves them in its own prompt. Why does the installer write the trust entries itself?\" (26 words; sentences: first 13, second 9. OK.)\n\nHmm, \"trust entries\" \u2014 plain-ish. \"in its own prompt\" \u2014 the TUI. Fine.\n\nOptions:\n1. correct: \"Without trust, Codex silently skips the hooks, so the gate would not exist there.\" (14)\n2. \"The approval prompt cannot appear when the installer runs from a script.\" (11)\n3. \"The hook files change on every install, so old approvals never stick.\" (12)\n4. \"Codex forbids a plugin from adding hooks before its first session.\" (11)\n\nCorrect 14 vs others 11-12 \u2014 okay-ish. Trim correct: \"Untrusted hooks never run in Codex, so the gate would silently not exist.\" (13). Others 11-12. Good.\n\nKey points:\n1. \"Codex skips plugin hooks until their hash is trusted; an untrusted hook is silently off.\"\n2. \"The installer writes the same trust entries the Codex prompt would write on approval.\"\n3. \"Running the installer counts as the human approving, and only this plugin's hooks are trusted.\"\n\nKey point 1 has \"hash\" \u2014 mechanism detail? At design altitude... The trust model keys on the hook definition hash \u2014 that's the mechanism. The key point could be \"Codex skips a plugin's hooks until the user marks them trusted.\" That's the design-level fact. Keep hash out? The author should know why re-approval matters (hash changes when hooks change). For the rubric: \"Codex skips a plugin's hooks until the user marks them trusted, silently.\" + \"the installer writes the same entries the approval prompt writes\" + \"install counts as the human's approval; only this plugin's hooks, only untrusted ones\". Good, 3 points.\n\n**q6** \u2014 free, boundary, important (closer).\nPrompt: \"A repo opts in, but a teammate who never installed the plugin pushes to it from a plain terminal. What stops that push, and what does that show about the gate's reach?\" (30 words; two sentences: 19 + 12. OK.)\n\nKey points:\n1. \"Nothing stops that push: the gate lives in the clone's pre-push hook, which only a session with the plugin installs.\" \u2014 20 words, OK.\n2. \"The opt-in marker asks harness sessions to enforce; it does not enforce at the remote.\" \u2014 15 words.\n3. \"The design gates work done with an agent; a human pushing by hand keeps full control.\" \u2014 17 words.\n\nGood synthesis closer.\n\nNow the meta fields:\n\n- version: 1\n- branch: \"feat/plugin\"\n- base: \"d8d9c93\"\n- head: \"bf662f8\"\n- target: one sentence. \"Ship the skill as one plugin that Claude Code, Droid, and Codex all load, and install it into every harness on PATH, so any clone of an opted-in repo gets the gate at session start.\" \u2014 hmm, that's long (38 words). The quiz-file example target is one line. Keep it shorter: \"Ship the gate as one plugin for all three harnesses, with an installer that puts it into every one on PATH.\" (21 words). Maybe include the session-start arrival: \"Ship the gate as one plugin all three harnesses load, so any clone of an opted-in repo gets it at session start.\" (21 words). The commit 2 adds installer. Target should be the one thing: the plugin packaging across harnesses (install is how it reaches them). I'll write: \"Ship the gate as one plugin that all three harnesses load, with one installer, so every clone of an opted-in repo gets the gate at session start.\"\n\n- altitude: \"design\"\n- incidental: [\"manifest field values in the plugin files\", \"selftest rework: move to the repo root, isolated home and git config, new hook tests\", \"hook timeouts and the tool matcher in the hooks file\", \"the JSON shape of the guard's deny reply\"]\n- examinee: \"human\"\n- questions: q1..q6 as above.\n- outcome: absent in a plan.\n\nFile path: the user said \"write the plan to quiz.json in this directory\" \u2192 /workspace/quiz.json. The skill normally says $(quizgate dir)/<branch>-<short-sha>.quiz.json, but the explicit user instruction wins (\"write the plan to the path you were given\"). Then run `quizlint --plan` on it and fix what it reports. Then stop.\n\nLet me now write the file and run quizlint. Note quizlint is python3; scripts not executable \u2192 run with python3. Let me check quizlint usage first... The skill says \"Run `quizlint --plan` on it\". Let me just write the file then run.\n\nOne more check on q3 options: \"A config change to where git finds its hooks.\" \u2014 the guard denies core.hooksPath changes unless --get. \"A config read of where git finds its hooks.\" \u2014 allowed. \"A push told to skip the pre-push checks.\" \u2192 git push --no-verify \u2192 denied. \"A commit told to skip the commit checks.\" \u2192 commit --no-verify \u2192 allowed. Correct set {1,2}. Multi with at least one correct \u2014 quizlint says multi has 3 or 4 options with at least one correct. Good.\n\nAlso q1 option 4: \"A plugin can run hooks, but loose files in a repo cannot.\" \u2014 plausible misreading? Harnesses can run hooks defined in plugins; a plain skill (loose files, like .claude/skills) can't register hooks \u2014 actually Claude Code skills can't run hooks, true, but the point of one-plugin-for-three is the shared layout. Option 4 is \"true-ish but not the reason\" \u2014 a plausible distractor. Fine. Hmm, but is it actually true that loose files can't run hooks? In Claude Code, hooks come from settings or plugins; a skill folder alone doesn't register hooks. It's plausible and wrong-as-the-answer. OK.\n\nWait, also need to double-check q1's premise: \"The skill already worked as files in a repo.\" \u2014 in base, the skill lived at skills/own-your-diff in this repo, and the selftest copied it into .agents/skills/ of a work repo, plus .githooks/pre-push. So the old distribution was \"copy files into the repo / rely on repo-local setup\". The change ships it as a user-scoped plugin installed once per machine. Good premise.\n\nPrompt q1: \"Before this change, the skill reached a repo as copied files. Why ship it as one plugin that all three harnesses load?\" \u2014 22 words, two sentences (9 + 13). Good.\n\nHmm \u2014 \"all three harnesses\" \u2014 Claude Code, Droid, Codex. In prompt I should name them? \"all three harnesses\" is fine; walkthrough would define. For the plan standalone, maybe \"Claude Code, Droid, and Codex\" in q1 prompt: \"Before this change, the skill reached a repo as copied files. Why ship it as one plugin for Claude Code, Droid, and Codex?\" (23 words). Good.\n\nq2 prompt: \"A teammate clones a repo that opted in. No session has run there yet. When does the push gate reach that clone?\" \u2014 23 words, three short sentences. Good. \"opted in\" \u2014 plain. Good.\n\nNow key_points for q2 \u2014 also worth including: the hook is installed by sync at session start (from the base quizgate behavior, but the change wires it to session start \u2014 the new thing). Key points:\n1. \"At the first session start, the start hook runs the gate's sync, which installs the pre-push hook.\"\n2. \"The opt-in marker travels with the repo; the hook arrives only with a session.\"\n3. \"The start hook also tells the agent the repo is opted in.\"\n\nWord counts: k1 = 16, k2 = 13, k3 = 12. Good.\n\nNow write quiz.json and run quizlint --plan.\n\nAlso \u2014 order of options: \"Put options in random order and mark none of them.\" For multi, correct set is options 1,2... \"random order\" \u2014 I should shuffle so correct answers aren't the first two. Let me order: \n1. \"A push told to skip the pre-push checks.\" (correct)\n2. \"A commit told to skip the commit checks.\" (wrong)\n3. \"A config change to where git finds its hooks.\" (correct)\n4. \"A config read of where git finds its hooks.\" (wrong)\n\nFor q1, put correct at position 2 or 3. Let me distribute: q1 correct at 3; q2 correct at 1? Let me do: q1 \u2192 position 3; q2 \u2192 position 2; q3 \u2192 {1,3}; q4 \u2192 position 2; q5 \u2192 position 3. Reasonably scattered.\n\nNow write the file. JSON shape per quiz-file.md. attempts: [] for each question? The example shows attempts only in finished. \"attempts stays empty in a plan\" \u2014 so include \"attempts\": [] in each question. Yes: \"attempts stays empty in a plan\" implies the key exists and is empty.\n\nLet me write /workspace/quiz.json.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_54eip7ru",
+          "function_name": "write",
+          "arguments": {
+            "content": "{\n  \"version\": 1,\n  \"branch\": \"feat/plugin\",\n  \"base\": \"d8d9c93\",\n  \"head\": \"bf662f8\",\n  \"target\": \"Ship the gate as one plugin that Claude Code, Droid, and Codex all load, with one installer, so every clone of an opted-in repo gets the gate at session start.\",\n  \"altitude\": \"design\",\n  \"incidental\": [\n    \"manifest field values in the plugin files\",\n    \"selftest rework: moved to the repo root, isolated home and git config, new hook tests\",\n    \"hook timeouts and the shell-tool matcher in the hooks file\",\n    \"the JSON shape of the guard's deny reply\"\n  ],\n  \"examinee\": \"human\",\n  \"questions\": [\n    {\n      \"id\": \"q1\",\n      \"kind\": \"single\",\n      \"category\": \"rationale\",\n      \"relevance\": \"core\",\n      \"prompt\": \"Before this change, the skill reached a repo as copied files. Why ship it as one plugin for Claude Code, Droid, and Codex?\",\n      \"options\": [\n        { \"label\": \"The installer builds a package for each harness from the same source.\", \"correct\": false },\n        { \"label\": \"Claude Code and Droid share a layout, but Codex needs its hooks converted.\", \"correct\": false },\n        { \"label\": \"All three harnesses read the same plugin layout, so one copy serves them all.\", \"correct\": true },\n        { \"label\": \"A plugin can run hooks, but loose files in a repo cannot.\", \"correct\": false }\n      ],\n      \"key_points\": [\n        \"All three harnesses read the same plugin layout: one manifest and one hooks file.\",\n        \"One copy keeps the gate and the skill identical everywhere, with nothing to keep in sync.\"\n      ],\n      \"attempts\": []\n    },\n    {\n      \"id\": \"q2\",\n      \"kind\": \"single\",\n      \"category\": \"extension\",\n      \"relevance\": \"core\",\n      \"prompt\": \"A teammate clones a repo that opted in. No session has run there yet. When does the push gate reach that clone?\",\n      \"options\": [\n        { \"label\": \"On their first push, because git copies the hook from the repo's tracked files.\", \"correct\": false },\n        { \"label\": \"At their first session start, when the start hook syncs and installs the pre-push hook.\", \"correct\": true },\n        { \"label\": \"Right after the clone, because the opt-in marker carries the hook with it.\", \"correct\": false },\n        { \"label\": \"Never, because each clone needs a manual install of the gate.\", \"correct\": false }\n      ],\n      \"key_points\": [\n        \"At the first session start, the start hook runs the gate's sync, which installs the pre-push hook.\",\n        \"The opt-in marker travels with the repo; the hook arrives only with a session.\",\n        \"The start hook also tells the agent the repo is opted in.\"\n      ],\n      \"attempts\": []\n    },\n    {\n      \"id\": \"q3\",\n      \"kind\": \"multi\",\n      \"category\": \"boundary\",\n      \"relevance\": \"core\",\n      \"prompt\": \"The agent wants to run each of these shell commands. Which ones does the guard deny?\",\n      \"options\": [\n        { \"label\": \"A push told to skip the pre-push checks.\", \"correct\": true },\n        { \"label\": \"A commit told to skip the commit checks.\", \"correct\": false },\n        { \"label\": \"A config change to where git finds its hooks.\", \"correct\": true },\n        { \"label\": \"A config read of where git finds its hooks.\", \"correct\": false }\n      ],\n      \"key_points\": [\n        \"Denied: commands that push past the pre-push gate, or that move git's hooks away.\",\n        \"Allowed: reading the hooks path, and skipping commit-side checks, since neither reaches the remote.\",\n        \"The rule: skipping the gate is the human's call, never the agent's.\"\n      ],\n      \"attempts\": []\n    },\n    {\n      \"id\": \"q4\",\n      \"kind\": \"single\",\n      \"category\": \"failure\",\n      \"relevance\": \"important\",\n      \"prompt\": \"A session starts where the gate cannot run. Say the sync fails, or the repo never opted in. What happens to the session?\",\n      \"options\": [\n        { \"label\": \"The session start fails, and the harness retries the hook.\", \"correct\": false },\n        { \"label\": \"The session runs on. The start hook never fails a session.\", \"correct\": true },\n        { \"label\": \"The session warns the user and waits for a fix.\", \"correct\": false },\n        { \"label\": \"The session opens in a mode that blocks all pushes.\", \"correct\": false }\n      ],\n      \"key_points\": [\n        \"The session still starts: the start hook swallows the sync failure and stays quiet.\",\n        \"Outside a git repo, or without the opt-in marker, the hook prints nothing.\"\n      ],\n      \"attempts\": []\n    },\n    {\n      \"id\": \"q5\",\n      \"kind\": \"single\",\n      \"category\": \"rationale\",\n      \"relevance\": \"important\",\n      \"prompt\": \"Codex runs a plugin's hooks only after the user approves them in its own prompt. Why does the installer write the trust entries itself?\",\n      \"options\": [\n        { \"label\": \"The approval prompt cannot appear when the installer runs from a script.\", \"correct\": false },\n        { \"label\": \"Untrusted hooks never run in Codex, so the gate would silently not exist.\", \"correct\": true },\n        { \"label\": \"The hook files change on every install, so old approvals never stick.\", \"correct\": false },\n        { \"label\": \"Codex forbids a plugin from adding hooks before its first session.\", \"correct\": false }\n      ],\n      \"key_points\": [\n        \"Codex skips a plugin's hooks until the user marks them trusted, without telling anyone.\",\n        \"The installer writes the same trust entries the Codex prompt would write on approval.\",\n        \"Running the installer counts as the human approving, and only this plugin's hooks are trusted.\"\n      ],\n      \"attempts\": []\n    },\n    {\n      \"id\": \"q6\",\n      \"kind\": \"free\",\n      \"category\": \"boundary\",\n      \"relevance\": \"important\",\n      \"prompt\": \"A repo opts in, but a teammate who never installed the plugin pushes to it from a plain terminal. What stops that push, and what does that show about the gate's reach?\",\n      \"options\": [],\n      \"key_points\": [\n        \"Nothing stops that push: the gate lives in the clone's pre-push hook, which only a session with the plugin installs.\",\n        \"The opt-in marker asks harness sessions to enforce; it does not enforce at the remote.\",\n        \"The design gates work done with an agent; a human pushing by hand keeps full control.\"\n      ],\n      \"attempts\": []\n    }\n  ]\n}\n",
+            "path": "/workspace/quiz.json"
+          },
+          "extra": {
+            "category": "file_edit"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_54eip7ru",
+            "content": "Successfully wrote to /workspace/quiz.json",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 24714,
+        "completion_tokens": 4925,
+        "cached_tokens": 23040,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 13,
+      "timestamp": "2026-11-09T23:07:47.872Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_wmqp74tp",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cd /workspace && python3 /opt/multeval/skills/own-your-diff/scripts/quizlint --plan quiz.json"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_wmqp74tp",
+            "content": "note: question 1: \"harness\": AI fluff: say the fact, or cut it\nnote: question 4: \"harness\": AI fluff: say the fact, or cut it\nnote: question 6: \"harness\": AI fluff: say the fact, or cut it\nok: 6 question(s), kinds single,single,multi,single,single,free, 3 note(s) to reread\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 29651,
+        "completion_tokens": 36,
+        "cached_tokens": 29632,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 14,
+      "timestamp": "2026-11-09T23:07:48.685Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "quizlint flags \"harness\" (it's on the do-not-write list). I'll replace it with plain words and re-check.",
+      "reasoning_content": "quizlint flags \"harness\" as AI fluff. Interesting \u2014 \"harness\" is in the do-not-write list (\"Grand verbs... harness\"). But here I use it as a noun for the coding agent tools (Claude Code, Droid, Codex). The skill itself uses \"harness\" everywhere (\"every harness on PATH\", \"The three harnesses\"). However, quizlint notes it and the skill says \"Reread each note... Put the plain words in, unless the question is about that name.\" I could rephrase:\n\n- q1 prompt already names \"Claude Code, Droid, and Codex\" \u2014 no \"harness\" in q1... wait, note says question 1 has \"harness\". Let me check: q1 options... \"The installer builds a package for each harness from the same source.\" Yes, option 2. Replace with \"The installer builds a package for each tool from the same source.\"\n\n- q4: \"the harness retries the hook\" \u2014 option 1. Replace: \"the tool retries the hook\"? Hmm, \"the harness\" = Claude Code/Droid/Codex. \"the agent tool retries the hook\" or just \"the session tool retries the hook\". Simple: \"The session start fails, and the tool retries the hook.\" Hmm \u2014 \"tool\" is ambiguous with the shell tool. Maybe \"the host retries the hook\"? Or restructure: \"The session start fails, and it is retried until it passes.\" Hmm wait, option 4 is \"The session opens in a mode that blocks all pushes\" \u2014 fine. Let me use \"the session start fails and gets retried.\" Actually simplest: \"The session start fails, and the start hook is retried.\" (10 words)\n\n- q6 key point: \"The opt-in marker asks harness sessions to enforce\" \u2192 \"The opt-in marker asks agent sessions to enforce\". \n\nAlso, \"The design gates work done with an agent\" \u2014 fine.\n\nBut wait \u2014 is \"harness\" really flagged? It's in the grand-verbs list (\"harness\" as a verb). Used as a noun here for the coding tools, which the skill itself does constantly. But quizlint can't tell. The instruction: \"Reread each note. Put the plain words in, unless the question is about that name.\" The plain word for Claude Code/Droid/Codex here: \"agent tools\", or just name them. I'll replace.\n\nAlso check q1 prompt: \"Before this change, the skill reached a repo as copied files. Why ship it as one plugin for Claude Code, Droid, and Codex?\" \u2014 fine.\n\nReplacements:\n- q1 option 2: \"The installer builds a package for each harness from the same source.\" \u2192 \"The installer builds a package for each tool from the same source.\"\n- q4 option 1: \"The session start fails, and the harness retries the hook.\" \u2192 \"The session start fails, and the hook is retried.\"\n- q6 key point 2: \"The opt-in marker asks harness sessions to enforce; it does not enforce at the remote.\" \u2192 \"The opt-in marker asks agent sessions to enforce; it does not enforce at the remote.\"\n\nThen rerun quizlint.",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_8wmvh0zs",
+          "function_name": "edit",
+          "arguments": {
+            "edits": [
+              {
+                "newText": "{ \"label\": \"The installer builds a package for each tool from the same source.\", \"correct\": false },",
+                "oldText": "{ \"label\": \"The installer builds a package for each harness from the same source.\", \"correct\": false },"
+              },
+              {
+                "newText": "{ \"label\": \"The session start fails, and the hook is retried.\", \"correct\": false },",
+                "oldText": "{ \"label\": \"The session start fails, and the harness retries the hook.\", \"correct\": false },"
+              },
+              {
+                "newText": "\"The opt-in marker asks agent sessions to enforce; it does not enforce at the remote.\",",
+                "oldText": "\"The opt-in marker asks harness sessions to enforce; it does not enforce at the remote.\","
+              }
+            ],
+            "path": "/workspace/quiz.json"
+          },
+          "extra": {
+            "category": "file_edit"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_8wmvh0zs",
+            "content": "Successfully replaced 3 block(s) in /workspace/quiz.json.",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 29787,
+        "completion_tokens": 891,
+        "cached_tokens": 29632,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 15,
+      "timestamp": "2026-11-09T23:07:52.339Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "",
+      "tool_calls": [
+        {
+          "tool_call_id": "call_32h9kl2z",
+          "function_name": "bash",
+          "arguments": {
+            "command": "cd /workspace && python3 /opt/multeval/skills/own-your-diff/scripts/quizlint --plan quiz.json"
+          },
+          "extra": {
+            "category": "shell"
+          }
+        }
+      ],
+      "observation": {
+        "results": [
+          {
+            "source_call_id": "call_32h9kl2z",
+            "content": "ok: 6 question(s), kinds single,single,multi,single,single,free, 0 note(s) to reread\n",
+            "extra": {
+              "is_error": false
+            }
+          }
+        ]
+      },
+      "metrics": {
+        "prompt_tokens": 30696,
+        "completion_tokens": 36,
+        "cached_tokens": 30656,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    },
+    {
+      "step_id": 16,
+      "timestamp": "2026-11-09T23:07:53.115Z",
+      "source": "agent",
+      "model_name": "glm-5.3",
+      "message": "`quizlint --plan` passes with no notes. The plan is written to `/workspace/quiz.json` and, per your instruction, I'm stopping here \u2014 no quiz will be asked in this run.\n\n**Scope** (from `quizgate pending`): commits 38de765 (\"ship as one plugin...\") and bf662f8 (\"install into every harness on PATH\"), diffed from base d8d9c93.\n\n**Target**: ship the gate as one plugin all three harnesses load, with one installer, so every clone of an opted-in repo gets the gate at session start.\n\n**Altitude**: design. Incidental (no questions): manifest field values, selftest rework, hook timeouts/matcher, guard's JSON reply shape.\n\n**Planned quiz** \u2014 6 questions, human examinee, ordered by relevance, ending with a synthesis case:\n\n| id | kind | category | relevance | point |\n|----|------|----------|-----------|-------|\n| q1 | single | rationale | core | Why one plugin for all three harnesses (shared plugin layout vs per-tool packaging) |\n| q2 | single | extension | core | When a fresh clone of an opted-in repo gets the gate (session-start sync installs the hook) |\n| q3 | multi | boundary | core | Which agent commands the guard denies vs allows |\n| q4 | single | failure | important | What happens to a session where the gate can't run (start hook never fails the session) |\n| q5 | single | rationale | important | Why the installer writes Codex's trust entries itself (untrusted hooks run never) |\n| q6 | free | boundary | important | Closer: a push from a plain terminal outside any plugin session \u2014 what the gate's reach really is |\n\nThe walkthrough (step 3) was skipped as instructed; rubrics are in the file and left unasked.",
+      "reasoning_content": "quizlint --plan passes with no notes. The plan is done. Per the skill's instruction for plan-only runs: \"Do steps 1 and 2, skip the walkthrough, and write the plan of step 4 for a human examinee to the path you were given. Stop when `quizlint --plan` passes on it. Ask nothing.\"\n\nSo I stop here. Summarize briefly: scope, altitude, target, question list. No questions asked.",
+      "metrics": {
+        "prompt_tokens": 30766,
+        "completion_tokens": 492,
+        "cached_tokens": 30720,
+        "cost_usd": 0.0,
+        "extra": {
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0
+        }
+      }
+    }
+  ],
+  "final_metrics": {
+    "total_prompt_tokens": 227516,
+    "total_completion_tokens": 16883,
+    "total_cached_tokens": 214144,
+    "total_cost_usd": 0.0,
+    "total_steps": 16
+  }
+}

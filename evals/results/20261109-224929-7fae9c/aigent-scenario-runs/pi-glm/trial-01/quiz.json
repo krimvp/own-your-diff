@@ -1,0 +1,198 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "dd72efd",
+  "head": "fb79950",
+  "target": "A scenario file drives a headless run whose result directory is the whole input to grading, and grading splits engine bugs from model mistakes.",
+  "altitude": "design",
+  "incidental": [
+    "the npm bin entry and the script that loads the .env file",
+    "package-lock.json",
+    "the boundary test adjusted so it still guards the eval code's imports",
+    "the fixture plugins and the weather scenario file under the test scenarios directory",
+    "the three test files, whose case tables are keyed by the check names"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The live weather test was a hard-coded script. Why did it become a scenario file?",
+      "options": [
+        { "label": "multeval passes a single instruction string, so the scripted session must travel as a file.", "correct": true },
+        { "label": "So the model can read the plan and follow the steps itself.", "correct": false },
+        { "label": "So a run needs no plugin code loaded from the disk.", "correct": false },
+        { "label": "Because the hard-coded live test could not call a real model.", "correct": false }
+      ],
+      "key_points": [
+        "multeval hands aigent a single instruction string, so a whole scripted session must live in a file.",
+        "A scenario holds prompt, host enable and resume steps over one session.",
+        "Each prompt's expected behaviors are written beside it in the file."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "After a run, the command grades the result directory it just wrote, never its memory. What does that prove?",
+      "options": [
+        { "label": "Every run shows the files alone are enough to grade it, so an outer grader can trust them.", "correct": true },
+        { "label": "Reading the files back is faster than grading the run in memory.", "correct": false },
+        { "label": "The files hold more than the runner kept in memory.", "correct": false },
+        { "label": "A report read from files comes out the same for every model provider.", "correct": false }
+      ],
+      "key_points": [
+        "Every run proves the files alone are enough to grade the run, so the write path is tested each time.",
+        "The outer grader reads the same files and gets the same verdict as the runner.",
+        "A bug in the write shows up on the run that made it, not later on the grader."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Why does the report judge engine invariants and model behaviors on different rules?",
+      "options": [
+        { "label": "One broken invariant is an engine bug; a missed behavior is one point in a rate.", "correct": true },
+        { "label": "Invariants read the transcript, and behaviors read the session events.", "correct": false },
+        { "label": "Invariants are declared in a scenario file, and behaviors are built in.", "correct": false },
+        { "label": "Behaviors are judged only after every invariant has passed.", "correct": false }
+      ],
+      "key_points": [
+        "An invariant is an engine property every run must keep; one failure is an engine bug.",
+        "A behavior is a bet on the model, judged per prompt and measured as a rate over runs.",
+        "Cost is reported and never judged.",
+        "Behaviors never change the exit code; they are rates, not gates."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A model answers one prompt without enabling the weather plugin, and the run stops before a later prompt. Which verdicts does the report mark as skipped? Pick all that apply.",
+      "options": [
+        { "label": "The check that the model calls the weather tool", "correct": true },
+        { "label": "The check that the model enables the weather plugin", "correct": false },
+        { "label": "A behavior on the prompt that never ran", "correct": true },
+        { "label": "Every invariant on the run", "correct": false }
+      ],
+      "key_points": [
+        "A behavior skips when its precondition never happened, such as a call check without the enable it needs.",
+        "A behavior skips on any step the run never reached.",
+        "A skipped behavior is left out of its rate, which counts only trials that had the chance.",
+        "Invariants never skip; a run with nothing to check passes."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The checks read the transcript and the session events together. What goes wrong if they read only one of them?",
+      "options": [],
+      "key_points": [
+        "Only the transcript shows the records a session writes at creation; no listener can subscribe in time to see them.",
+        "Only the transcript shows a call the engine rejected before it ran; such a call leaves no tool event.",
+        "The events carry what listeners saw: the calls of each turn and each tool outcome with its denial.",
+        "Reading one record alone, the checks would misjudge some runs the other record explains."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "Why does the runner refuse some scenarios before the first session opens?",
+      "options": [
+        { "label": "One pass names every problem at its place in the file, so a mistake costs no model call.", "correct": true },
+        { "label": "The engine cannot load a plugin directory after the first session opens.", "correct": false },
+        { "label": "A scenario with problems would make the result directory unreadable.", "correct": false },
+        { "label": "The model would refuse a prompt from a scenario that has unknown fields.", "correct": false }
+      ],
+      "key_points": [
+        "Unset secrets, a plugin set that will not load, and names the sets lack are refused before the run starts.",
+        "A mistake in a scenario must cost no model call, because model calls cost money.",
+        "Every problem is reported at its place in the file, in one pass, so an author fixes the file in one round.",
+        "Unknown fields are problems too, so a misspelled expectation cannot silently disappear."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "The session already hides secret values from listeners. Why does the runner scrub the run log again?",
+      "options": [
+        { "label": "A leaked value still never reaches the files, and the mark names the leak without the key.", "correct": true },
+        { "label": "The session's redaction covers only tool results, so the events need a second pass.", "correct": false },
+        { "label": "The scrub hides which secrets a scenario uses, so the model cannot ask for them.", "correct": false },
+        { "label": "The transcript goes back to the model provider, so it must be cleaned twice.", "correct": false }
+      ],
+      "key_points": [
+        "The session's redaction is the engine's own promise, and the scrub is the net that catches the engine breaking it.",
+        "Even a leaking engine cannot put a raw secret value into the run log or the files.",
+        "The scrub leaves a mark that names the secret, so a grader without the key still sees the leak."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A run stops early, and its report also shows one failed invariant. What exit code does the caller see, and why?",
+      "options": [
+        { "label": "1: an engine bug is the worse news, so it wins over stopped-early", "correct": true },
+        { "label": "3: the run stopping early is the first thing the caller must fix", "correct": false },
+        { "label": "4: the runner itself failed to finish its work", "correct": false },
+        { "label": "2: the scenario must have been bad, since the run went wrong", "correct": false }
+      ],
+      "key_points": [
+        "Exit 1 means an invariant failed, which is an engine bug.",
+        "An engine bug matters more than a run that stopped early, so its code wins.",
+        "The stopped run was still written and checked, so its report and files exist."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q9",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The runner is killed while it writes the result directory. What does the next reader see?",
+      "options": [],
+      "key_points": [
+        "The files go to a sibling directory first and are renamed into place only once they are complete.",
+        "So the reader sees either a whole run or no directory at all.",
+        "A crash can leave a sibling with partial in its name, which no reader mistakes for a run."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q10",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A provider timeout stops a run after two of four prompts. What can the outer grader still learn from the result directory?",
+      "options": [],
+      "key_points": [
+        "The steps that ran were written, and the grader can grade the run from the files alone.",
+        "The report says the run is not complete, and the exit code says stopped early, not engine bug.",
+        "Behaviors on the aborted prompt and the unreached ones skip, so their rates leave this run out.",
+        "The invariants are judged as usual, so an engine bug would still show."
+      ],
+      "attempts": []
+    }
+  ]
+}

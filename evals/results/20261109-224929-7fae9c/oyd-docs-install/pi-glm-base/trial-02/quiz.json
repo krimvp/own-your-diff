@@ -1,0 +1,135 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "3512cf9",
+  "head": "f5bef37",
+  "target": "AGENTS.md sets the contributor rules that keep the one plugin tree working across Claude Code, Factory Droid, and Codex: one shared copy of the manifest and hooks, hook scripts find the plugin root from their own path and never from CLAUDE_PLUGIN_ROOT, and editing hooks.json breaks Codex trust.",
+  "altitude": "design",
+  "incidental": [
+    "README documents the install, opt-in, and update flows the code already has; the author owned those designs when the code was built.",
+    "CLAUDE.md is a symlink to AGENTS.md so Claude Code reads the same rules.",
+    "Steps a contributor runs, which AGENTS.md states as rules: scripts/selftest, claude plugin validate, and the plugin.json version bump.",
+    "The per-harness install and update commands in README."
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Why does the repo keep one copy of .claude-plugin/ and hooks/hooks.json instead of one per harness?",
+      "options": [
+        {
+          "label": "All three harnesses read the same layout, so one copy makes a change land once everywhere and stops the three copies from drifting apart.",
+          "correct": true
+        },
+        {
+          "label": "Only one harness can own the git pre-push hook, so the plugin tree must stay single.",
+          "correct": false
+        },
+        {
+          "label": "Each harness needs its own copy so it can cache plugin updates independently.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "all three harnesses read the same .claude-plugin/ and hooks/hooks.json layout",
+        "one copy means a change lands once for every harness",
+        "separate copies would drift and need the same change made three times"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "A contributor edits hooks/session-start to read CLAUDE_PLUGIN_ROOT from the environment instead of computing the plugin root from its own script path. What breaks?",
+      "options": [
+        {
+          "label": "In Factory Droid the variable holds a placeholder inside hook processes, so the hook no longer finds the skill's scripts.",
+          "correct": true
+        },
+        {
+          "label": "Claude Code stops launching the hook, because hooks.json no longer matches the script.",
+          "correct": false
+        },
+        {
+          "label": "Nothing breaks; CLAUDE_PLUGIN_ROOT holds the plugin root in every harness.",
+          "correct": false
+        },
+        {
+          "label": "Codex marks the hook untrusted and skips it.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "Droid sets CLAUDE_PLUGIN_ROOT to a placeholder inside hook processes",
+        "the hook resolves the wrong path and cannot find the skill scripts",
+        "the rule covers what hook scripts read at run time, not how hooks.json wires them"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "What does Codex's trust check protect, and what does that cost this plugin?",
+      "options": [
+        {
+          "label": "It runs plugin hooks only after the user trusts their definition hash, so every hooks.json edit needs a codex-trust-hooks rerun.",
+          "correct": true
+        },
+        {
+          "label": "It keeps untrusted commits out of the repo, so pushes stop until the quiz passes.",
+          "correct": false
+        },
+        {
+          "label": "It stops the plugin from changing git settings, so every opt-in needs a fresh install.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "Codex skips plugin hooks until their definition hash is trusted",
+        "the hash covers hooks.json content, so editing it invalidates trust on every Codex install",
+        "the failure is silent: the hooks just stop running in Codex",
+        "scripts/codex-trust-hooks writes the trust entries the Codex TUI would write on approval"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "The plugin grows a new PreToolUse hook: a script under hooks/ plus its wiring in hooks/hooks.json. Which of these hold?",
+      "options": [
+        {
+          "label": "The new script must find the plugin root from its own path, never from CLAUDE_PLUGIN_ROOT.",
+          "correct": true
+        },
+        {
+          "label": "The wiring in hooks.json may still use ${CLAUDE_PLUGIN_ROOT}, because the harness expands it when it launches the hook.",
+          "correct": true
+        },
+        {
+          "label": "Codex users must rerun scripts/codex-trust-hooks after the change, because it edits hook definitions.",
+          "correct": true
+        },
+        {
+          "label": "The wiring must be copied into a separate hooks file for each harness.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the rule applies to every hook script, because Droid puts a placeholder in the variable inside hook processes",
+        "hooks.json wiring may use the variable; the harness expands it before the hook runs",
+        "editing hooks.json changes Codex's trust hash, so Codex users must re-trust the hooks",
+        "one hooks.json serves all three harnesses, so the wiring lands once"
+      ],
+      "attempts": []
+    }
+  ]
+}

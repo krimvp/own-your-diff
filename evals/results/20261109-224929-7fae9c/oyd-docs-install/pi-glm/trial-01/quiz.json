@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "3512cf9",
+  "head": "f5bef37",
+  "target": "A README for the plugin repo explains how to install the plugin, opt a repo in, and update it. The docs only write down what the code already does.",
+  "altitude": "trivial",
+  "incidental": [
+    "AGENTS.md contributor notes: the selftest check, manifest validation, the version bump rule, how hook scripts find the plugin root, and the Codex trust hash",
+    "CLAUDE.md, a symlink to AGENTS.md"
+  ],
+  "examinee": "human",
+  "questions": []
+}

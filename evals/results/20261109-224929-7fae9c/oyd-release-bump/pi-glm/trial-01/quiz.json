@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "branch": "chore/release",
+  "base": "1494892",
+  "head": "45fcd6e",
+  "target": "Release version 0.2.0: bump the plugin version from 0.1.0 to 0.2.0 in both plugin manifests.",
+  "altitude": "trivial",
+  "incidental": [],
+  "examinee": "human",
+  "questions": []
+}

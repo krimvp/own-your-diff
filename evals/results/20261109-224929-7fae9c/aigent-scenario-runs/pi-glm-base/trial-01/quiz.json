@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "dd72efd041c3efd3653fadca120353f02bff24d3d",
+  "head": "fb79950faa979d96c4a6a534cee7442bc769f8f3",
+  "target": "A scenario run becomes a gradeable artifact: a scenario file drives one headless run, the run lands as a result directory, and check(run) judges that directory with engine invariants held apart from model behaviors, behind the aigent run and aigent check shell that multeval will drive.",
+  "altitude": "design",
+  "incidental": [
+    "package.json: the bin entry and the npm script that loads .env",
+    "test fixtures: the clock, guard and weather plugin stubs and the weather.json scenario file",
+    "test/boundary.test.ts: the extracted loop and the guard that src/eval/run.ts still exists",
+    "test scaffolding around run.ts, checks.ts and the CLI; the case-table typing itself is the rule question 7 asks about"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "aigent run holds the run in memory, writes it as a result directory, then grades the files it just wrote. Why grade the files instead of the run in memory?",
+      "options": [
+        { "label": "It proves the files are enough to grade the run: a runner that writes something a grader cannot read fails on the run that wrote it.", "correct": true },
+        { "label": "The in-memory run log still holds raw secret values; only the files are scrubbed.", "correct": false },
+        { "label": "The transcript is incomplete in memory until the files are closed, so grading must wait for disk.", "correct": false },
+        { "label": "Grading from files keeps the verdict out of the model's reach, so the model cannot steer its own grade.", "correct": false }
+      ],
+      "key_points": [
+        "the files are the whole input to grading, so every run proves the result directory suffices to grade it",
+        "a mismatch between what the runner writes and what a grader reads surfaces in the run that produced it",
+        "every caller reads the same files and gets the same verdict: the live test, aigent check, and the future multeval grader",
+        "the in-memory log is scrubbed too, so secrecy is not the reason"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The old live test asserted three ad hoc properties and logged the rest, so an engine bug and a model mistake looked alike. Why does check(run) split its verdicts into invariants and behaviors?",
+      "options": [
+        { "label": "An invariant is an engine property every trial must keep, so one failure is an engine bug that fails the run; a behavior is a bet on the model, measured as a rate over the trials that had the chance, and never fails the run.", "correct": true },
+        { "label": "Invariants are cheap to check, so they run first and can end the report early.", "correct": false },
+        { "label": "Behaviors are optional in a scenario while invariants always apply, so only invariants may fail a run.", "correct": false },
+        { "label": "A behavior failure means the scenario file was miswritten, so behaviors test the file, never the model.", "correct": false }
+      ],
+      "key_points": [
+        "invariants are engine properties: one failure is an engine bug and sets exit code 1",
+        "behaviors are the design's bets on the model, measured as rates, and never change the exit code",
+        "cost is reported and never judged",
+        "the split lets an unattended driver read engine health off the exit code and model quality off the rates"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A four-step run stops on its third prompt, which ends aborted, and the denial-recorded invariant fails in the same run. What exit code does aigent run print, and why?",
+      "options": [
+        { "label": "1: the invariant failure is an engine bug and wins over the stopped-early code.", "correct": true },
+        { "label": "3: the run stopped before its last step, and a stopped run is judged only on completeness.", "correct": false },
+        { "label": "0: the abort came from the caller, so the run counts as a success and the invariant is advisory.", "correct": false },
+        { "label": "4: an aborted prompt is a runner failure, so nothing was written or graded.", "correct": false }
+      ],
+      "key_points": [
+        "1 means an invariant failed, which is an engine bug, and it wins over 3",
+        "3 means the run stopped early, but the steps that ran were written and checked",
+        "0 means every step ran and every invariant held",
+        "behaviors never change the exit code; 2 is bad input found before anything ran, 4 is a runner failure"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Which of these hold for secrets in a scenario run?",
+      "options": [
+        { "label": "The scrub marks a raw secret value as [LEAKED:NAME], so a grader can find and name a leak without holding the key.", "correct": true },
+        { "label": "The model's API key is scrubbed too, even though the adapter already redacts what leaves the process.", "correct": true },
+        { "label": "Adjacent text deltas are joined into one string before the scrub, so a secret split across two deltas is still marked.", "correct": true },
+        { "label": "The scrub replaces values only, so object keys and the scenario's own text keep raw secrets.", "correct": false }
+      ],
+      "key_points": [
+        "the mark names the secret, so a leak is findable and attributed without the key",
+        "the scrub walks every string in the run log, object keys included",
+        "deltas are joined before the scrub sees them",
+        "the model key joins the scrub list; the adapter's export redaction does not cover the run log",
+        "the secret-free invariant is what catches a mark left anywhere in the log"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "Before the first session opens, the runner refuses a scenario whose secrets are unset or whose plugin, tool or skill names no plugin set has, and the parser reports every problem at its JSON path in one pass. Why refuse there, and why one pass?",
+      "options": [
+        { "label": "A model call costs money: refusing before the first session opens makes a typo free, and one pass with every problem named lets an author fix the file in a single round.", "correct": true },
+        { "label": "The engine cannot recover from an unknown name mid-run, so the runner has to refuse up front.", "correct": false },
+        { "label": "Collecting every problem keeps the parser pure, so a scenario parses the same way in every tool mode.", "correct": false },
+        { "label": "The checks cannot skip a behavior whose name is unknown, so names must be settled before any verdict.", "correct": false }
+      ],
+      "key_points": [
+        "a refusal before the first session opens costs no model call",
+        "every problem at its JSON path in one pass, so one round fixes the file",
+        "names are checked against the plugin set in effect at that step, because a resume step can swap plugin sets",
+        "the CLI refuses an existing out directory before it even reads the scenario, so a repeated command spends nothing"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A resume step's new plugin set rejects the saved records, and the step throws. What happens to the run?",
+      "options": [
+        { "label": "The run ends there: the failure and its step are recorded in the log, the steps that ran are still written and checked, and the CLI exits 3.", "correct": true },
+        { "label": "The throw escapes to the CLI as a runner failure: nothing is written and the exit code is 4.", "correct": false },
+        { "label": "The resume step is dropped and the next step runs on the session that was never closed.", "correct": false },
+        { "label": "The runner retries the resume once, then records the failure if it throws again.", "correct": false }
+      ],
+      "key_points": [
+        "a throwing step is not a thrown run: it becomes a failure entry with the step number and message",
+        "the steps that ran are written as a result directory and checked, so the run is not lost",
+        "the report says complete is false, and the exit code is 3 unless an invariant failed",
+        "a prompt that ends error or aborted stops the run the same way, and what ran is kept"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new behavior check joins the set: apologize, judged on whether the model's answer after a denied call says sorry. Where does it go, and what must land with it for the code to compile and the rules to hold?",
+      "options": [],
+      "key_points": [
+        "scenario.ts: the expectation type, one parser in the expectations table, its fields in FIELDS, and referencedNames if it names a plugin, tool or skill",
+        "checks.ts: one judge for it, since a check without a judge fails the build",
+        "the checks tests type both case tables by the check names, so a passing case and a failing case must land too",
+        "one such behavior per prompt step: a second apologize on one step would share its id and is refused",
+        "the report id is the check name at the step number, like apologize@3, which a report and a future grade key on"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "The checks read the final transcript and the step events together. Why is neither source enough on its own?",
+      "options": [
+        { "label": "Each side misses evidence the other has: records written at session creation reach no listener, and a core__call_tool rejected before it runs leaves an error result in the transcript but no tool event.", "correct": true },
+        { "label": "The events are scrubbed and the transcript is not, so the checks need both to stay secret-free.", "correct": false },
+        { "label": "The transcript is the model's view and the events the engine's, and a fair report must weigh both views of each turn.", "correct": false },
+        { "label": "A denied call leaves no tool result in the transcript, so the events must supply the denial.", "correct": false }
+      ],
+      "key_points": [
+        "no listener can subscribe before the session is returned, so the plugins enabled at creation are read from the transcript",
+        "in dispatch mode, a rejected core__call_tool leaves an error tool result in the transcript and no tool event",
+        "reading only one side would leave an invariant or a behavior unable to see its evidence",
+        "both sides in the log are scrubbed, so secrecy is not the reason"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q9",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Which of these hold about skips in a report?",
+      "options": [
+        { "label": "An invariant never skips: it is an engine property that either held or failed, whatever the run did.", "correct": true },
+        { "label": "A use behavior skips when the model never enabled the tool's plugin during that prompt, because the model never had the chance.", "correct": true },
+        { "label": "A behavior on a step the run never reached skips, and the skip names the prompt that ended the run or the step that threw.", "correct": true },
+        { "label": "A skip counts as a miss in the behavior's rate, so a provider outage drags the model's rates down.", "correct": false }
+      ],
+      "key_points": [
+        "invariant verdicts are only pass or fail",
+        "a behavior skips when its precondition never happened: no enable, no chance to load the skill, no denied call, no rejected dispatch call",
+        "a behavior on a step that never ran skips, with the reason named",
+        "a rate counts only the trials that had the chance, so skips are left out of it"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q10",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Unattended, overnight, multeval runs aigent run on a four-step scenario. The second prompt ends error on a provider outage. Every invariant held. What does the result directory hold, what does the report say for complete and for the behaviors of steps two and three, and what exit code does the CLI print?",
+      "options": [],
+      "key_points": [
+        "the directory holds the two steps that ran, written all or nothing; the run is not lost",
+        "no failure entry: a prompt that ends error is not a step that threw; the log is just shorter than the scenario",
+        "complete is false, because not every scenario step ran",
+        "the step two behaviors skip with the reason that the prompt ended error; the step three behaviors skip naming the earlier prompt that ended the run",
+        "the exit code is 3: the run stopped early, and only a failed invariant would make it 1; behaviors never move the code"
+      ],
+      "attempts": []
+    }
+  ]
+}

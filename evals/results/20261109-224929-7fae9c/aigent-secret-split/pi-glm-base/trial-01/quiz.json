@@ -1,0 +1,122 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "194a788",
+  "head": "5b31d95",
+  "target": "Keep a secret the model writes across streamed text deltas out of what listeners see, by holding back the tail of the redacted stream until more text arrives or the assistant message ends.",
+  "altitude": "mechanism",
+  "incidental": [
+    "hoisting the merged secrets map into one variable that both the engine and the hold length read",
+    "test helper plumbing: fauxSession now takes faux provider options, with a type import for them"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "Before this change, the transcript and the RunResult stayed clean, but a listener that joined the streamed text deltas saw a whole secret. Walk the secret through both paths. Why did only the stream leak?",
+      "options": [
+        { "label": "The streamed deltas were never redacted; only the transcript and the RunResult went through the redactor.", "correct": false },
+        { "label": "Redaction replaces the exact secret string, and no delta held the whole secret on its own, so every delta passed through raw; a listener that joins the deltas rebuilds the secret.", "correct": true },
+        { "label": "The stream redacted against a smaller secrets map than the transcript, so the secret survived only there.", "correct": false },
+        { "label": "The secret reached listeners through a separate event type that skips redaction.", "correct": false }
+      ],
+      "key_points": [
+        "redaction replaces the exact secret string, so it matches only when the whole secret is in the text at once",
+        "each delta was redacted on its own, so a secret split across deltas matched no delta and passed through raw",
+        "the transcript and the RunResult redact the joined whole text, so they stayed clean",
+        "a listener that joins deltas, like the eval runner, rebuilds the whole secret"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "The stream holds back the last `longest secret - 1` characters of the redacted text. What breaks if it holds back one character less?",
+      "key_points": [
+        "a secret that could still complete sits at the end of the text as a partial prefix, at most `longest - 1` characters long",
+        "with one character less held back, a prefix of the longest secret one character short can straddle the cut, and its first character goes out raw",
+        "the buffer then never holds the whole secret, so the redactor never matches what follows, and the rest goes out raw too",
+        "a listener that joins the chunks reassembles the whole secret"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "invalidation",
+      "relevance": "core",
+      "prompt": "The hold is released and reset on message_end. Why is that the one safe moment to let the held text go?",
+      "options": [
+        { "label": "message_end is the only event pi sends once the text stops.", "correct": false },
+        { "label": "By message_end the held tail is empty, so flushing there is free.", "correct": false },
+        { "label": "Flushing at the end of each text block would work as well, since blocks are redacted separately anyway.", "correct": false },
+        { "label": "pi sends message_end for every assistant message, whether it finished, errored or was aborted, so the tail is always released; and after it no more text can arrive for that message, so the tail can no longer complete a secret.", "correct": true }
+      ],
+      "key_points": [
+        "pi ends every assistant message with message_end, whether it finished, errored or was aborted",
+        "so the held tail always reaches listeners; nothing is stranded when a run is cut short",
+        "after message_end, no more text can arrive for that message, so the released tail cannot complete a secret within it",
+        "the hold spans the whole message, all of its text blocks, because pi emits nothing between two text blocks of one message"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "When the character just before the cut is the first half of a surrogate pair, the cut moves back one character. What does that prevent, and why does it not weaken the secret hold?",
+      "options": [
+        { "label": "It stops the redaction marker being split across two chunks.", "correct": false },
+        { "label": "It keeps both halves of a surrogate pair inside one emitted chunk, so a terminal printing each chunk never shows a replacement character; withholding one more character can only strengthen the hold.", "correct": true },
+        { "label": "It keeps combined emoji and accented characters from splitting across chunks.", "correct": false },
+        { "label": "It keeps the held tail within `longest - 1` characters.", "correct": false }
+      ],
+      "key_points": [
+        "a chunk that ends in half a surrogate pair prints as a replacement character on a terminal",
+        "moving the cut back one keeps the pair's two halves in the same chunk",
+        "withholding one more character only widens the held tail, so a partial secret prefix still cannot straddle the cut"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "measurement",
+      "relevance": "important",
+      "prompt": "The fix is proven without a live model. Which of these do the new tests actually do?",
+      "options": [
+        { "label": "The test checks each delta on its own for a redaction marker.", "correct": false },
+        { "label": "The faux provider's largest chunk is 20 characters, so the 27-character test secret splits across deltas on every run.", "correct": true },
+        { "label": "The test joins the deltas a listener received and compares the joined text with the whole redacted reply.", "correct": true },
+        { "label": "The abort test paces the provider, aborts the reply mid-stream, and checks that the joined deltas match what the transcript kept.", "correct": true }
+      ],
+      "key_points": [
+        "the provider's fixed chunk size forces the secret to split across deltas, so the leak case happens on every run",
+        "the assertion joins the deltas before comparing, the same join a listener makes",
+        "a per-delta check would pass even with the leak, since no delta alone holds the whole secret",
+        "the abort test proves the held tail still reaches listeners, equal to what the transcript kept"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "free",
+      "category": "flow",
+      "relevance": "important",
+      "prompt": "A harder case. In one run, the model ends an assistant message with the first half of a secret and starts its next message with the second half. The eval runner joins every text delta of the run and scans the joined text. What does it see, and why is that consistent with the rest of the system?",
+      "key_points": [
+        "the hold is flushed and reset at every message_end, so the first half reaches listeners raw",
+        "the next message streams from an empty hold, so the second half goes out raw as well, and the run-wide join rebuilds the whole secret",
+        "the transcript redacts each message on its own, so it holds the same secret split raw across two messages; the message is the redaction unit everywhere",
+        "closing the gap would take a hold that spans messages or a transcript redacted across messages, which this change does not do"
+      ],
+      "attempts": []
+    }
+  ]
+}

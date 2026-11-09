@@ -1,0 +1,129 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "93cc474",
+  "head": "c8cb37a",
+  "target": "One judge over the saved run log separates engine bugs from model mistakes: invariants never skip, behaviors are rates, cost is reported and never judged.",
+  "altitude": "design",
+  "incidental": [
+    "the test fixtures: the faux model and the weather, guard and clock plugins",
+    "small helpers: token-ratio rounding, the string walker that finds secret marks, and cutting a tool name at its double underscore",
+    "the test helper that compares only the evidence fields a case names"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The live test asserts three hand-picked properties and logs the rest. Why does the new judge split every finding into invariants, behaviors, and cost?",
+      "options": [
+        { "label": "An engine failure is a bug to fix; a model failure is a rate to measure.", "correct": true },
+        { "label": "Findings with no chance to show need a bucket of their own.", "correct": false },
+        { "label": "Cost findings must stay apart, because tokens are the only thing judged.", "correct": false },
+        { "label": "The provider already groups its data this way, and the report copies it.", "correct": false }
+      ],
+      "key_points": [
+        "an invariant is an engine property: one failure is an engine bug, never the model's fault",
+        "a behavior is a bet on the model, measured as a pass rate over trials",
+        "cost is reported and never judged, so runs compare on tokens without failing"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The judge reads a saved run log and nothing else. Why judge the saved log instead of the live run?",
+      "options": [
+        { "label": "Every caller gets the same verdict from the same files: live test, CLI, grader.", "correct": true },
+        { "label": "Files parse faster than live events, so judging from files costs less.", "correct": false },
+        { "label": "Only the files carry usage numbers, so a cost report needs them.", "correct": false },
+        { "label": "A judge watching the live run would see raw secret values.", "correct": false }
+      ],
+      "key_points": [
+        "the same saved files give the same verdict to every caller: the live test, the CLI, the later multeval grader",
+        "a graded run can be graded again later, from its files alone"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A skip and a failure are different verdicts. What separates them, and why can no invariant skip?",
+      "key_points": [
+        "a skip had no chance to show: its precondition never happened, or its step never ran",
+        "a failure had its chance and missed, so only failures feed the rate",
+        "an invariant waits on nothing, so every run is its chance: it can only pass or fail"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The judge reads the transcript and the session events together. Which of these live only in the transcript?",
+      "options": [
+        { "label": "The plugins enabled when a session was created.", "correct": true },
+        { "label": "A tool call the engine rejected for bad arguments before it ran.", "correct": true },
+        { "label": "The end of each model turn.", "correct": false },
+        { "label": "A gate's denial of a tool call.", "correct": false }
+      ],
+      "key_points": [
+        "records written at session creation reach no listener, so only the transcript holds them",
+        "a call rejected before it ran fires no tool event, only an error result in the transcript"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new bet on the model needs judging next month. Where does it go, and what stops it landing half-built?",
+      "key_points": [
+        "it becomes a new check: an entry in the scenario parser's table and a judge for it",
+        "the build fails until the parser and the judge both handle the new name",
+        "the test tables are typed by the check names, so it needs a passing and a failing case"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "Every verdict carries evidence, and a passing one carries counts, like how many calls it saw. Why does a pass need evidence too?",
+      "options": [
+        { "label": "It proves the check actually ran on something, so the pass is not empty.", "correct": true },
+        { "label": "The report prints the counts as its headline numbers.", "correct": false },
+        { "label": "The saved files need the counts, or the report will not parse.", "correct": false },
+        { "label": "Failing runs are rare, so passes must carry the detail.", "correct": false }
+      ],
+      "key_points": [
+        "a pass must prove the check had something to check; counts like calls or denials do that",
+        "a fail must name its mistake, so the reader can act without rereading the whole run"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "A run stopped on a provider error at its second of three prompts. On the first, the model enabled the weather plugin but never called its tool. What does the report show for the behaviors and the invariants?",
+      "key_points": [
+        "the report marks the run incomplete: a prompt ended in error",
+        "the first prompt's behavior fails: the model had its chance to call the tool and did not take it",
+        "a behavior on a later prompt skips: the run never reached its step, and the skip leaves its rate",
+        "every invariant is still judged, and none fails: an early stop is not an engine bug"
+      ],
+      "attempts": []
+    }
+  ]
+}

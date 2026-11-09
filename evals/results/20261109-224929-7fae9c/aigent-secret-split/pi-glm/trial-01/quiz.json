@@ -1,0 +1,106 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "194a788",
+  "head": "5b31d95",
+  "target": "Keep a secret that streams split across text deltas out of what session listeners see, by holding back the newest characters until they can no longer complete a secret.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the test helper's provider options, which pace the faux model's streaming",
+    "the two new stream tests, which measure the fix"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "A listener joins the text pieces it receives. Why does the stream hold back the newest characters before sending them?",
+      "options": [
+        {
+          "label": "Redaction runs on each piece alone, and holding back only delays the marker it inserts.",
+          "correct": false
+        },
+        {
+          "label": "A secret split across pieces looks clean in each one, so the characters that could still complete it stay unsent.",
+          "correct": true
+        },
+        {
+          "label": "Pieces can arrive out of order, so the stream waits for the text to be complete before sending.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "a secret split across pieces redacts clean in each piece, but a listener joins the pieces and sees it whole",
+        "the stream redacts the held text and the new piece joined, so a secret is caught once both pieces arrived",
+        "a secret still forming can only start inside the held window, so the text sent before the window is safe",
+        "the window is one character less than the longest secret, the least that covers every secret still forming"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The user aborts mid-reply while the stream is still holding characters back. What does the listener see?",
+      "options": [
+        {
+          "label": "Only what was already sent. The held characters are lost with the abort.",
+          "correct": false
+        },
+        {
+          "label": "Every character the transcript kept, delivered when the message ends.",
+          "correct": true
+        },
+        {
+          "label": "The held characters with any unfinished secret replaced by a marker.",
+          "correct": false
+        },
+        {
+          "label": "Nothing new. The held characters flush at the start of the next prompt.",
+          "correct": false
+        }
+      ],
+      "key_points": [
+        "the agent library ends every assistant message with a message end event, finished, errored, or aborted",
+        "that event flushes the held characters, so the listener receives every character the transcript kept",
+        "an unfinished secret is plain text, so the flush sends it unchanged, with no marker"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "flow",
+      "relevance": "important",
+      "prompt": "One reply arrives as two text blocks. A secret starts in the first block and completes early in the second. The reply also has an emoji. Which of these are true?",
+      "options": [
+        {
+          "label": "The held characters flush when the first block ends, before the second block starts.",
+          "correct": false
+        },
+        {
+          "label": "No sent piece ends between the two halves of the emoji.",
+          "correct": true
+        },
+        {
+          "label": "The rest of the second block waits for the reply to end before it is sent.",
+          "correct": false
+        },
+        {
+          "label": "The listener never sees either piece of the secret.",
+          "correct": true
+        }
+      ],
+      "key_points": [
+        "the hold spans the whole message, so a secret piece crossing blocks stays held until the secret completes",
+        "the flush keys on the message end, the one boundary that always comes, not on a block end",
+        "a cut that would split the two halves of a character moves back one character",
+        "text after the completed secret streams out as it arrives, and only the newest window waits"
+      ],
+      "attempts": []
+    }
+  ]
+}

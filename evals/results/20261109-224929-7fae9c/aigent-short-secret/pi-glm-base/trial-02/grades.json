@@ -1,0 +1,638 @@
+{
+  "plan": {
+    "scores": {
+      "pass": false
+    },
+    "evidence": {
+      "exit_code": 1,
+      "stdout": "check: quiz.json is a valid plan that fits the change\nnote: question 1: \"\u2014\": AI fluff: say the fact, or cut it\nnote: question 1: code name WEATHER_API_KEY: say what it is in plain words, unless the question is about that name\nnote: question 1: code name run.json: say what it is in plain words, unless the question is about that name\nnote: question 1: code name readRun: say what it is in plain words, unless the question is about that name\nnote: question 2: \"\u2014\": AI fluff: say the fact, or cut it\nnote: question 2: code name runScenario: say what it is in plain words, unless the question is about that name\nnote: question 2: a sentence of 25 words in the prompt: The fix adds a 'shorter than 8 characters' problem to the env check runScenario already runs, for the scenario's secrets and the model key alike.\nnote: question 3: \"\u2014\": AI fluff: say the fact, or cut it\nnote: question 4: \"\u2014\": AI fluff: say the fact, or cut it\nquizlint: question 1: an option has 27 words, more than 20\nquizlint: question 1: an option has 33 words, more than 20\nquizlint: question 2: an option has 39 words, more than 20\nquizlint: question 2: an option has 35 words, more than 20\nquizlint: question 2: a key point has 27 words, more than 25\nquizlint: question 2: a key point has 31 words, more than 25\nquizlint: question 2: a key point has 39 words, more than 25\nquizlint: question 2: a key point has 27 words, more than 25\nquizlint: question 3: an option has 21 words, more than 20\nquizlint: question 3: an option has 21 words, more than 20\nquizlint: question 3: a key point has 26 words, more than 25\nquizlint: question 4: a key point has 32 words, more than 25\nquizlint: question 4: a key point has 32 words, more than 25\n",
+      "stderr": ""
+    }
+  },
+  "trace": {
+    "scores": {
+      "steps": 16,
+      "tool_calls": 20,
+      "subagent_steps": 0,
+      "skill_activated": true
+    },
+    "evidence": {
+      "agent": "pi",
+      "steps": 16,
+      "tool_calls": 20,
+      "subagent_steps": 0,
+      "skill_activated": [
+        {
+          "tool_call_id": "call_alu7i8mx",
+          "function_name": "read"
+        }
+      ]
+    }
+  },
+  "plain": {
+    "scores": {
+      "questions": 4,
+      "prompt_words": 24.0,
+      "prompt_words_max": 39,
+      "option_words": 23.92,
+      "option_words_max": 39,
+      "code_names": 1.0,
+      "giveaways": 0,
+      "fluff": 11
+    },
+    "evidence": {
+      "ok": false,
+      "shape_ok": true,
+      "problems": [
+        "question 1: an option has 27 words, more than 20",
+        "question 1: an option has 33 words, more than 20",
+        "question 2: an option has 39 words, more than 20",
+        "question 2: an option has 35 words, more than 20",
+        "question 2: a key point has 27 words, more than 25",
+        "question 2: a key point has 31 words, more than 25",
+        "question 2: a key point has 39 words, more than 25",
+        "question 2: a key point has 27 words, more than 25",
+        "question 3: an option has 21 words, more than 20",
+        "question 3: an option has 21 words, more than 20",
+        "question 3: a key point has 26 words, more than 25",
+        "question 4: a key point has 32 words, more than 25",
+        "question 4: a key point has 32 words, more than 25"
+      ],
+      "notes": [
+        "question 1: \"\u2014\": AI fluff: say the fact, or cut it",
+        "question 1: code name WEATHER_API_KEY: say what it is in plain words, unless the question is about that name",
+        "question 1: code name run.json: say what it is in plain words, unless the question is about that name",
+        "question 1: code name readRun: say what it is in plain words, unless the question is about that name",
+        "question 2: \"\u2014\": AI fluff: say the fact, or cut it",
+        "question 2: code name runScenario: say what it is in plain words, unless the question is about that name",
+        "question 2: a sentence of 25 words in the prompt: The fix adds a 'shorter than 8 characters' problem to the env check runScenario already runs, for the scenario's secrets and the model key alike.",
+        "question 3: \"\u2014\": AI fluff: say the fact, or cut it",
+        "question 4: \"\u2014\": AI fluff: say the fact, or cut it"
+      ]
+    }
+  },
+  "judge": {
+    "scores": {
+      "score": 1.0,
+      "pass": true
+    },
+    "evidence": {
+      "provider": "openai",
+      "model": "glm-5.3",
+      "prompt_version": "3",
+      "files": [
+        "quiz.json"
+      ],
+      "omitted": [],
+      "reference_files": [
+        "brief.md"
+      ],
+      "references_omitted": [],
+      "stop_reason": "stop",
+      "criteria": [
+        {
+          "criterion": "Every question in quiz.json tests a point about the target of the change that the case brief states",
+          "met": true,
+          "reason": "All four questions test the stated target: q1 the scrub-rewrites-keys failure that short values cause, q2 why the short-value refusal was placed in the pre-run check, q3 what the length check does and does not guarantee, q4 applying the refusal and its reason to a new key."
+        },
+        {
+          "criterion": "Every question sits at an altitude that the case brief allows, as the brief describes that altitude",
+          "met": true,
+          "reason": "Every question sits at the design/mechanism altitudes the brief allows: the problem the change solves (q1), the shape chosen and the alternative rejected (q2), the boundary of the guarantee (q3), and what must change next (q4), all above signatures and flags."
+        },
+        {
+          "criterion": "No question asks about an incidental part of the change that the case brief lists",
+          "met": true,
+          "reason": "No question asks about the brief's incidental parts \u2014 test expectations or design doc wording; all stay on the refusal, the scrub behavior, and their consequences."
+        },
+        {
+          "criterion": "Every wrong option of a single or multi question is a plausible misreading of the change, not filler",
+          "met": true,
+          "reason": "Every wrong option is a believable misreading: the scrub skipping too-short values, a provider rejecting the key, the wrong component refusing the log, the check being forced by information flow, the refusal merely mirroring a provider rejection, the error only moved earlier, and the check proving safety."
+        },
+        {
+          "criterion": "Each question's key_points state what a correct answer must cover, at the same altitude as the question",
+          "met": true,
+          "reason": "Each question's key points state the coverage a correct answer needs at that question's own level: failure mechanism details for q1, design rationale for q2, boundary limits for q3, and the guard/upstream-fix/invariants for q4."
+        },
+        {
+          "criterion": "The questions go outside in: the first ones cover what the change is for and its main boundary, narrower mechanisms and details come later, and no question is more central to the change than one asked before it, except the last",
+          "met": true,
+          "reason": "The order goes outside in: the motivating failure first, then why the refusal shape was chosen, then the check's boundary, then a new-case extension last; no later question is more central than an earlier one."
+        },
+        {
+          "criterion": "When quiz.json has two or more questions, the last one applies several points of the change to one new case the change does not spell out",
+          "met": true,
+          "reason": "q4 applies several points of the change \u2014 the refusal working as intended, the corruption that removing it would bring back, and the two log guarantees \u2014 to one new case the change does not spell out: a team that genuinely needs a six-character dev key."
+        },
+        {
+          "criterion": "Every question can be answered by a person who understands what the change does and why, with the code closed: no question depends on recalling a function name, a file name, a flag, an exit code, or an exact value, unless that name or value is itself the point the author must own",
+          "met": true,
+          "reason": "All questions are answerable with the code closed; the names and values that appear (runScenario, exit 4, the 8-character cut, the example key) are either given in the prompt or are themselves the point the author must own, and no answer hinges on recalling a name or value."
+        },
+        {
+          "criterion": "Every prompt, option, and key point is plain English: short sentences, common words, one idea each, with no jargon the question does not need and no filler or marketing words",
+          "met": true,
+          "reason": "Prompts, options, and key points are written in short, plain sentences with common words and no filler or marketing; the few code names appear only as anchors inside otherwise plain statements."
+        }
+      ]
+    }
+  },
+  "usage": {
+    "scores": {
+      "input_tokens": 237257,
+      "output_tokens": 27782,
+      "cache_read_tokens": 220224,
+      "cache_write_tokens": 0,
+      "duration_s": 138.28017467100017
+    },
+    "evidence": {
+      "usage": {
+        "normalization_version": 1,
+        "scope": "adapter_reported",
+        "input_tokens": 237257,
+        "output_tokens": 27782,
+        "cache_read_tokens": 220224,
+        "cache_write_tokens": 0,
+        "source": "invocation.usage"
+      },
+      "records": [
+        {
+          "normalization_version": 1,
+          "record_id": "message-0",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 1505,
+          "output_tokens": 76,
+          "cache_read_tokens": 1472,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 33,
+            "output": 76,
+            "cacheRead": 1472,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 1581,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-1",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 4545,
+          "output_tokens": 236,
+          "cache_read_tokens": 1536,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 3009,
+            "output": 236,
+            "cacheRead": 1536,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 4781,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-2",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 4891,
+          "output_tokens": 99,
+          "cache_read_tokens": 4736,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 155,
+            "output": 99,
+            "cacheRead": 4736,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 4990,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-3",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 5062,
+          "output_tokens": 47,
+          "cache_read_tokens": 4928,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 134,
+            "output": 47,
+            "cacheRead": 4928,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 5109,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-4",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 5363,
+          "output_tokens": 46,
+          "cache_read_tokens": 5056,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 307,
+            "output": 46,
+            "cacheRead": 5056,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 5409,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-5",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 5432,
+          "output_tokens": 119,
+          "cache_read_tokens": 5376,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 56,
+            "output": 119,
+            "cacheRead": 5376,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 5551,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-6",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 5792,
+          "output_tokens": 74,
+          "cache_read_tokens": 5504,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 288,
+            "output": 74,
+            "cacheRead": 5504,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 5866,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-7",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 8603,
+          "output_tokens": 116,
+          "cache_read_tokens": 5824,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 2779,
+            "output": 116,
+            "cacheRead": 5824,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 8719,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-8",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 11982,
+          "output_tokens": 6900,
+          "cache_read_tokens": 8704,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 3278,
+            "output": 6900,
+            "cacheRead": 8704,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 18882,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-9",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 20174,
+          "output_tokens": 57,
+          "cache_read_tokens": 18816,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 1358,
+            "output": 57,
+            "cacheRead": 18816,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 20231,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-10",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 22048,
+          "output_tokens": 67,
+          "cache_read_tokens": 20224,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 1824,
+            "output": 67,
+            "cacheRead": 20224,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 22115,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-11",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 23817,
+          "output_tokens": 2000,
+          "cache_read_tokens": 22080,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 1737,
+            "output": 2000,
+            "cacheRead": 22080,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 25817,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-12",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 27734,
+          "output_tokens": 17381,
+          "cache_read_tokens": 25792,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 1942,
+            "output": 17381,
+            "cacheRead": 25792,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 45115,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-13",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 45127,
+          "output_tokens": 35,
+          "cache_read_tokens": 45056,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 71,
+            "output": 35,
+            "cacheRead": 45056,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 45162,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        },
+        {
+          "normalization_version": 1,
+          "record_id": "message-14",
+          "provider": "ollamacloud",
+          "model": "glm-5.3",
+          "agent_id": "main",
+          "scope": "exclusive",
+          "parent_record_id": null,
+          "input_tokens": 45182,
+          "output_tokens": 529,
+          "cache_read_tokens": 45120,
+          "cache_write_tokens": 0,
+          "reasoning_tokens": 0,
+          "completeness": "complete",
+          "raw": {
+            "input": 62,
+            "output": 529,
+            "cacheRead": 45120,
+            "cacheWrite": 0,
+            "reasoning": 0,
+            "totalTokens": 45711,
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0,
+              "total": 0,
+              "totalFromProvider": false
+            }
+          }
+        }
+      ],
+      "inventory_reason": null,
+      "reported_cost": {
+        "usd": 0.0,
+        "prompt_tokens": 237257,
+        "completion_tokens": 27782,
+        "cached_tokens": 220224,
+        "source": "estimate"
+      },
+      "duration_scope": "stored attempt duration; selected invocation, not cumulative retries",
+      "trace_fidelity": "partial"
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "194a788",
+  "head": "5b31d95",
+  "target": "Keep a secret the model splits across streamed text pieces out of what listeners see.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the merged secrets binding shared by the engine setup and the buffer",
+    "the test helper option that paces the faux provider's streaming",
+    "the two tests that pin the guarantees"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Before this change, a secret split across two streamed pieces reached a listener whole, while the transcript stayed clean. Why did the pieces carry the secret past the redaction?",
+      "options": [
+        { "label": "A timing gap left one piece unredacted while the redaction was still running on it.", "correct": false },
+        { "label": "Each piece was redacted on its own, so neither piece held the whole secret to replace.", "correct": true },
+        { "label": "The stream sent each piece before redaction ran; only the saved transcript was redacted.", "correct": false },
+        { "label": "Redaction replaces a secret only when a piece starts with it, and both pieces began mid-secret.", "correct": false }
+      ],
+      "key_points": [
+        "Redaction ran on each piece alone, so no piece held the whole secret.",
+        "A listener that joins the pieces rebuilds the secret.",
+        "The transcript redacts the joined reply, so it stayed clean.",
+        "The eval runner scrubs the joined pieces and counts a found secret as a leak."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "Each new piece is redacted together with the text the buffer already holds. Why does holding one character less than the longest secret stop a split secret from streaming out?",
+      "key_points": [
+        "The new piece is redacted joined with the held text, so a secret it completes is replaced.",
+        "After redaction, no whole secret sits in the buffer, only a partial one at its end.",
+        "A partial secret is at most one character shorter than the longest secret, so that held length covers every case."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "invalidation",
+      "relevance": "important",
+      "prompt": "A reply's text runs across two blocks. An emoji sits right where the buffer would cut it, and the user aborts the reply. Which of these hold?",
+      "options": [
+        { "label": "No streamed piece ends with half of the emoji.", "correct": true },
+        { "label": "The buffer's held text still reaches the listener.", "correct": true },
+        { "label": "The abort drops the held text before it reaches the listener.", "correct": false },
+        { "label": "A secret split across both blocks never streams out whole.", "correct": true }
+      ],
+      "key_points": [
+        "The cut steps back one character so it never ends a piece half-way through a character.",
+        "The buffer spans the whole reply, so a secret split across blocks is redacted once the later text arrives.",
+        "An aborted reply ends the same way a finished one does, and that end flushes the held text."
+      ],
+      "attempts": []
+    }
+  ]
+}

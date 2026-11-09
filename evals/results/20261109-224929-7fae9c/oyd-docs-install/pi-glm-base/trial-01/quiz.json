@@ -1,0 +1,71 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "3512cf9",
+  "head": "f5bef37",
+  "target": "AGENTS.md sets the rules for the one plugin tree, above all two contracts: hook scripts find the plugin root from their own path, never from CLAUDE_PLUGIN_ROOT, and every hooks/hooks.json edit must tell Codex users to rerun scripts/codex-trust-hooks.",
+  "altitude": "design",
+  "incidental": [
+    "README.md: it documents the install, opt-in, and update flows the code already has",
+    "CLAUDE.md: a symlink to AGENTS.md, so Claude Code reads the same rules",
+    "the selftest step: run scripts/selftest after changing anything under skills/ or hooks/",
+    "the validate step: run claude plugin validate . after changing a manifest",
+    "the version bump step: bump version in .claude-plugin/plugin.json so installs pick the change up"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Why do hook scripts find the plugin root with dirname \"$0\" and not with CLAUDE_PLUGIN_ROOT from the environment?",
+      "options": [
+        { "label": "Codex removes the variable from hook processes, so scripts that read it fail there.", "correct": false },
+        { "label": "Git runs hooks with a clean environment, so plugin variables never reach the script.", "correct": false },
+        { "label": "Droid sets the variable to a placeholder inside hook processes, so it names a root that is not real there. The script's own path is real in every harness.", "correct": true },
+        { "label": "The plugin tree can be cloned anywhere, so no environment variable can ever point to it.", "correct": false }
+      ],
+      "key_points": [
+        "Droid gives hook processes a placeholder value, so the variable names a root that is not real there",
+        "dirname \"$0\" follows the script's real location, so one script serves Claude Code, Droid, and Codex",
+        "the rule keeps hooks free of harness-specific code"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A new hook script builds its paths from CLAUDE_PLUGIN_ROOT. Which of these are true?",
+      "options": [
+        { "label": "Under Droid, the variable holds a placeholder, so the hook builds paths under a root that is not real.", "correct": true },
+        { "label": "A test that the variable is set and not empty would catch the failure.", "correct": false },
+        { "label": "The hook can still work under Claude Code, so work done there can miss the break.", "correct": true },
+        { "label": "Taking the root from dirname \"$0\" instead makes the same script work under all three harnesses.", "correct": true }
+      ],
+      "key_points": [
+        "the failure hits Droid only: the placeholder names a root that is not real",
+        "the variable is set, not missing, so an empty-value test does not catch it",
+        "the break can stay hidden while the hook works under Claude Code",
+        "dirname \"$0\" needs no harness-specific code"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "core",
+      "prompt": "A new hook entry lands in hooks/hooks.json, and the hook script reads a file inside the plugin tree. What must the change get right for all three harnesses, and why?",
+      "options": [],
+      "key_points": [
+        "the script finds the plugin root with dirname \"$0\", not CLAUDE_PLUGIN_ROOT, because Droid sets that variable to a placeholder inside hook processes",
+        "the change tells Codex users to rerun scripts/codex-trust-hooks, because an edit to hooks/hooks.json changes its Codex trust hash",
+        "Codex skips plugin hooks until their definitions are trusted again"
+      ],
+      "attempts": []
+    }
+  ]
+}

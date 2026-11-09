@@ -1,0 +1,13 @@
+{
+  "status": "harness_error",
+  "duration_s": 14.995943310999792,
+  "exit_code": 0,
+  "tries": 3,
+  "cost": {
+    "usd": 0.0,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "cached_tokens": 0,
+    "source": "estimate"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "run": "20261109-224929-7fae9c",
+  "date": "2026-11-09",
+  "source": "multeval report",
+  "plugin_version": "0.7.0",
+  "commit": "58e03e6",
+  "dirty": false,
+  "judge_model": "glm-5.3",
+  "subjects": {
+    "pi-glm-base": {
+      "attempts": 18,
+      "plan_pass": 0.0,
+      "skill_loaded": 0.6111111111111112,
+      "judge_score": 0.9333333333333333,
+      "plain": {
+        "questions": 6.545454545454546,
+        "prompt_words": 26.53727272727273,
+        "prompt_words_max": 40.63636363636363,
+        "option_words": 18.24818181818182,
+        "option_words_max": 34.72727272727273,
+        "code_names": 0.7027272727272728,
+        "giveaways": 2.272727272727273,
+        "fluff": 2.090909090909091
+      },
+      "usage": {
+        "duration_s": 84.49684441344448,
+        "input_tokens": 171196.77777777778,
+        "output_tokens": 15509.111111111111
+      }
+    },
+    "pi-glm": {
+      "attempts": 18,
+      "plan_pass": 0.9444444444444444,
+      "skill_loaded": 1.0,
+      "judge_score": 0.9938271604938271,
+      "plain": {
+        "questions": 4.444444444444445,
+        "prompt_words": 22.458571428571428,
+        "prompt_words_max": 29.857142857142858,
+        "option_words": 11.937142857142858,
+        "option_words_max": 16.071428571428573,
+        "code_names": 0.0,
+        "giveaways": 0.0,
+        "fluff": 0.0
+      },
+      "usage": {
+        "duration_s": 133.98962873794443,
+        "input_tokens": 328645.3333333333,
+        "output_tokens": 25431.666666666668
+      }
+    }
+  }
+}

@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "dd72efd",
+  "head": "fb79950",
+  "target": "The live weather test's hard-coded script becomes scenario data: a runner interprets its steps over one session and leaves each run as a scrubbed result directory, and one check judges that directory on engine invariants and model behaviors, so the live test, aigent run and the future multeval grader give the same verdict from the same files.",
+  "altitude": "design",
+  "incidental": [
+    "package.json: the aigent bin entry and the npm script that loads .env",
+    "package-lock.json",
+    "the fixture plugins under test/scenarios/plugins: clock, guard and weather",
+    "test/scenarios/weather.json, the sample scenario the tests run",
+    "test/boundary.test.ts: the guard now names src/eval/run.ts so the eval code cannot silently stop being watched"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "aigent run still holds the run log in memory after it writes the result directory. Why does it grade the files it just wrote instead of the log in memory?",
+      "options": [
+        { "label": "Because the checks cannot read an in-memory run log, only files", "correct": false },
+        { "label": "Because every run must prove the result directory alone is enough to grade it, and the multeval adapter will read those files and nothing else", "correct": true },
+        { "label": "Because the in-memory log still holds raw secrets, and only the write scrubs them", "correct": false }
+      ],
+      "key_points": [
+        "the result directory is the contract: aigent check, the live test and the future multeval grader all grade the same files",
+        "a run that graded its memory could leave files that give a different verdict, and no run would ever catch the gap",
+        "each run is a test of the directory format itself"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "One report shows the invariant enabled-before-call failing on a call, and the behavior use@1 failing on that same call. What does each failure mean?",
+      "options": [
+        { "label": "Both are the model's mistakes: the model called too early, so both count in behavior rates", "correct": false },
+        { "label": "Both are the engine's bug: the engine should not have run the call, and it should have made the model's bet succeed", "correct": false },
+        { "label": "The invariant failure is an engine bug the run exits 1 on; the behavior failure is one missed bet on the model, counted in a rate that never changes the exit code", "correct": true }
+      ],
+      "key_points": [
+        "an invariant is an engine property every trial must keep; one failure is an engine bug, and it never skips",
+        "a behavior is the design's bet on the model, judged per trial and read as a rate",
+        "a behavior failure never changes the exit code, and no model script can make a correct engine break an invariant"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "What breaks if writeRun wrote the files straight into the result directory instead of a sibling temp directory it renames into place?",
+      "key_points": [
+        "a crash mid-write would leave a half-written directory that a reader could grade as a real run",
+        "the rename makes the switch one step: the directory holds a whole run or does not exist",
+        "a crash now leaves only the .partial-* sibling, which no reader mistakes for a run"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Step 2 of 4 ends error after the model already failed the behavior follow@1. Every invariant held, and the result directory was written. What does aigent run exit with?",
+      "options": [
+        { "label": "1, because a behavior failed", "correct": false },
+        { "label": "3, because the run stopped early, and the steps that ran were written and checked", "correct": true },
+        { "label": "0, because every invariant held and the steps that ran passed their checks", "correct": false },
+        { "label": "2, because the run went wrong", "correct": false }
+      ],
+      "key_points": [
+        "3 means the run stopped early and the steps that ran were still written and checked",
+        "a behavior failure never changes the exit code",
+        "1 is reserved for a failed invariant, an engine bug, and wins over 3",
+        "2 means bad input found before anything ran, and nothing was written"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A model echoes the scenario's secret across two streamed text deltas, split mid-value. Why does the scrub still catch it?",
+      "options": [
+        { "label": "The scrub also replaces any fragment of a secret value, however short", "correct": false },
+        { "label": "The secret-free invariant scans the written files for raw secret values and fails when it finds one", "correct": false },
+        { "label": "Adjacent text deltas are joined into one event before the scrub runs, so the scrub sees whole strings", "correct": true }
+      ],
+      "key_points": [
+        "adjacent text deltas are joined into one text event first, so the scrub sees whole strings",
+        "the scrub replaces each whole raw secret value with its [LEAKED:NAME] mark, so a per-delta scrub would leave the split value raw in the log and the files",
+        "the mark is what secret-free reads, so a grader can find a leak without the key"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "The run log carries both the session events and the transcript, and the checks read the two together. Why does the log need both?",
+      "options": [
+        { "label": "Each source sees something the other misses: no listener sees the records written at a session's creation, and a core__call_tool rejected before it runs leaves no tool event, only an error result in the transcript", "correct": true },
+        { "label": "The events are the scrubbed copy and the transcript the raw one, so the checks can compare them for leaks", "correct": false },
+        { "label": "The events are there for the CLI's progress line; the checks read only the transcript", "correct": false }
+      ],
+      "key_points": [
+        "records written at a session's creation reach no listener, so what was enabled at start comes from the transcript",
+        "a schema-rejected core__call_tool leaves no tool event, only an error result in the transcript, which dispatch-recover reads",
+        "so the checks pair the two sources instead of trusting either alone"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Which of these does a run refuse before the first model call? Pick all that hold.",
+      "options": [
+        { "label": "A prompt ends error on step 3 of 5", "correct": false },
+        { "label": "An expectation names a tool the plugin set in effect at that step lacks", "correct": true },
+        { "label": "An env var the scenario lists in secrets is unset", "correct": true },
+        { "label": "The output directory already exists", "correct": true }
+      ],
+      "key_points": [
+        "the runner checks the secrets, the model key, the plugin sets and every name an expectation relies on before the first session opens, so a typo costs no model call",
+        "the CLI refuses an existing output directory before it reads the scenario, so a repeated command never spends a model call",
+        "a prompt that ends error happens after the run spent model calls; the run is still written and checked, and exits 3"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "On half the trials the model never enables the weather plugin, so use@1 never had a chance there. Why do those trials skip instead of counting as failures in the rate?",
+      "options": [
+        { "label": "A skip keeps the report short, and a skipped behavior carries no evidence", "correct": false },
+        { "label": "A rate counts only trials that had the chance, so it measures its own bet; whether the model enabled the plugin is the discover bet, judged on its own", "correct": true },
+        { "label": "A skip is a failure in disguise: the model should have enabled the plugin, so it must lower the use rate", "correct": false }
+      ],
+      "key_points": [
+        "a behavior skips when its precondition never happened, and skips are left out of the rate",
+        "counting no-chance trials as failures would make the use rate measure discovery, which the discover behavior already measures",
+        "invariants never skip; only behaviors do"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q9",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new behavior check arrives: the model's final answer must cite a source. Where does it go in the code, and what must land with it before it works?",
+      "key_points": [
+        "scenario.ts: one parser in the expectations table and its fields in FIELDS, so scenarios can declare it; a check without a parser fails the build",
+        "checks.ts: the judge, which owns its precondition and its skip rule",
+        "checks.test.ts: both case tables are keyed by the check names, so a check added without a passing and a failing case does not compile",
+        "its id cites@<step> and its rate follow from the check name and the step, the keys a report and the future grade use"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q10",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "The multeval adapter arrives. It drives aigent run over many scenarios and grades what the runs leave, with no secret values of its own. Which of these hold? Pick all that hold.",
+      "options": [
+        { "label": "It can grade a stopped-early run from the directory, because the steps that ran were written and checked", "correct": true },
+        { "label": "When a behavior fails on every trial, the engine has a bug and the exit code is 1", "correct": false },
+        { "label": "It can find a leaked secret without the key, because the scrub leaves a mark the log itself carries", "correct": true },
+        { "label": "It must replay the model's responses to judge a run, because a directory holds files, not verdicts", "correct": false }
+      ],
+      "key_points": [
+        "the result directory is the whole input to check, so a grader needs no model and no memory of the run",
+        "a stopped-early run is written and checked, exit 3, so grading it is legitimate",
+        "a behavior failure is a rate and never sets exit 1; a failed invariant is the engine bug that does",
+        "the scrub's [LEAKED:NAME] mark is what secret-free reads, so finding a leak needs no secret value"
+      ],
+      "attempts": []
+    }
+  ]
+}

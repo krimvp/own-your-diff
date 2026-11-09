@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "93cc474",
+  "head": "c8cb37a",
+  "target": "check(run) judges a scenario run on one report that splits engine invariants (one failure is an engine bug) from model behaviors (bets on the model, measured as rates over trials that had the chance) from cost (reported, never judged), reading only the run log so every caller gets the same verdict from the same files.",
+  "altitude": "design",
+  "incidental": [
+    "small helpers in checks.ts and the tests (sum, ratio, strings, pluginOf, withMessages, editUser, pick): plumbing for the checks, no design of their own"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A report comes back from check(run). Which part tells you the engine itself is broken?",
+      "options": [
+        { "label": "The invariants: they are engine properties every run must keep, so one failure is an engine bug.", "correct": true },
+        { "label": "The behaviors: nine failed expectations on one run mean the engine broke its promises.", "correct": false },
+        { "label": "The cost: many tokens with few cache hits shows the engine wasted money.", "correct": false },
+        { "label": "complete: a run that stopped before its last step is an engine fault.", "correct": false }
+      ],
+      "key_points": [
+        "invariants are engine properties every run must keep, whatever the model did",
+        "one invariant failure is an engine bug, not a rate over trials",
+        "behaviors are the design's bets on the model, so a failed behavior is a model mistake, not an engine fault",
+        "cost is reported and never judged"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "A behavior's precondition never happened, so its verdict is a skip, and skips are left out of the behavior's rate. Why leave the run out instead of counting it as a failure?",
+      "options": [
+        { "label": "A trial that had no chance to show the behavior says nothing about the bet, so the rate counts only trials that had the chance.", "correct": true },
+        { "label": "A skipped trial counts as a pass, since the engine ran it without a bug.", "correct": false },
+        { "label": "Skips make a report incomplete, so the rate hides them.", "correct": false },
+        { "label": "The run log cannot tell a skip from a failure, so the safer reading wins.", "correct": false }
+      ],
+      "key_points": [
+        "a behavior is a bet on the model's choice, and a skip means the trial never had the chance to show it",
+        "the rate counts only trials that had the chance, so it answers the question the bet asks",
+        "counting a skip as a failure or a pass would make the rate say something the trial never tested",
+        "invariants are the opposite: they never skip, because an engine property must hold in every run"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The multeval grader arrives later and must grade runs that finished days ago. What does it need to judge them?",
+      "options": [
+        { "label": "The run log's files: check is a pure function over the run log, so the same files give the same verdict with no live session.", "correct": true },
+        { "label": "A live session on the same model, to replay the scenario's steps.", "correct": false },
+        { "label": "The scenario file alone: the run log adds nothing a verdict needs.", "correct": false },
+        { "label": "A fresh run of the same scenario: one run's files are not enough to judge.", "correct": false }
+      ],
+      "key_points": [
+        "check reads only the run log, and the run log is self-contained: the scenario, what each step did, and the transcript",
+        "the live test, the CLI and a future grader get the same verdict from the same files",
+        "no live session, model or engine is needed to judge a run",
+        "this is the boundary that lets a grader score old runs it never watched"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Suppose the checks had read only the step events and never the transcript. Which of these would break?",
+      "options": [
+        { "label": "A session created with plugins already enabled: its calls would look unenabled, so enabled-before-call would flag them.", "correct": true },
+        { "label": "A core__call_tool the schema rejected before it ran: dispatch-recover would never find the rejection, because it left no tool event.", "correct": true },
+        { "label": "A denied call: the denial would be invisible, because tool events never report denials.", "correct": false },
+        { "label": "The model's answer text: follow could not match it, because answers appear only in the transcript.", "correct": false }
+      ],
+      "key_points": [
+        "a run log holds two views: the events listeners saw, and the transcript of what was recorded",
+        "records written when a session is created reach no listener, because nobody can subscribe before the session is returned, so the transcript is the only source for them",
+        "a call the schema rejected before it ran leaves no tool event, only an error result in the transcript",
+        "denials and answer text do reach listeners, so those checks would survive",
+        "this is why the invariants read the transcript and the events together"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "In the checks tests, a behavior fails because the faux model's script makes that mistake. The invariant cases never use a script to break the engine. Why not, and what do they do instead?",
+      "options": [],
+      "key_points": [
+        "no model script can make a correct engine break an invariant, so a scripted run cannot stand for an engine bug",
+        "instead, each engine bug is one fault injected into an otherwise correct run's log, named for the bug it stands for",
+        "the failing verdict must carry the evidence that names the mistake",
+        "the passing run must show the invariant was actually exercised, so the pass is not vacuous"
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "The engine gains a new guarantee, and you ship it as a new invariant. Which of these hold?",
+      "options": [
+        { "label": "One entry in the invariants table is the whole check: the Invariant type and the report's keys derive from that table.", "correct": true },
+        { "label": "A case for it must be in the test table typed by the invariant names, or the tests do not compile.", "correct": true },
+        { "label": "Scenarios must list it under expect, or no run will check it.", "correct": false },
+        { "label": "A run with nothing for it to check is left out of the rate, like a behavior's skip.", "correct": false }
+      ],
+      "key_points": [
+        "the invariants table is the list: the Invariant type and the report's keys derive from it",
+        "both test tables are typed by the check names, so a check added without its cases does not compile",
+        "invariants need no declaration in a scenario, because expect lists behaviors",
+        "invariants never skip: a run with nothing to check passes, and no rate leaves a run out"
+      ],
+      "attempts": []
+    }
+  ]
+}

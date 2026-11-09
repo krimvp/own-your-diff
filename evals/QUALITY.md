@@ -9,6 +9,8 @@ Plain counts words in the plan's prompts and options, code names per question, a
 | 20261018-180310-adb89b | 2026-10-18 | - | - | pi-glm | 9 | 0.78 | 1.00 | 0.98* | 4.4 | 33.9 | 48.1 | 21.4 | 42.9 | 1.70 | 1.33 | 7.00 | 297 | 238311 | 19517 |
 | 20261018-195233-4269b4 | 2026-10-18 | - | - | pi-glm | 18 | 0.72 | 1.00 | - | 5.2 | 33.8 | 49.4 | 19.8 | 37.6 | 1.77 | 2.06 | 8.67 | 301 | 261862 | 24153 |
 | 20261018-202951-aa03df | 2026-10-18 | - | - | pi-glm | 5 | 0.60 | 1.00 | 0.91* | 4.0 | 34.3 | 48.5 | 20.0 | 46.2 | 1.33 | 1.80 | 4.40 | 451 | 323004 | 22609 |
+| 20261109-224929-7fae9c | 2026-11-09 | 0.7.0 | 58e03e6 | pi-glm-base | 18 | 0.00 | 0.61 | 0.93 | 6.5 | 26.5 | 40.6 | 18.2 | 34.7 | 0.70 | 2.27 | 2.09 | 84 | 171197 | 15509 |
+| 20261109-224929-7fae9c | 2026-11-09 | 0.7.0 | 58e03e6 | pi-glm | 18 | 0.94 | 1.00 | 0.99 | 4.4 | 22.5 | 29.9 | 11.9 | 16.1 | 0.00 | 0.00 | 0.00 | 134 | 328645 | 25432 |
 
 Runs marked * in the judge column were kept before the grades moved into multeval. Their judge was evals/judge.py, with a rubric that lacked the code-closed and plain-English criteria. Their plain numbers come from their quiz.json with today's quizlint. Their usage comes from the kept attempt, as multeval's usage grader reads it.
 

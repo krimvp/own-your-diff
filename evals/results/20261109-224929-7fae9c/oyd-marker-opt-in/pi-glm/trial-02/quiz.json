@@ -1,0 +1,156 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "5e29438",
+  "head": "14bac80",
+  "target": "Repos opt into the gate with a committed marker file instead of each clone pointing git at a hooks directory.",
+  "altitude": "design",
+  "incidental": [
+    "usage text of quizgate",
+    "the selftest script moved out of the skill directory",
+    "SKILL.md wording for the new opt-in flow",
+    "agent-mode.md wording on spawning fresh examiners"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Before this change, each clone needed a git setting to find its hooks. Why does opt-in now live in a file you commit?",
+      "options": [
+        { "label": "Fresh clones carry the opt-in, so no one repeats a manual setup step", "correct": true },
+        { "label": "Git refuses to run hooks until a tracked file opts the repo in", "correct": false },
+        { "label": "A committed file lets the gate edit git settings in every clone", "correct": false },
+        { "label": "A committed file stores the repo's quiz results for everyone to share", "correct": false }
+      ],
+      "key_points": [
+        "the old opt-in was a setting inside one clone, so it never traveled to a fresh clone",
+        "a committed file carries the opt-in into every clone of the repo",
+        "so no fresh clone needs a manual setup step before the gate works"
+      ]
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Why does the hook run the gate from a stable path on your machine, not from the plugin's install directory?",
+      "options": [
+        { "label": "The plugin's install path changes with every update, so the hook would break", "correct": true },
+        { "label": "Git refuses to run a hook that points at a file outside the repository", "correct": false },
+        { "label": "Files inside the plugin directory cannot be marked executable for other programs", "correct": false },
+        { "label": "The plugin directory is erased at the end of every session", "correct": false }
+      ],
+      "key_points": [
+        "the plugin's install path changes with every update",
+        "a hook pointing there would break or run a stale gate",
+        "the stable copy is refreshed each session, so the hook keeps working"
+      ]
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A developer clones the opted-in repo and never uses the plugin. What does the committed marker file enforce there?",
+      "options": [
+        { "label": "Nothing; the marker is a signal, and the plugin installs the enforcing hook", "correct": true },
+        { "label": "It rewrites the clone's git settings to point at the hook", "correct": false },
+        { "label": "It asks the remote to reject pushes that lack a passed quiz", "correct": false },
+        { "label": "It blocks the first push until the developer runs the gate", "correct": false }
+      ],
+      "key_points": [
+        "the marker is only a signal; it enforces nothing by itself",
+        "enforcement is the push hook, which only the plugin installs",
+        "a clone that never runs the plugin has no gate at all"
+      ]
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A teammate starts a session in a fresh clone of an opted-in repo. Which of these does the plugin's session-start command do?",
+      "options": [
+        { "label": "It writes the push hook into the clone's own hooks directory", "correct": true },
+        { "label": "It refreshes the gate copy at the stable path, if it changed", "correct": true },
+        { "label": "It rewrites the committed marker file with the session's date", "correct": false },
+        { "label": "It points the clone's git settings at a tracked hooks directory", "correct": false }
+      ],
+      "key_points": [
+        "the hook is written into the clone's own hooks directory",
+        "the gate copy at the stable path is refreshed when it changed",
+        "nothing tracked in the repo changes, and no git settings are touched"
+      ]
+    },
+    {
+      "id": "q5",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The hook runs, but the gate tool is missing from the machine. What happens to the push?",
+      "options": [
+        { "label": "The push is blocked, with a message pointing to how to install the gate", "correct": true },
+        { "label": "The push goes through, since no gate means nothing to enforce", "correct": false },
+        { "label": "The push waits until the gate is installed", "correct": false },
+        { "label": "Git skips the broken hook with a warning", "correct": false }
+      ],
+      "key_points": [
+        "the gate fails closed: a missing tool blocks the push",
+        "the hook prints where to get the gate, so the user is not stuck"
+      ]
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "A repo already has a pre-push hook its author wrote by hand. What does the session-start command do?",
+      "options": [
+        { "label": "It leaves the hook alone and says which line to add by hand", "correct": true },
+        { "label": "It replaces the hook with the gate's own version", "correct": false },
+        { "label": "It appends the gate check to the author's hook", "correct": false },
+        { "label": "It renames the author's hook and installs its own beside it", "correct": false }
+      ],
+      "key_points": [
+        "the gate never overwrites a hook it did not write",
+        "the author keeps their hook and adds the check line themselves",
+        "when the gate's own hook is already there, the command changes nothing"
+      ]
+    },
+    {
+      "id": "q7",
+      "kind": "single",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "The gate gains a new check. How do clones that already have the installed hook pick it up?",
+      "options": [
+        { "label": "Into the gate tool; the session command refreshes the copy the hook calls", "correct": true },
+        { "label": "Into every installed hook; the session command rewrites them", "correct": false },
+        { "label": "Into the committed marker file; clones read it at push time", "correct": false },
+        { "label": "Into a new hook template; users must reinstall by hand", "correct": false }
+      ],
+      "key_points": [
+        "the installed hook is a thin wrapper that only finds and runs the gate",
+        "the rules live in the gate copy at the stable path",
+        "refreshing that copy is enough; clones pick up new rules without reinstalling"
+      ]
+    },
+    {
+      "id": "q8",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A repo adopts the gate; its author has a pre-push hook, and a teammate never uses the plugin. What does each of them get?",
+      "options": [],
+      "key_points": [
+        "the repo opts in with one committed marker file",
+        "the author's hook is kept, and the message names the line to add",
+        "the teammate's pushes are not gated, because only the plugin installs the hook",
+        "plugin users get the gate with no manual step"
+      ]
+    }
+  ]
+}
