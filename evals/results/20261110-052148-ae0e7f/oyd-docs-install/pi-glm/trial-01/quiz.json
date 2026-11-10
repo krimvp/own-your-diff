@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "branch": "docs/install",
+  "base": "7f2b252",
+  "head": "d110718",
+  "target": "Explain how to install the plugin, opt a repo into the gate, and update it, for users and contributors.",
+  "altitude": "trivial",
+  "incidental": [
+    "the install commands for each harness, which restate the install script",
+    "the Codex trust step, and rerunning it after a hooks change",
+    "the opt-in steps: the marker file, the pre-push hook, and how a fresh clone gets the hook",
+    "the settings snippet that offers the plugin to everyone who opens the repo",
+    "using the skill without a plugin harness",
+    "the update steps and the version bump rule",
+    "the contributor notes: the checks to run and how hook scripts find the plugin root",
+    "the Claude Code notes file, a symlink to the contributor notes"
+  ],
+  "examinee": "human",
+  "questions": []
+}

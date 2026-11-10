@@ -1,0 +1,32 @@
+{
+  "run": "20261110-052148-ae0e7f",
+  "date": "2026-11-10",
+  "source": "multeval report",
+  "plugin_version": "0.7.0",
+  "commit": "b553c1c",
+  "dirty": false,
+  "judge_model": "glm-5.3",
+  "subjects": {
+    "pi-glm": {
+      "attempts": 9,
+      "plan_pass": 1.0,
+      "skill_loaded": 1.0,
+      "judge_score": 1.0,
+      "plain": {
+        "questions": 3.5555555555555554,
+        "prompt_words": 18.127777777777776,
+        "prompt_words_max": 22.22222222222222,
+        "option_words": 9.21888888888889,
+        "option_words_max": 11.222222222222221,
+        "code_names": 0.07444444444444445,
+        "giveaways": 0.0,
+        "fluff": 0.0
+      },
+      "usage": {
+        "duration_s": 129.32387585677782,
+        "input_tokens": 357027.0,
+        "output_tokens": 25952.666666666668
+      }
+    }
+  }
+}

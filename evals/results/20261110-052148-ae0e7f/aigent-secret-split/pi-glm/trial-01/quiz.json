@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "branch": "fix/secret-split",
+  "base": "ff7239e",
+  "head": "4494162",
+  "target": "Keep a secret the model writes across stream chunks from reaching a session listener whole, by holding back a short tail of the stream until it is safe.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the merged secrets map hoisted out of the engine call, so the window size and the engine share it",
+    "test scaffolding: the provider options on the session helper, and the paced streaming in the abort test"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Before the fix, a secret split across two stream chunks reached a listener whole. The saved transcript showed it redacted. Why did the stream and the transcript disagree?",
+      "options": [
+        { "label": "Listeners got the raw chunks, so redaction never ran on the stream at all.", "correct": false },
+        { "label": "Each chunk was redacted alone, so neither chunk held the whole secret.", "correct": true },
+        { "label": "The transcript was saved after the listener, so redaction caught up later.", "correct": false },
+        { "label": "The model sent the secret only to the stream, not to the transcript.", "correct": false }
+      ],
+      "key_points": [
+        "Each stream chunk was redacted on its own, so a secret split across chunks passed through both.",
+        "Redaction replaces only a whole secret value, so each piece alone looks safe.",
+        "The transcript and the run result redact the joined message text, so they stayed clean."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "The hold keeps back the last characters of the stream: one less than the longest secret. Why does that stop every unfinished secret from reaching a listener, and what does it cost the host?",
+      "options": [],
+      "key_points": [
+        "An unfinished secret is at most longest minus one characters long, so it starts inside the held tail.",
+        "A secret that starts earlier is already whole inside the hold, and redaction removes it there.",
+        "Streamed text reaches listeners up to longest minus one characters late; no secrets, no delay."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "invalidation",
+      "relevance": "important",
+      "prompt": "A host aborts the reply while the model is halfway through a secret. Which statements are true?",
+      "options": [
+        { "label": "The held-back characters are dropped, so the stream ends early.", "correct": false },
+        { "label": "The listener still receives every character the transcript kept.", "correct": true },
+        { "label": "The hold is cleared between the message's text blocks.", "correct": false },
+        { "label": "A secret split across two text blocks of one message is still caught.", "correct": true }
+      ],
+      "key_points": [
+        "pi ends every assistant message with the message-end event, whether it finished, errored, or was aborted.",
+        "That event releases the held tail, so the listener loses no character the transcript kept.",
+        "The hold spans all text blocks of one message, so a secret split across blocks stays caught."
+      ],
+      "attempts": []
+    }
+  ]
+}

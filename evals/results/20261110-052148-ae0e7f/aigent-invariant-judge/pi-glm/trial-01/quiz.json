@@ -1,0 +1,128 @@
+{
+  "version": 1,
+  "branch": "feat/checks",
+  "base": "459a807",
+  "head": "168a4a1",
+  "target": "One judge over the run log separates engine invariants from model behaviors and reports cost, so every caller gets the same verdict from the same files.",
+  "altitude": "design",
+  "incidental": [
+    "the transcript message parser and its shape checks",
+    "the token counts and the cached ratio arithmetic",
+    "the behavior id format and the per-step cost fields",
+    "the inner steps of the nine behavior judges",
+    "the test file's helpers that edit a saved run"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The live test used to assert a few engine properties by hand and log the rest. Why does the new judge split every verdict into invariants, behaviors, and cost?",
+      "options": [
+        { "label": "The three kinds live in three files, so the judge sorts each verdict by its source.", "correct": false },
+        { "label": "An engine bug and a model mistake need different fixes, so a report must not mix them.", "correct": true },
+        { "label": "Invariants are cheap to check, behaviors need a model, so they run at different times.", "correct": false },
+        { "label": "The future grader requires a report with exactly those three sections, so the judge writes them.", "correct": false }
+      ],
+      "key_points": [
+        "An engine failure is a bug to fix; a model failure is a bet that lost, measured as a rate.",
+        "The old test mixed engine checks and model metrics, so a reader could not tell which side failed.",
+        "Cost is reported and never judged, so a cheap failure and an expensive pass grade the same."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "A behavior skips when its precondition never happened, and skips are left out of the behavior's rate. Why leave them out instead of counting them as failures?",
+      "options": [
+        { "label": "A skip means the model chose not to act, and a choice is not a mistake.", "correct": false },
+        { "label": "Skips are retried on the next run, which adds them back into the rate.", "correct": false },
+        { "label": "A rate must count only the trials that had the chance to show the behavior.", "correct": true },
+        { "label": "Skipped behaviors produce no evidence, so a failure verdict could not name their mistake.", "correct": false }
+      ],
+      "key_points": [
+        "A rate must count only trials that had the chance to show the behavior.",
+        "A run that never met the precondition is not evidence about the bet; counting it would punish the run's shape, not the model.",
+        "The precondition's failure is judged elsewhere, such as the check that expects the model to enable the plugin."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The judge reads nothing but the run log that the runner already writes. What does that boundary give its three callers?",
+      "options": [
+        { "label": "The judge runs faster, because reading the files is cheaper than re-running the scenario.", "correct": false },
+        { "label": "All callers get the same verdict from the same files, so grading cannot drift from the run.", "correct": true },
+        { "label": "It lets the judge run inside the engine, where the records are still live.", "correct": false },
+        { "label": "The callers keep their own assertions, and the judge only adds the ones they share.", "correct": false }
+      ],
+      "key_points": [
+        "The live test, the command line, and the future grader all get the same verdict from the same files.",
+        "A verdict graded later from the files cannot drift from what the run did.",
+        "Each verdict carries evidence that names the mistake, so a reader needs no other record."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "Suppose the judge read only the event stream and never the transcript. Which of these would break?",
+      "options": [
+        { "label": "The judge could not see which plugins the model enabled during a prompt.", "correct": false },
+        { "label": "A call to a plugin enabled at session start would look like a violation.", "correct": true },
+        { "label": "A gate's denial would leave no trace for the judge to find.", "correct": false },
+        { "label": "A tool call rejected before it ran would leave no trace to recover from.", "correct": true }
+      ],
+      "key_points": [
+        "No listener sees the records a session writes at its creation, so the enabled-at-start set comes from the transcript.",
+        "A call rejected before it runs leaves no tool event, only an error result in the transcript under the same id.",
+        "The events still carry the records the model's own enables write, and denials at tool end."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new rule arrives: every tool call a prompt starts must end with a result before the prompt ends. Where does this rule go, and what must you add so the build passes?",
+      "options": [],
+      "key_points": [
+        "It is an invariant: the engine owns it, every run must keep it, and it never skips.",
+        "It goes in the invariants table, which the report's keys and the typed test table both follow; it needs no declaration in a scenario.",
+        "The build fails until the test table holds a passing case and a failing case for it.",
+        "Its failing case is a correct run with one injected fault, because no model script can break a correct engine."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A run has four prompts. The second ends in a provider error, so the run stops there. What does the report say?",
+      "options": [
+        { "label": "A behavior on the fourth prompt fails, because the model never answered it.", "correct": false },
+        { "label": "The invariants are still judged, on what the run did before it stopped.", "correct": true },
+        { "label": "The run counts as complete, because the error came from the provider and not the engine.", "correct": false },
+        { "label": "A behavior on the fourth prompt skips, and its rate leaves the run out.", "correct": true }
+      ],
+      "key_points": [
+        "Invariants never skip; they are judged on whatever the run did, even a partial run.",
+        "A behavior on a step that never ran skips, and its rate leaves the run out.",
+        "The report marks the run incomplete when a scenario step did not run."
+      ],
+      "attempts": []
+    }
+  ]
+}

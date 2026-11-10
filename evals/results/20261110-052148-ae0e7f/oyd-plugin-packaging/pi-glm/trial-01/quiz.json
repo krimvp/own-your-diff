@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "branch": "feat/plugin",
+  "base": "4e91177",
+  "head": "dc0b9d5",
+  "target": "Ship the repo as one plugin that Claude Code, Droid, and Codex each install, so every clone of an opted-in repo keeps its gate and agents cannot bypass it.",
+  "altitude": "design",
+  "incidental": [
+    "The selftest: moved to the repo root, run with isolated HOME and git config, and extended to cover the new hooks",
+    "Plugin metadata values: names, owner, version, and repository link",
+    "The guard's command parsing and its list of shell tool names",
+    "The installer's per-tool subcommands, its update fallback, and its source override flag",
+    "The gate's own sync and install commands, unchanged by this change; only the new tests exercise them"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Why does one plugin file set serve Claude Code, Droid, and Codex, instead of one package per tool?",
+      "options": [
+        { "label": "All three tools read the same plugin folder and hook definitions.", "correct": true },
+        { "label": "Each tool runs the same plugin install command.", "correct": false },
+        { "label": "Each tool needs its own rewritten copy of the plugin folder.", "correct": false },
+        { "label": "Claude Code shares its installed plugins with the other two.", "correct": false }
+      ],
+      "key_points": [
+        "All three tools read the same plugin folder and hook definitions, so one file set serves all three.",
+        "The per-tool work lives in the installer, which installs into every tool it finds on the machine."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A teammate clones a repo that opted into the gate and never runs the installer. How does their clone end up blocking unquizzed pushes?",
+      "options": [],
+      "key_points": [
+        "The opt-in marker is a tracked file, so every clone carries it.",
+        "At session start, the plugin's hook syncs the clone: it installs the missing push hook and puts the gate command on PATH.",
+        "In repos that did not opt in, the session-start hook says nothing.",
+        "The session-start hook never fails the session."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "The push hook alone cannot stop an agent. How can an agent still get an unquizzed push through?",
+      "options": [
+        { "label": "Push with the hook skipped, or point git at another hook path.", "correct": true },
+        { "label": "Delete the gate's records, so the hook has nothing to check.", "correct": false },
+        { "label": "Push a new branch the hook was never told to watch.", "correct": false },
+        { "label": "Skip the commit check, since the push gate hangs off it.", "correct": false }
+      ],
+      "key_points": [
+        "The agent can push with the push hook skipped, or point git at another hook path.",
+        "The guard that runs before each agent command denies both moves.",
+        "Skipping the gate stays the human's call, never the agent's."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "invalidation",
+      "relevance": "important",
+      "prompt": "The installer has trusted the plugin's hooks in Codex. What later change makes Codex skip them again, and what fixes it?",
+      "options": [],
+      "key_points": [
+        "Codex runs a plugin's hooks only when it trusts their definition hash.",
+        "A changed hook definition gets a new hash, so Codex skips it until it is trusted again.",
+        "Re-running the trust step, or approving in Codex, restores trust."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new teammate clones an opted-in repo on a machine the installer already set up for Codex. Which of these hold for their first session?",
+      "options": [
+        { "label": "The clone starts with no push hook; session start installs it.", "correct": true },
+        { "label": "Their agent cannot get an unquizzed push through.", "correct": true },
+        { "label": "They must run the installer in the new clone first.", "correct": false },
+        { "label": "Codex asks them to approve the plugin's hooks again.", "correct": false }
+      ],
+      "key_points": [
+        "The clone carries the opt-in marker, so session start installs the missing push hook.",
+        "The push hook blocks any unquizzed commit, and the guard denies the agent's bypasses.",
+        "The installer already trusted the hooks in Codex, so no approval is asked again."
+      ],
+      "attempts": []
+    }
+  ]
+}

@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "branch": "feat/scenarios",
+  "base": "e322f53",
+  "head": "d1b841b",
+  "target": "Grade agent runs from files: a scenario scripts the steps, the run lands as a result directory, and the report judges engine invariants and model behaviors from those files.",
+  "altitude": "design",
+  "incidental": [
+    "the CLI's usage text and flag defaults",
+    "the npm bin entry and script",
+    "the exit-code numbers",
+    "the file names inside a result directory",
+    "the test scenario fixture and its plugin shims",
+    "the guard update in the import-boundary test"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "The report of a fresh run comes from reading its own result files back from disk. Why not grade the run it still holds in memory?",
+      "options": [
+        { "label": "The files alone carry everything a grade needs; a later grader reads the same files.", "correct": true },
+        { "label": "Reading back is cheaper than keeping the whole run in memory.", "correct": false },
+        { "label": "Grading from files keeps the report safe if the process dies.", "correct": false },
+        { "label": "It proves the scrub left no raw secret value in the files.", "correct": false }
+      ],
+      "key_points": [
+        "The result files are the whole input to a grade; the run in memory is not consulted.",
+        "A later grader reads the same files, so the run's verdict and the grader's cannot drift.",
+        "Every run exercises the same load-back the later grader relies on."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "multi",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "A report shows one failed invariant, one failed behavior, and a cost figure. Which of these hold?",
+      "options": [
+        { "label": "The failed invariant is an engine bug, and it fails the run.", "correct": true },
+        { "label": "The failed behavior is a model miss, and it never fails the run.", "correct": true },
+        { "label": "The cost figure is reported and never judged.", "correct": true },
+        { "label": "The failed behavior must be fixed in the engine before the next run.", "correct": false }
+      ],
+      "key_points": [
+        "Invariants are engine properties every run must keep; a fail is an engine bug and gates the run.",
+        "Behaviors are bets on the model, reported as rates, and never gate the run.",
+        "Cost is reported, never judged; the cached share of prompt tokens feeds the tool-mode decision."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "A prompt's expectation says the model must call a tool right after it enables the plugin. The model never enables the plugin. How is the expectation judged?",
+      "options": [
+        { "label": "Skipped: no chance to show, and left out of the behavior's rate.", "correct": true },
+        { "label": "Skipped: no chance to show, but counted as a miss in the rate.", "correct": false },
+        { "label": "Failed: the model broke the scenario's rule.", "correct": false },
+        { "label": "Passed: nothing went wrong in the engine.", "correct": false }
+      ],
+      "key_points": [
+        "A behavior whose precondition never happened is skipped, not failed.",
+        "A skip is left out of the rate, so rates count only real chances.",
+        "Each behavior owns its own skip rule, because it owns its precondition."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "The test scenario's weather plugin echoes the run's declared secret into its tool results. Suppose the engine fails to redact that value. What does the run show?",
+      "key_points": [
+        "The scrub replaces the raw value with a mark naming the secret, in every string of the run log.",
+        "The written files hold the mark, never the raw value.",
+        "The invariant on leaks reads the marks and fails the run as an engine bug.",
+        "The echoing plugin makes every run test redaction on a value that really flowed."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q5",
+      "kind": "multi",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "Which of these stop a run before its first model call?",
+      "options": [
+        { "label": "A field the scenario format does not define", "correct": true },
+        { "label": "A tool name that no loaded plugin provides", "correct": true },
+        { "label": "A declared secret with no value in the environment", "correct": true },
+        { "label": "A prompt the model is likely to fail", "correct": false }
+      ],
+      "key_points": [
+        "Unknown fields are problems, so a misspelled word cannot silently drop a run's expectations.",
+        "Names the expectations rely on are checked against the plugins in effect at that step.",
+        "An unset secret or model key stops the run up front.",
+        "Every problem is collected, each named at its place in the scenario file."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q6",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "important",
+      "prompt": "Why does the writer build a run's files in a sibling directory and move it into place at the end?",
+      "options": [
+        { "label": "A result directory holds a whole run or does not exist.", "correct": true },
+        { "label": "Readers grade the files while the run is still writing them.", "correct": false },
+        { "label": "Moving a directory is faster than writing its files in place.", "correct": false },
+        { "label": "The checks cannot read files that are still open.", "correct": false }
+      ],
+      "key_points": [
+        "The move is the commit: no reader ever sees a half-written run.",
+        "A crash leaves a sibling marked partial, never a result directory."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q7",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "A new expectation arrives: the model must call two named tools in a given order, within one prompt. Where does it go, and what changes?",
+      "key_points": [
+        "It lands in the scenario format: one new check with its own fields.",
+        "Its judging is one new case beside the existing behaviors, with its own skip rule.",
+        "The runner, the result files and the invariants stay untouched."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q8",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A person interrupts the run during its third of five prompts. The run still writes its result directory. Which of these hold?",
+      "options": [
+        { "label": "The directory holds the steps that ran, with the aborted prompt last.", "correct": true },
+        { "label": "The report marks the run as stopped early, not as an engine bug.", "correct": true },
+        { "label": "Behaviors on prompts four and five are skipped.", "correct": true },
+        { "label": "The aborted prompt's behaviors fail, because the model never answered.", "correct": false }
+      ],
+      "key_points": [
+        "An interrupt ends the run where it stands, not with a thrown error.",
+        "Every step that ran is written and graded, the aborted one included.",
+        "The report separates a stopped run from an engine bug.",
+        "Behaviors with no chance to show are skipped, not failed."
+      ],
+      "attempts": []
+    }
+  ]
+}

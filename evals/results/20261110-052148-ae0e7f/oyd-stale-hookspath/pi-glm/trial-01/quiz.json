@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "branch": "fix/stale-hookspath",
+  "base": "94add7d",
+  "head": "06a3474",
+  "target": "Session start repairs a core.hooksPath that names a missing directory and then installs the gate, and the gate never writes into a hooks directory another tool manages.",
+  "altitude": "mechanism",
+  "incidental": ["the selftest cases for the stale setting and the managed directory"],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "An opted-in repo once pointed git's core.hooksPath at a tracked hooks directory that upstream later deleted. A clone pulls the deletion. What does session start do in that clone?",
+      "options": [
+        { "label": "It unsets the clone's stale setting and installs the pre-push hook in the default hooks directory.", "correct": true },
+        { "label": "It recreates the missing directory and installs the pre-push hook inside it.", "correct": false },
+        { "label": "It refuses to install and prints the line to add to that pre-push hook.", "correct": false },
+        { "label": "It leaves the setting alone and trusts the human to repair it.", "correct": false }
+      ],
+      "key_points": [
+        "The clone's setting outlives the directory it names, so git finds no pre-push hook and the clone's pushes run ungated.",
+        "Session start unsets a setting that names a missing directory, then installs the pre-push hook in the clone's default hooks directory.",
+        "The gate then lives inside the clone's git directory, where upstream deletions cannot touch it."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "In an opted-in repo, core.hooksPath names the directory husky owns. What does session start do with the pre-push hook, and why?",
+      "options": [],
+      "key_points": [
+        "Session start writes nothing into the directory the manager owns.",
+        "It prints the one gate line for a human to add to the manager's pre-push hook.",
+        "A hook manager owns its directory, and the gate never edits files it does not own.",
+        "Session start still finishes; the refusal is a message, not a failure."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "extension",
+      "relevance": "important",
+      "prompt": "An opted-in repo drops husky; a clone pulls the change, and the clone's setting still names the missing directory. Which of these hold at session start?",
+      "options": [
+        { "label": "Session start unsets the setting, because it now names a missing directory.", "correct": true },
+        { "label": "Session start installs the pre-push hook in the clone's default hooks directory.", "correct": true },
+        { "label": "Session start refuses, because a hook manager owns that directory.", "correct": false },
+        { "label": "Session start leaves the setting, because the guard forbids the agent from changing it.", "correct": false }
+      ],
+      "key_points": [
+        "The protection covers only a directory that exists; a missing directory is stale, not managed.",
+        "The repair runs before the install, so the gate lands in the default hooks directory.",
+        "The guard binds agent commands only; session start itself may still change the setting."
+      ],
+      "attempts": []
+    }
+  ]
+}

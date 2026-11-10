@@ -11,6 +11,7 @@ Plain counts words in the plan's prompts and options, code names per question, a
 | 20261018-202951-aa03df | 2026-10-18 | - | - | pi-glm | 5 | 0.60 | 1.00 | 0.91* | 4.0 | 34.3 | 48.5 | 20.0 | 46.2 | 1.33 | 1.80 | 4.40 | 451 | 323004 | 22609 |
 | 20261109-224929-7fae9c | 2026-11-09 | 0.7.0 | 58e03e6 | pi-glm-base | 18 | 0.00 | 0.61 | 0.93 | 6.5 | 26.5 | 40.6 | 18.2 | 34.7 | 0.70 | 2.27 | 2.09 | 84 | 171197 | 15509 |
 | 20261109-224929-7fae9c | 2026-11-09 | 0.7.0 | 58e03e6 | pi-glm | 18 | 0.94 | 1.00 | 0.99 | 4.4 | 22.5 | 29.9 | 11.9 | 16.1 | 0.00 | 0.00 | 0.00 | 134 | 328645 | 25432 |
+| 20261110-052148-ae0e7f | 2026-11-10 | 0.7.0 | b553c1c | pi-glm | 9 | 1.00 | 1.00 | 1.00 | 3.6 | 18.1 | 22.2 | 9.2 | 11.2 | 0.07 | 0.00 | 0.00 | 129 | 357027 | 25953 |
 
 Runs marked * in the judge column were kept before the grades moved into multeval. Their judge was evals/judge.py, with a rubric that lacked the code-closed and plain-English criteria. Their plain numbers come from their quiz.json with today's quizlint. Their usage comes from the kept attempt, as multeval's usage grader reads it.
 

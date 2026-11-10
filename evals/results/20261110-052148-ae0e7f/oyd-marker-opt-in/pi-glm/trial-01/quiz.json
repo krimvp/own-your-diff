@@ -1,0 +1,91 @@
+{
+  "version": 1,
+  "branch": "feat/opt-in-marker",
+  "base": "14fa2f5",
+  "head": "8d8b212",
+  "target": "Repos opt into the gate with a tracked marker file instead of local git config pointing at a repo-carried hooks dir.",
+  "altitude": "design",
+  "incidental": [
+    "the self-test moved to the repo's top-level scripts dir and out of the skill's tool list",
+    "usage text for the new install and sync commands",
+    "skill page lines describing the new install and sync behavior",
+    "agent-mode notes on spawning the examiners, reworded"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "rationale",
+      "relevance": "core",
+      "prompt": "Before, opting in meant local git config pointing at a hooks dir the repo carried. Why does a tracked marker file replace that?",
+      "options": [
+        { "label": "Reading the old hooks dir on every push made pushes too slow.", "correct": false },
+        { "label": "Git refuses to run hooks from a directory stored inside the repository.", "correct": false },
+        { "label": "The old setting held in one clone; fresh clones pushed ungated until set up again.", "correct": true },
+        { "label": "The tracked file also gates commits and merges, which the old hooks never did.", "correct": false }
+      ],
+      "key_points": [
+        "The old opt-in was local config, so only the clone that set it had the gate.",
+        "Nothing tracked said the repo was gated, so fresh clones could silently lack the gate.",
+        "The marker file is committed, so every clone carries the opt-in with the code.",
+        "The repo tree no longer carries a hooks dir for the gate."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "single",
+      "category": "boundary",
+      "relevance": "core",
+      "prompt": "The pre-push hook must call the gate tool, but the plugin's install dir moves with every update. Where does the hook look for the tool, and who keeps that working?",
+      "options": [
+        { "label": "The hook calls the tool at its path inside the plugin's install dir.", "correct": false },
+        { "label": "The hook calls a copy in the user's bin dir; sync refreshes it there.", "correct": true },
+        { "label": "The hook reads the tool's location from the repo's config on each push.", "correct": false },
+        { "label": "The hook fetches the tool from the project's public page when missing.", "correct": false }
+      ],
+      "key_points": [
+        "The plugin's install dir changes on every update, so a baked-in path would break.",
+        "The hook finds the tool on PATH, then at its fixed spot in the user's bin dir.",
+        "Sync copies the tool there and replaces the copy when it goes stale."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "failure",
+      "relevance": "important",
+      "prompt": "A repo opted in long ago. Which of these are true today?",
+      "options": [
+        { "label": "A clone whose pre-push hook was deleted pushes unchecked until sync runs again.", "correct": true },
+        { "label": "If the user already has their own pre-push hook, sync overwrites it.", "correct": false },
+        { "label": "If the marker was never committed, fresh clones get no gate.", "correct": true },
+        { "label": "If the gate tool is missing, the hook lets the push through.", "correct": false }
+      ],
+      "key_points": [
+        "The hook is local state; the marker brings it back only when sync runs.",
+        "Sync never overwrites a foreign hook; it says what line to add to it.",
+        "Without the marker committed, the opt-in stays in the clone that created it.",
+        "A missing gate tool blocks the push; the gate fails closed, never open."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q4",
+      "kind": "free",
+      "category": "extension",
+      "relevance": "core",
+      "prompt": "A teammate clones the repo on a new machine. They push before any agent session has run there. What happens to that push, and what gates their pushes after the first session?",
+      "options": [],
+      "key_points": [
+        "The first push is not checked: the fresh clone has no pre-push hook yet.",
+        "The marker came with the clone, because it is tracked and committed.",
+        "The first session runs sync, which copies the gate tool to the user's bin dir and installs the hook.",
+        "After that, every push is blocked until a quiz passes."
+      ],
+      "attempts": []
+    }
+  ]
+}

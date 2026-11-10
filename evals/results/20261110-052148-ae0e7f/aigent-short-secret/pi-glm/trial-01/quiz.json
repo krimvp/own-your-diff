@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "branch": "fix/short-secret",
+  "base": "d4f9e8b",
+  "head": "628314f",
+  "target": "The runner refuses a secret or model key shorter than 8 characters as a scenario problem, before the first session opens.",
+  "altitude": "mechanism",
+  "incidental": [
+    "the design doc's decision 5 and verification list state the new rule",
+    "the refusal test now covers a short secret and a short model key",
+    "the CLI test's model key grows past the length limit"
+  ],
+  "examinee": "human",
+  "questions": [
+    {
+      "id": "q1",
+      "kind": "single",
+      "category": "flow",
+      "relevance": "core",
+      "prompt": "A scenario's secret and the model key are both one character. What happens when the user starts the run?",
+      "options": [
+        { "label": "The first prompt ends in a provider error: exit 3.", "correct": false },
+        { "label": "Refused before the first session opens, as a scenario problem: exit 2.", "correct": true },
+        { "label": "Nothing stops it: the scrub skips values too short to leak.", "correct": false },
+        { "label": "The run goes ahead, then fails reading its files back: exit 4.", "correct": false }
+      ],
+      "key_points": [
+        "Both short values are scenario problems: the CLI exits 2 before the first session opens.",
+        "The model key is checked like a scenario secret, because the runner scrubs it too.",
+        "No model call is spent and nothing is written."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q2",
+      "kind": "free",
+      "category": "failure",
+      "relevance": "core",
+      "prompt": "Before this fix, a one-character secret broke the run after it finished. Explain how the files ended up unreadable.",
+      "key_points": [
+        "The scrub replaces each raw value wherever it occurs in the log: every string, key names included.",
+        "A one-character value occurs inside ordinary key names, so the keys themselves get rewritten.",
+        "The run file no longer parses, so the CLI fails reading it back, after the model calls were spent."
+      ],
+      "attempts": []
+    },
+    {
+      "id": "q3",
+      "kind": "multi",
+      "category": "rationale",
+      "relevance": "important",
+      "prompt": "A teammate proposes to fix this in the scrub instead: skip key names when replacing values. Which of these hold?",
+      "options": [
+        { "label": "A raw value left in a key name would reach the files.", "correct": true },
+        { "label": "Short values could no longer corrupt the key names.", "correct": true },
+        { "label": "The length rule makes the corruption impossible.", "correct": false },
+        { "label": "Short throwaway keys that worked before now stop the run up front.", "correct": true }
+      ],
+      "key_points": [
+        "The scrub must stay blind: a secret in a key name must be marked, or it reaches the files raw.",
+        "Skipping key names does stop short values from rewriting keys.",
+        "The length rule makes the corruption unlikely, not impossible: a long value inside a key still rewrites it.",
+        "The cost: short keys that used to work now stop the run before any model call."
+      ],
+      "attempts": []
+    }
+  ]
+}
