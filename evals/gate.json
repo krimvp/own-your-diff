@@ -5,9 +5,9 @@
     "judge.score": 0.85
   },
   "fail-over": {
-    "plain.prompt_words": 25,
-    "plain.option_words": 15,
-    "plain.code_names": 0.5,
+    "plain.prompt_words": 20,
+    "plain.option_words": 12,
+    "plain.code_names": 0.4,
     "plain.giveaways": 0.5,
     "plain.fluff": 2,
     "usage.duration_s": 600,

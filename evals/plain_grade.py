@@ -9,7 +9,8 @@ The scores come from the lint and language checks of quizlint, the same as
 `quizlint --json --plan`. When the shape of the plan is wrong, the words are still
 measured where every question has a prompt, key points, and labelled options.
 An attempt with no quiz.json gets no scores: a zero would look like good work.
-A quiz with no questions gets the counts only: it has no mean prompt length.
+A quiz with no questions scores 0 on every count and mean: it has no hard words.
+multeval's gate needs a score from every attempt, so a mean is never left out.
 
 `evals/build` copies this file into every case's check dir, beside quizlint and plain.py.
 `evals/keep.py` imports `measure` to backfill old kept runs.
@@ -34,7 +35,6 @@ METRICS = [
     ("giveaways", "int"),
     ("fluff", "int"),
 ]
-COUNTS = ("questions", "giveaways", "fluff")
 
 
 def load_quizlint(path):
@@ -63,8 +63,6 @@ def measure(quiz_path, quizlint_path):
         problems.append(f"the words were not measured: the questions lack {error}")
     else:
         problems += language_problems
-    if metrics.get("questions") == 0:
-        metrics = {key: metrics[key] for key in COUNTS}
     types = dict(METRICS)
     scores = {key: (int(value) if types[key] == "int" else float(value)) for key, value in metrics.items()}
     evidence = {"ok": not problems, "shape_ok": shape_ok, "problems": problems, "notes": notes}
